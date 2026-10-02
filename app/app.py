@@ -11,6 +11,12 @@ One listener, KANBAN_BIND:KANBAN_TAILNET_PORT (default 0.0.0.0:8081). KANBAN_AUT
   KANBAN_ALLOWED_HOSTS (DNS rebinding: another site's name pointed at this machine gets 403). The identity header is
   ignored (nothing vouches for it here) and writes are logged as `local`. The same-origin rule for form posts and the X-Agent handling stay as they are.
 
+With MACHIYA_IDENTITY_FILE (Machiya's identity file, vaultkit.identity) the gate is the file instead: each request's
+principal is resolved once (a token, a Tailscale login or tagged node, a trusted proxy's header with KANBAN_AUTH=header,
+a session), and needs the konbini grant `read` to get in, `write` for any change, `areas` for new area/* lanes and new
+tags (the owner's power that `agent == "web"` stood for). No proof or a bad one is 401, a missing grant 403. X-Agent
+is a label then, and every event's actor is the principal's name.
+
 Reads: the board, card pages, GET /api/cards. Writes edit the
 note's frontmatter in the board's clone, log an event to .board/events,
 and the writer thread commits them as the configured author (KANBAN_GIT_AUTHOR_NAME) and pushes in batches
@@ -43,6 +49,7 @@ except (OSError, envfile.EnvFileError) as exc:
 import deps  # noqa: E402
 import goals
 from vaultkit import shell
+from vaultkit import identity
 import vaultkit
 import digest
 import review
@@ -60,20 +67,29 @@ from writer import WriteError, Writer
 
 TAILNET_PORT = int(os.environ.get("KANBAN_TAILNET_PORT", "8081"))
 TAILNET_USERS = set(filter(None, os.environ.get("KANBAN_TAILNET_USERS", "").split(",")))
-def auth_mode(value):
-    """KANBAN_AUTH: "tailscale" (the default: Tailscale-User-Login must be in KANBAN_TAILNET_USERS) or "open" (no
-    identity check, for localhost or a trusted LAN). Anything else refuses to start rather than guess (as Niwa, Kura)."""
+def auth_mode(value, identity_file=""):
+    """KANBAN_AUTH: "tailscale" (the default: Tailscale-User-Login must be in KANBAN_TAILNET_USERS, or in the identity
+    file), "open" (no identity check, for localhost or a trusted LAN), or with an identity file "header" (a trusted
+    proxy's login header, KANBAN_AUTH_HEADER). Anything else refuses to start rather than guess (as Niwa, Kura)."""
     value = (value or "tailscale").strip().lower()
-    if value not in ("tailscale", "open"):
-        raise SystemExit("konbini: KANBAN_AUTH must be tailscale or open, not %r" % value)
+    allowed = ("tailscale", "open", "header") if identity_file else ("tailscale", "open")
+    if value not in allowed:
+        raise SystemExit("konbini: KANBAN_AUTH must be %s, not %r" % (" or ".join(allowed), value))
     return value
 
 
-AUTH = auth_mode(os.environ.get("KANBAN_AUTH"))
+AUTH = auth_mode(os.environ.get("KANBAN_AUTH"), os.environ.get("MACHIYA_IDENTITY_FILE", "").strip())
 # The address the listener binds. A native install behind `tailscale serve` binds 127.0.0.1: on a public bind the
 # Tailscale-User-Login header could be sent by anyone who reaches the port.
 BIND = os.environ.get("KANBAN_BIND", "0.0.0.0").strip() or "0.0.0.0"
 OPEN_ACTOR = "local"            # open mode: who every event names
+# Machiya's identity file (MACHIYA_IDENTITY_FILE, vaultkit.identity): who is calling and what they may do here (the
+# konbini grants read, write, areas). None without one: the KANBAN_TAILNET_USERS gate and `agent == "web"`, as before.
+try:
+    IDENTITY = identity.load_for("konbini", os.environ, bind=BIND,
+                                 secure=not os.environ.get("KANBAN_BOARD_URL", "").strip().startswith("http://"))
+except identity.IdentityError as err:
+    raise SystemExit("konbini: identity: %s" % err)
 
 
 def host_name(value):
@@ -228,22 +244,65 @@ def make_handler(listener):
         def log_message(self, fmt, *args):
             if urlsplit(self.path).path == "/healthz":      # the container health check polls it; keep it out of the log
                 return
-            sys.stderr.write("%s %s %s\n" % (listener, self.who(), fmt % args))
+            sys.stderr.write("%s %s %s\n" % (listener, self.log_name(), fmt % args))
 
-        def who(self):
+        def log_name(self):
+            """Who is asking, for the log: the principal and how it was proven, or the login as before."""
+            if getattr(self, "headers", None) is None:      # a request line too broken to have headers
+                return "-"
+            if IDENTITY is not None:
+                who = self.who()
+                return "%s(%s)" % (who.principal.name, who.principal.via) if who else "-"
             return OPEN_ACTOR if AUTH == "open" else self.headers.get("Tailscale-User-Login", "-")
 
+        def who(self):
+            """The identity file's answer for this request (vaultkit.identity Result), worked out once."""
+            if getattr(self, "_who", None) is None:
+                self._who = IDENTITY.resolve(self.headers, self.client_address[0] if self.client_address else "")
+            return self._who
+
+        def can(self, action):
+            """The principal holds the konbini grant `action` (read, write, areas). Without an identity file everyone
+            the gate admits may read and write; the owner's powers are then `agent == "web"` (see areas())."""
+            if IDENTITY is None:
+                return action != "areas" and self.allowed()
+            who = self.who()
+            return bool(who) and who.principal.can("konbini", action)
+
+        def areas(self):
+            """For writer's tag checks: whether this request may add area/* lanes and new tags (the areas grant), or
+            None without an identity file (the writer then asks `agent == "web"`, as before)."""
+            return self.can("areas") if IDENTITY is not None else None
+
         def allowed(self):
+            if AUTH == "open" and not host_allowed(self.headers.get("Host"), ALLOWED_HOSTS):
+                return False            # DNS rebinding, with or without an identity file
+            if IDENTITY is not None:
+                return self.can("read")
             if AUTH == "open":
-                return host_allowed(self.headers.get("Host"), ALLOWED_HOSTS)
+                return True
             return self.headers.get("Tailscale-User-Login", "") in TAILNET_USERS
 
         def refuse(self):
-            if AUTH == "open":
-                self.send(403, "forbidden: KANBAN_AUTH=open serves localhost, IP addresses, KANBAN_BOARD_URL's host "
-                               "and KANBAN_ALLOWED_HOSTS, not %r\n" % self.headers.get("Host", ""), "text/plain")
+            api = urlsplit(self.path).path.startswith("/api/")
+            if AUTH == "open" and not host_allowed(self.headers.get("Host"), ALLOWED_HOSTS):
+                status, text = 403, ("forbidden: KANBAN_AUTH=open serves localhost, IP addresses, KANBAN_BOARD_URL's "
+                                     "host and KANBAN_ALLOWED_HOSTS, not %r" % self.headers.get("Host", ""))
+            elif IDENTITY is not None:
+                who = self.who()            # 401: no proof or a bad one; 403: nobody in the file, or no read grant
+                status, text = (403, "not allowed in konbini") if who else (who.status, who.error)
             else:
-                self.send(403, "forbidden\n", "text/plain")
+                status, text = 403, "forbidden"
+            if IDENTITY is not None and api:
+                self.send_json(status, {"error": text}, headers=[("Cache-Control", "no-store")])
+            elif IDENTITY is not None:
+                self.send(status, text + "\n", "text/plain", headers=[("Cache-Control", "no-store")])
+            else:
+                self.send(status, text + "\n", "text/plain")
+
+        def session_cookies(self):
+            """Set-Cookie values for this response: a renewed session, or a bad one cleared (vaultkit.identity)."""
+            return self._who.cookies if getattr(self, "_who", None) is not None else ()
 
         def to_niwa(self, path):
             """/garden/<rest> (the garden's old home here) -> Niwa."""
@@ -271,6 +330,8 @@ def make_handler(listener):
             self.send_header("Content-Length", str(len(data)))
             for k, v in headers:
                 self.send_header(k, v)
+            for c in self.session_cookies():
+                self.send_header("Set-Cookie", c)
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(data)
@@ -284,6 +345,8 @@ def make_handler(listener):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
+            for c in self.session_cookies():
+                self.send_header("Set-Cookie", c)
             self.end_headers()
             last, started, beat = None, time.time(), time.time()
             try:
@@ -311,10 +374,14 @@ def make_handler(listener):
         # -- writes ----------------------------------------------------
 
         def actor(self):
-            # open mode: always "local"; nothing vouches for the header there
+            # With an identity file: the principal's name ("local" in open mode). Without: open mode is always
+            # "local" (nothing vouches for the header there), else the Tailscale login.
+            if IDENTITY is not None:
+                return self.who().principal.name
             return OPEN_ACTOR if AUTH == "open" else self.headers.get("Tailscale-User-Login", "")
 
         def agent(self):
+            # a label for the history ("which session did this"); with an identity file never a permission
             return (self.headers.get("X-Agent") or "web")[:80]
 
         def body(self):
@@ -377,15 +444,17 @@ def make_handler(listener):
                         raise WriteError(403, "cross-site API write refused")
                     if not (self.headers.get("X-Agent") or "").strip():
                         raise WriteError(403, "an API write names its caller with X-Agent")
-                actor, agent = self.actor(), self.agent()
+                if not self.can("write"):
+                    raise WriteError(403, "not allowed: changing the board needs the konbini write grant")
+                actor, agent, areas = self.actor(), self.agent(), self.areas()
                 if api and agent == "web" and not self.same_origin():
                     agent = "api"
                 if self.command == "PATCH" and path.startswith("/api/cards/"):
                     card = writer.update(path[len("/api/cards/"):], data, actor, agent,
-                                         self.headers.get("If-Match"))
+                                         self.headers.get("If-Match"), areas=areas)
                     self.send_json(200, card)
                 elif self.command == "POST" and path == "/api/cards":
-                    self.send_json(201, writer.create(data, actor, agent))
+                    self.send_json(201, writer.create(data, actor, agent, areas=areas))
                 elif self.command == "POST" and re.match(r"^/api/cards/[^/]+/events$", path):
                     slug = path.split("/")[3]
                     if not store.card(slug):
@@ -407,11 +476,11 @@ def make_handler(listener):
                     store.claim(slug, actor, agent, min(minutes, 240))
                     self.send_json(200, {"card": slug, "claimed_by": agent if minutes else None, "minutes": minutes})
                 elif self.command == "POST" and path == "/api/order":
-                    writer.order(list(data.get("slugs") or []), data.get("board"), actor, agent)
+                    writer.order(list(data.get("slugs") or []), data.get("board"), actor, agent, areas=areas)
                     self.send_json(200, {"ok": True})
                 # HTML forms (no JavaScript needed)
                 elif self.command == "POST" and path == "/move":
-                    writer.update(data.get("slug", ""), {"board": data.get("board")}, actor, agent)
+                    writer.update(data.get("slug", ""), {"board": data.get("board")}, actor, agent, areas=areas)
                     self.back()
                 elif self.command == "POST" and re.match(r"^/p/[^/]+/tags$", path):
                     slug = path.split("/")[2]
@@ -419,7 +488,8 @@ def make_handler(listener):
                     remove = [t for t in [str(data.get("remove") or "").strip()] if t]
                     try:
                         writer.update(slug, {"tags_add": add, "tags_remove": remove,
-                                             "confirm_new_tags": data.get("confirm") in ("1", "true", True)}, actor, agent)
+                                             "confirm_new_tags": data.get("confirm") in ("1", "true", True)},
+                                      actor, agent, areas=areas)
                     except WriteError as err:
                         if err.extra.get("code") == "unknown_tag":
                             self.send(302, "", "text/plain", headers=[("Location", "/p/%s?tagmsg=%s&pending=%s" % (
@@ -435,7 +505,7 @@ def make_handler(listener):
                     fields = {k: data[k] for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due")
                               if k in data}
                     if fields:
-                        writer.update(slug, fields, actor, agent)
+                        writer.update(slug, fields, actor, agent, areas=areas)
                     self.back("/p/" + slug)
                 elif self.command == "POST" and path == "/share":
                     url = str(data.get("url") or "").strip()
@@ -443,12 +513,12 @@ def make_handler(listener):
                     title = str(data.get("title") or "").strip() or url or text[:80]
                     summary = " ".join(x for x in (text, url) if x)[:300]
                     card = writer.create({"title": title[:120], "area": data.get("area") or "projects", "board": "backlog",
-                                          "summary": summary}, actor, agent)
+                                          "summary": summary}, actor, agent, areas=areas)
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + card["slug"])])
                 elif self.command == "POST" and path == "/new":
                     fields = {k: data.get(k) for k in ("title", "area", "board", "summary")}
                     fields["confirm_new_tags"] = data.get("confirm_new_tags") in ("1", "true", True)   # the first-lane box
-                    card = writer.create(fields, actor, agent)
+                    card = writer.create(fields, actor, agent, areas=areas)
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + card["slug"])])
                 else:
                     raise WriteError(405, "no such write endpoint")
@@ -794,6 +864,16 @@ def auth_banner():
     """Start-up lines about where the settings came from and who can get in (KANBAN_AUTH, KANBAN_BIND)."""
     where = "%s:%d" % (BIND, TAILNET_PORT)
     lines = ["startup: settings from %s" % ENV_FILE] if ENV_FILE else []
+    if IDENTITY is not None:
+        config, _ = IDENTITY.current()
+        lines.append("startup: identity file %s (%d principal%s), KANBAN_AUTH=%s on %s; KANBAN_TAILNET_USERS is not "
+                     "used" % (IDENTITY.path, len(config.principals), "" if len(config.principals) == 1 else "s",
+                               AUTH, where))
+        if AUTH == "open":
+            lines.append("startup: WARNING: KANBAN_AUTH=open: a request without a token is the owner. Use it only on "
+                         "localhost or a trusted LAN; it answers to IP addresses and %s"
+                         % ", ".join(sorted(ALLOWED_HOSTS)))
+        return lines
     if AUTH == "open":
         return lines + ["startup: WARNING: KANBAN_AUTH=open: no identity check. Anyone who can reach %s can read and "
                         "change the board. Use it only on localhost or a trusted LAN." % where,

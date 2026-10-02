@@ -202,14 +202,19 @@ class Writer:
 
     # tags
 
-    def check_tags(self, tags, confirm, agent):
+    def check_tags(self, tags, confirm, agent, areas=None):
+        """New tags: a new area/* tag adds a swimlane and is the maintainer's. `areas` is the caller's konbini areas
+        grant (Machiya's identity file): without it no new tag at all is created, confirmed or not. None (no identity
+        file): the maintainer is the board's own web UI (`agent == "web"`), as before."""
         known = self.store.known_tags()
         bad = [t for t in tags if not TAG_RE.match(t)]
         if bad:
             raise WriteError(422, "malformed tag(s)", tags=bad)
         new = [t for t in tags if t not in known]
         new_areas = [t for t in new if t.startswith("area/")]
-        if new_areas and agent != "web":
+        if areas is False and new:
+            raise WriteError(403, "new tags (and area/* swimlanes) need the konbini areas grant", tags=new)
+        if new_areas and areas is None and agent != "web":
             raise WriteError(403, "new area/* tags add a swimlane; only a maintainer can create them in the web UI",
                              tags=new_areas)
         if new and not confirm:
@@ -218,7 +223,7 @@ class Writer:
 
     # card updates
 
-    def update(self, slug, fields, actor, agent, if_match=None):
+    def update(self, slug, fields, actor, agent, if_match=None, areas=None):
         with self.lock:
             card = self.store.card(slug)
             if not card:
@@ -298,7 +303,7 @@ class Writer:
             add = [t for t in fields.get("tags_add") or [] if t not in new_tags]
             remove = set(fields.get("tags_remove") or [])
             if add:
-                self.check_tags(add, fields.get("confirm_new_tags"), agent)
+                self.check_tags(add, fields.get("confirm_new_tags"), agent, areas)
             new_tags = [t for t in new_tags if t not in remove] + add
 
             for key, value in scalars.items():
@@ -368,7 +373,7 @@ class Writer:
                 out.append(link)
         return out
 
-    def order(self, slugs, column, actor, agent):
+    def order(self, slugs, column, actor, agent, areas=None):
         """Set rank 10, 20, ... for cards in display order (drag and drop)."""
         with self.lock:
             for i, slug in enumerate(slugs):
@@ -379,9 +384,9 @@ class Writer:
                 if column and card["board"] != column:
                     fields["board"] = column
                 if card.get("rank") != fields["rank"] or "board" in fields:
-                    self.update(slug, fields, actor, agent)
+                    self.update(slug, fields, actor, agent, areas=areas)
 
-    def create(self, fields, actor, agent):
+    def create(self, fields, actor, agent, areas=None):
         with self.lock:
             title = str(fields.get("title") or "").strip()
             if not title:
@@ -406,7 +411,7 @@ class Writer:
             tags += ["machine/" + m.replace("machine/", "") for m in fields.get("machines") or []]
             if fields.get("effort") in ("s", "m", "l"):
                 tags.append("effort/" + fields["effort"])
-            self.check_tags([t for t in tags if not t.startswith("type/")], fields.get("confirm_new_tags"), agent)
+            self.check_tags([t for t in tags if not t.startswith("type/")], fields.get("confirm_new_tags"), agent, areas)
 
             # A stub is written in the new schema (the Machiya frontmatter schema): status:, created:,
             # priority as a word, no status/* tag.

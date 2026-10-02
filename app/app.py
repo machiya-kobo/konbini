@@ -558,15 +558,6 @@ def make_handler(listener):
                 lanes = sorted({c["area"] for c in store.cards() if c["board"]} | {"projects"})
                 self.send(200, V(ctx).share(ctx, store.cards(), (query.get("title") or [""])[0], (query.get("url") or [""])[0],
                                            (query.get("text") or [""])[0], lanes))
-            elif re.match(r"^/p/[^/]+/tags$", path) and query.get("remove"):
-                # a plain link removes a tag
-                slug = path.split("/")[2]
-                try:
-                    writer.update(slug, {"tags_remove": [query["remove"][0]]}, self.actor(), "web")
-                except WriteError as err:
-                    self.send(302, "", "text/plain", headers=[("Location", "/p/%s?tagmsg=%s" % (slug, quote(err.message)))])
-                    return
-                self.send(302, "", "text/plain", headers=[("Location", "/p/" + slug)])
             elif path == "/posts":
                 self.send(200, V(ctx).posts(ctx, kits.posts(), store.cards(), (query.get("show") or ["ready"])[0]))
             elif re.match(r"^/p/[^/]+/kit(\.md)?$", path):

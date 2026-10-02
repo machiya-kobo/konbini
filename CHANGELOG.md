@@ -19,6 +19,8 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   machiya-mcp, Niwa and `tools/pm` already do. Before, another site's page could post a form or plain text to the API
   while the owner browsed it, and the write went through under the owner's login (CSRF). A cross-site `Origin` or
   `Referer` (including `Origin: null`), or a write naming no caller, now gets 403.
+- No GET changes the board: `/p/<slug>/tags?remove=` removed a tag on a plain link, so an `<img>` on any page could
+  do it while the owner browsed. The card page's form already posts; the GET route is gone.
 
 ### Fixed
 

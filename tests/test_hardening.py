@@ -1,6 +1,6 @@
 """Hardening: a client that stops sending is dropped after app.REQUEST_TIMEOUT; redirects stay on this site (back() after a form post, the /theme fallback); a write's body that is
 unreadable, too large or not a JSON object answers 400/413, and a bad claim length or a note whose frontmatter broke
-since it was indexed 422, instead of dropping the connection. A board runs in its own
+since it was indexed 422, instead of dropping the connection; no GET changes the board. A board runs in its own
 process (settings are read at import) on 127.0.0.1, serving a throwaway vault, and is talked to over raw HTTP."""
 import http.client, json, os, socket, subprocess, sys, tempfile, textwrap, time
 
@@ -120,6 +120,13 @@ try:
         assert status == 422 and json.loads(body)["error"] == "minutes must be a whole number", (minutes, status, body)
     status, _, body = request(port, "POST", "/api/cards/kura/claim", api, json.dumps({"minutes": "20"}).encode())
     assert status == 200 and json.loads(body)["minutes"] == 20, (status, body)
+    # no GET changes the board: a link or an <img> on any page used to remove a tag (/p/<slug>/tags?remove=)
+    status, _, _ = request(port, "GET", "/p/kura/tags?remove=type/project", {"Host": host})
+    assert status != 302 and status < 500, status
+    tags = json.loads(request(port, "GET", "/api/cards/kura", {"Host": host})[2]).get("tags") or []
+    assert "type/project" in tags, tags
+    status, location, _ = request(port, "POST", "/p/kura/tags", same, b"remove=area/projects")
+    assert status == 302, status                           # the card page's form (a same-origin POST) still removes
     open(vault + "/Projects/Kura.md", "w").write(NOTE.replace("project: kura", "project: [kura"))   # a phone edit, say
     status, _, body = request(port, "PATCH", "/api/cards/kura", api, json.dumps({"next": "after the break"}).encode())
     assert status == 422 and "not valid YAML" in json.loads(body)["error"], (status, body)

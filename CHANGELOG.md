@@ -12,6 +12,9 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   pointed its own name at the board's machine (DNS rebinding) could read and change the board, since its `Origin`
   and `Host` agree. If other rooms call Konbini by a name (`http://konbini:8081` in the reference compose), list it in
   `KANBAN_ALLOWED_HOSTS`.
+- After a form post and from the `/theme` fallback, the board redirects back to the `Referer`'s path only when it is
+  on this site: `//host`, `/\host` and paths with control characters (a tab between the slashes, for example) used to
+  send the browser to another site; they now go to the card or to `/`.
 
 ## 0.10.2
 

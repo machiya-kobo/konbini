@@ -192,6 +192,20 @@ def anchor_date(value):
         return today()
 
 
+def local_target(referer, keep_query=True):
+    """The Referer's path (and query) when it stays on this site, else "". A path must start with one "/" not
+    followed by another "/" or a "\\" (browsers read //host and /\\host as another site), and nothing in it may be a
+    control character."""
+    try:
+        ref = urlsplit(referer or "")
+    except ValueError:          # e.g. an unclosed [ in the host
+        return ""
+    target = ref.path + ("?" + ref.query if keep_query and ref.query else "")
+    if not target.startswith("/") or target[1:2] in ("/", "\\") or any(ord(c) < 32 or ord(c) == 127 for c in target):
+        return ""
+    return target
+
+
 def cookies(header):
     out = {}
     for part in (header or "").split(";"):
@@ -315,8 +329,7 @@ def make_handler(listener):
             return bool(host) and urlsplit(ref).netloc == host
 
         def back(self, fallback="/"):
-            ref = urlsplit(self.headers.get("Referer") or "")
-            target = ref.path + ("?" + ref.query if ref.query else "") if ref.path else fallback
+            target = local_target(self.headers.get("Referer")) or fallback
             self.send(302, "", "text/plain", headers=[("Location", target or "/")])
 
         def do_write(self):
@@ -571,10 +584,9 @@ def make_handler(listener):
                 # the no-JavaScript fallback; /settings is the real control (machiya.js sets the cookie)
                 theme = (query.get("set") or ["system"])[0]
                 theme = "system" if theme == "auto" or theme not in ("night", "day", "system") else theme
-                # 302 back to the page the toggle was on.
-                ref = urlsplit(self.headers.get("Referer") or "")
+                # 302 back to the page the toggle was on, if it is on this site.
                 self.send(302, "", "text/plain", headers=[
-                    ("Location", ref.path or "/"), ("Set-Cookie", "theme=%s; path=/; max-age=31536000" % theme)])
+                    ("Location", local_target(self.headers.get("Referer"), keep_query=False) or "/"), ("Set-Cookie", "theme=%s; path=/; max-age=31536000" % theme)])
             elif path in ("/static/machiya.css", "/static/machiya.js", "/static/machiya-sw.js"):
                 name = path.rsplit("/", 1)[1]      # the shared UI, vendored with vaultkit (app/vaultkit/ui/)
                 # shell.ui_url versions them (?v=<content hash>), so a versioned URL caches for good

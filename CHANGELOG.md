@@ -21,6 +21,8 @@ API field is a minor bump; a fix, wording or internal change is a patch.
 - A write with an unreadable `Content-Length` answers 400, one with a body over 1 MiB 413 (the body is read and
   dropped first, so the client sees the answer), and an API write whose JSON body is not an object 400; each used to
   drop the connection or wait for bytes that never came.
+- A claim with a `minutes` that is not a whole number, and an edit to a card whose note's frontmatter stopped being
+  valid YAML since the board indexed it (a phone edit, say), answer 422 instead of dropping the connection.
 
 ## 0.10.2
 

@@ -224,6 +224,8 @@ class Writer:
             if not card:
                 raise WriteError(404, "not found")
             text = self.read(card["path"])
+            if note_front(text) is None:    # broken since it was indexed (a phone edit, say): yaml would raise below
+                raise WriteError(422, "the note's frontmatter is not valid YAML")
             if if_match and if_match != version_of(text):
                 raise WriteError(409, "card changed since you read it", code="version_conflict",
                                  version=version_of(text))

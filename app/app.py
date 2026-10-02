@@ -389,7 +389,10 @@ def make_handler(listener):
                     slug = path.split("/")[3]
                     if not store.card(slug):
                         raise WriteError(404, "not found")
-                    minutes = 0 if self.command == "DELETE" else int(data.get("minutes") or 15)
+                    try:
+                        minutes = 0 if self.command == "DELETE" else int(data.get("minutes") or 15)
+                    except (TypeError, ValueError):
+                        raise WriteError(422, "minutes must be a whole number")
                     store.claim(slug, actor, agent, min(minutes, 240))
                     self.send_json(200, {"card": slug, "claimed_by": agent if minutes else None, "minutes": minutes})
                 elif self.command == "POST" and path == "/api/order":

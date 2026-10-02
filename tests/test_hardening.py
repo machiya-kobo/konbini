@@ -1,5 +1,6 @@
 """Hardening: redirects stay on this site (back() after a form post, the /theme fallback); a write's body that is
-unreadable, too large or not a JSON object answers 400/413 instead of dropping the connection. A board runs in its own
+unreadable, too large or not a JSON object answers 400/413, and a bad claim length or a note whose frontmatter broke
+since it was indexed 422, instead of dropping the connection. A board runs in its own
 process (settings are read at import) on 127.0.0.1, serving a throwaway vault, and is talked to over raw HTTP."""
 import http.client, json, os, socket, subprocess, sys, tempfile, textwrap, time
 
@@ -30,7 +31,7 @@ def start(**extra):
     for _ in range(200):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
-            return proc, port
+            return proc, port, d
         except OSError:
             time.sleep(0.05)
     proc.kill()
@@ -46,7 +47,7 @@ def request(port, method, path, headers=None, body=None):
     return out
 
 
-proc, port = start()
+proc, port, vault = start()
 try:
     host = "127.0.0.1:%d" % port
     same = {"Host": host, "Origin": "http://" + host, "Content-Type": "application/x-www-form-urlencoded"}
@@ -111,6 +112,18 @@ try:
         assert status == 400 and json.loads(body)["error"] == "the JSON body must be an object", (doc, status, body)
     status, _, body = request(port, "PATCH", "/api/cards/kura", api, json.dumps({"next": "z" * 1000}).encode())
     assert status == 200, (status, body)                   # an ordinary write still goes through
+
+    # errors inside a write answer 422
+    for minutes in ("soon", [5], {"m": 1}, "1.5"):
+        status, _, body = request(port, "POST", "/api/cards/kura/claim", api, json.dumps({"minutes": minutes}).encode())
+        assert status == 422 and json.loads(body)["error"] == "minutes must be a whole number", (minutes, status, body)
+    status, _, body = request(port, "POST", "/api/cards/kura/claim", api, json.dumps({"minutes": "20"}).encode())
+    assert status == 200 and json.loads(body)["minutes"] == 20, (status, body)
+    open(vault + "/Projects/Kura.md", "w").write(NOTE.replace("project: kura", "project: [kura"))   # a phone edit, say
+    status, _, body = request(port, "PATCH", "/api/cards/kura", api, json.dumps({"next": "after the break"}).encode())
+    assert status == 422 and "not valid YAML" in json.loads(body)["error"], (status, body)
+    status, _, body = request(port, "POST", "/p/kura", same, b"next=after+the+break")
+    assert status == 422 and b"not valid YAML" in body, (status, body)
 finally:
     proc.kill()
     proc.wait()

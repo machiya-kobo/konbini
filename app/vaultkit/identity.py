@@ -205,8 +205,9 @@ def check_bind(auth, bind, behind_proxy=False):
 class Principal:
     """Who is calling: a name, a kind, and what they may do. `via` says how it was proven (for logs only)."""
 
-    def __init__(self, name, kind, owner=False, grants=None, limits=None, via=""):
+    def __init__(self, name, kind, owner=False, grants=None, limits=None, via="", uid=""):
         self.name, self.kind, self.owner = name, kind, owner
+        self.uid = uid or name          # the file's id (a person's is random): what rooms key stored data on
         self.grants = grants or {}      # {room: {"actions": set, "vaults": tuple|None}}
         self.limits = dict(limits or {})
         self.via = via
@@ -227,7 +228,7 @@ class Principal:
         return grant["vaults"] if grant["vaults"] is not None else DEFAULT_VAULTS
 
     def with_via(self, via):
-        return Principal(self.name, self.kind, self.owner, self.grants, self.limits, via)
+        return Principal(self.name, self.kind, self.owner, self.grants, self.limits, via, self.uid)
 
     def __repr__(self):
         return "Principal(%s, %s%s)" % (self.name, self.kind, ", owner" if self.owner else "")
@@ -302,6 +303,12 @@ class Config:
             raise IdentityError("identity file: principals must be a table of tables")
         for name, p in principals.items():
             self.add(name, p)
+        uids = {}
+        for name in self.principals:            # ids key stored data (preferences): never two principals on one
+            uid = self.raw[name]["uid"]
+            if uid in uids:
+                raise IdentityError("principal %r: id %r is also %r's" % (name, uid, uids[uid]))
+            uids[uid] = name
         pairing = data.get("pairing", [])
         if not isinstance(pairing, list):
             raise IdentityError("identity file: pairing must be an array of tables ([[pairing]])")
@@ -377,7 +384,7 @@ class Config:
         revoked = p.get("revoked_devices", [])
         if not isinstance(revoked, list) or not all(isinstance(d, str) for d in revoked):
             raise IdentityError("%s: revoked_devices must be a list of device ids" % where)
-        self.principals[name] = Principal(name, kind, owner, grants, limits)
+        self.principals[name] = Principal(name, kind, owner, grants, limits, uid=uid)
         self.raw[name] = {"password": p.get("password"), "epoch": epoch, "revoked": frozenset(revoked), "uid": uid}
 
     def pair_entry(self, i, e):
@@ -464,7 +471,8 @@ HASHING = threading.BoundedSemaphore(4)     # scrypt costs 16 MiB and ~50 ms: at
 
 # -- resolving a request ---------------------------------------------------------------------------------------------
 
-OPEN_OWNER = Principal("local", "person", owner=True, via="open")    # auth=open: everyone, as before identities
+# auth=open: everyone, as before identities; ":open" is an id no name in a file can be
+OPEN_OWNER = Principal("local", "person", owner=True, via="open", uid=":open")
 
 
 class Result:
@@ -763,7 +771,12 @@ class Identity:
 def load_for(room, env=None, bind="0.0.0.0", secure=True):
     """The room's Identity from MACHIYA_IDENTITY_FILE and <ROOM>_AUTH / _AUTH_HEADER / _SIGNIN / _BIND_BEHIND_PROXY /
     _ACCEPT_APP_CAPS,
-    or None when no identity file is set (the room keeps its old *_USERS gate). IdentityError for a bad setup."""
+    or None when no identity file is set (the room keeps its old *_USERS gate). IdentityError for a bad setup.
+
+    `secure` (default True) puts Secure on the session cookie, and vaultkit.signin then accepts only https pages as
+    same-origin. A room passes secure=False only when it is really served over plain http (no https public URL: a
+    localhost or LAN setup); a browser drops a Secure cookie set over http, so the sign-in would silently fail. Leave
+    it True whenever any proxy in front of the room speaks https."""
     env = os.environ if env is None else env
     path = (env.get("MACHIYA_IDENTITY_FILE") or "").strip()
     if not path:

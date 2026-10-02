@@ -80,7 +80,15 @@ settings table; `CONTRIBUTING.md` the workflow.
   `agent == "web"`, which still decides when `areas` is None, i.e. without the file). 401 for no or a bad proof (never
   a fall-through), 403 for a missing grant. `send()` and the event stream pass on the renewed or cleared session
   cookie. The event `actor` is the principal's name; `X-Agent` is only a label. The CSRF rules above hold in every
-  mode. `KANBAN_AUTH=header` exists only with the file, and a header mode on a public bind needs
+  mode. **Sign-in, pairing, preferences** (vaultkit `signin`, only with the file; 404 without): `GET/POST /signin`
+  (`KANBAN_SIGNIN=1`), `POST /signout` and `POST /api/pair` are handled before the gate (after open mode's `Host`
+  rule), with `signin.read_body` and its limits and none of the board's CSRF rules (vaultkit's same-origin rule for
+  sign-in/out; pairing has no cookie). `GET/PUT /api/prefs` comes after the gate (`read`) and takes vaultkit's rule
+  instead of the `/api` write rule: a token needs no `Origin` or `X-Agent`, anything else must be same-origin.
+  `SIGNIN_ORIGINS` is `KANBAN_BOARD_URL`'s origin (as `secure` follows its scheme); `PREFS` is `prefs.sqlite3` next
+  to `KANBAN_DB` (not the cache). With sign-in on, the shared UI and icons answer before the gate (the sign-in page
+  needs them) and a browser's 401 links to `/signin?next=`; Settings shows Account/Sign Out for a `session`
+  principal. `tests/test_signin.py` covers it. `KANBAN_AUTH=header` exists only with the file, and a header mode on a public bind needs
   `KANBAN_BIND_BEHIND_PROXY=1`. `tests/test_identity.py` covers each grant and proof; `tests/test_auth.py` the
   no-file gate, which must not change.
 - **Hister is optional and single-user.** Every Hister call sends `Origin: hister://`; never `hister index --force` a URL

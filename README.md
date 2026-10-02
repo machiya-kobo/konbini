@@ -235,6 +235,7 @@ On a phone, the board and a card:
 | `KANBAN_ALLOWED_HOSTS` | — | with `KANBAN_AUTH=open`: the host names the board answers to, comma-separated (case, port and a trailing dot don't matter), on top of IP addresses, `localhost` and `KANBAN_BOARD_URL`'s host. Any other `Host` gets 403, so a web page can't reach the board by pointing its own name at your machine (DNS rebinding). Ignored with `tailscale` |
 | `KANBAN_TAILNET_USERS` | — | allowed `Tailscale-User-Login`s, comma-separated; unset = nobody (with `KANBAN_AUTH=tailscale`). Not used with an identity file |
 | `MACHIYA_IDENTITY_FILE` | — | Machiya's identity file (vaultkit's `identity`; Machiya's `docs/plans/identity.md`): people, agents and services with grants. Set, it replaces `KANBAN_TAILNET_USERS` and the `X-Agent` test for owner powers: every page and read API needs the `konbini` `read` grant, every change (card edits, comments, claims, the board's forms) `write`, and new `area/*` lanes and new tags `areas`. No proof or a bad one gets 401, a missing grant 403; an event's actor is the principal (`X-Agent` stays a label). With `KANBAN_AUTH=open` a request without a token is the owner. Mount the file's directory read-only (not the file: the CLI replaces it, and a file mount keeps the old one) |
+| `KANBAN_SIGNIN` | — | `1`, with an identity file: the built-in sign-in (a person's name and password from the file, a `machiya_session` cookie; see "Sign-in, pairing and preferences" below). A browser without a session then gets a 401 page linking to `/signin?next=<the page>`. Behind an https proxy leave `KANBAN_BOARD_URL` https or unset; on plain http set it to the board's `http://` address, or every sign-in is refused (403) |
 | `KANBAN_AUTH_HEADER` | — | with an identity file and `KANBAN_AUTH=header`: the trusted proxy's login header (`Remote-User`, …), matched against the principals' `proxy` logins |
 | `KANBAN_BIND_BEHIND_PROXY` | — | `1`: with an identity file, `KANBAN_AUTH=tailscale` or `header` may bind a non-loopback address because a proxy (the Tailscale sidecar) is the only way in. Without it the board refuses to start on anything but a loopback address |
 | `KANBAN_ACCEPT_APP_CAPS` | — | `1`: read Tailscale's forwarded app capability (`Tailscale-App-Capabilities`) for tagged nodes. Only where Serve forwards it (`--accept-app-caps`, Tailscale v1.92+): an older Serve passes a client's own copy through |
@@ -248,7 +249,7 @@ On a phone, the board and a card:
 | `KANBAN_SKIP_COMMITS`, `KANBAN_CALENDAR_SKIP_COMMITS` | — | commit subjects to leave out, comma-separated prefixes (case-insensitive), on top of the board's own `board: ` and `Merge ` commits: the first from the calendar, roundups and kits (e.g. `nightly backup`), the second from the calendar and roundups only (commits the events and Log tables already cover) |
 | `KANBAN_ARCHIVE` | `none` | `none`: the link checker still visits the links in cards' notes to see if they are alive, but never contacts the Wayback Machine (snapshots already recorded still show). `wayback` (exactly this word; anything else counts as `none` and logs a warning): it also asks the Wayback Machine for a snapshot of each link and saves one (this sends the URL to archive.org) |
 | `KANBAN_REPO_REFERENCE`, `KANBAN_REPO_SPARSE` | — | Machiya stack mode: borrow the stack's vault mirror's objects, and check out only `notes,.board` (your `KANBAN_REPO_SUBDIR` plus `.board`; see `CLAUDE.md`) |
-| `KANBAN_BOARD_URL` | — | this board's own address, for absolute links in writing kits |
+| `KANBAN_BOARD_URL` | — | this board's own address, for absolute links in writing kits. With an identity file it is also the one origin the sign-in, sign-out and preference checks accept (unset: an https page naming the request's own `Host`), and an `http://` address takes `Secure` off the session cookie |
 | `KANBAN_NIWA_URL`, `KANBAN_KURA_URL` | — | the sister rooms (Niwa: the garden links and the `/garden/` redirect; Kura: "View in Kura"). Unset = those links are off |
 | `KANBAN_OBSIDIAN_VAULT` | — | the Obsidian vault's name for "Edit in Obsidian" links (`obsidian://open?vault=my-vault`). Unset = no such links |
 | `KANBAN_GIT_AUTHOR_NAME`, `KANBAN_GIT_AUTHOR_EMAIL` | `konbini`, `konbini@localhost` | who the board's commits to the vault are by |
@@ -265,6 +266,24 @@ On a phone, the board and a card:
 | `MACHIYA_COOKIE_DOMAIN` | — | share the theme and text-size cookies across rooms on one domain, e.g. `example.net` |
 
 Every setting is in this table: the `KANBAN_*` ones, `TZ` and the `MACHIYA_*` ones.
+
+### Sign-in, pairing and preferences
+
+Only with `MACHIYA_IDENTITY_FILE` (vaultkit's `signin`); without the file every route below answers 404.
+
+| Route | Gate | What it does |
+|---|---|---|
+| `GET /signin`, `POST /signin` | before (needs `KANBAN_SIGNIN=1`, else 404) | the sign-in form, and its same-origin post: a session cookie and a 303 to `next` (a local path) |
+| `POST /signout` | before | same-origin only: clears the session cookie |
+| `POST /api/pair` | before | Shiori's device pairing: `{"code", "device"}` (a code from `python3 -m vaultkit.identity pair <name>`) gives `{"token", "principal"}`, a device token for `Authorization: Bearer`. Works with or without `KANBAN_SIGNIN` |
+| `GET /api/prefs`, `PUT /api/prefs` | after (`konbini` `read`) | the caller's own preferences, `{"prefs": {key: value}}`; a PUT merges (`null` removes) |
+
+`KANBAN_AUTH=open`'s `Host` rule comes first for all of them. They follow vaultkit's rules, not the board's `/api`
+write rule: pairing carries no cookie (the code is the proof), so it needs neither `X-Agent` nor an `Origin`; a
+`PUT /api/prefs` made with a token needs neither either, and one made with a session cookie, a Tailscale or proxy
+login or in open mode must come from the board's own page (`Origin`, else `Referer`; `X-Agent` doesn't excuse it).
+Preferences are kept per principal in `prefs.sqlite3` next to `KANBAN_DB` (mode 0600; not the board's cache, so a
+`rebuild` keeps them). Settings shows an Account section with a Sign Out button to a signed-in session.
 
 ## Vault layout
 

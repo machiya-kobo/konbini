@@ -30,6 +30,16 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   the principal's name; `X-Agent` stays a label. New settings: `KANBAN_AUTH=header` with `KANBAN_AUTH_HEADER`,
   `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS`. Without the file nothing changes.
 
+### Added
+
+- **Sign-in, pairing and preferences** (the identity plan's phase 6; vaultkit v0.11.0): with the identity file,
+  `KANBAN_SIGNIN=1` turns on the built-in sign-in (`GET/POST /signin`, a session cookie; a browser's 401 page links
+  to it) and `POST /signout` (Settings → Account → Sign Out). `POST /api/pair` trades a pairing code from the CLI
+  for a Shiori device token. `GET/PUT /api/prefs` keeps each principal's preferences in `prefs.sqlite3` next to
+  `KANBAN_DB`. The sign-in, sign-out and preference checks accept `KANBAN_BOARD_URL`'s origin; over plain http, set
+  it to the board's `http://` address. Pairing and token-made preference changes need no `X-Agent`. Without the
+  identity file these routes are 404.
+
 ### Fixed
 
 - With the identity file, `/api/status` and `/api/health` give their details (Hister's address, sync and Hister

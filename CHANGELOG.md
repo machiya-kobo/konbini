@@ -23,6 +23,8 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   drop the connection or wait for bytes that never came.
 - A claim with a `minutes` that is not a whole number, and an edit to a card whose note's frontmatter stopped being
   valid YAML since the board indexed it (a phone edit, say), answer 422 instead of dropping the connection.
+- The listener drops a client that stalls for 30 seconds mid-request (or doesn't read the answer), so stalled
+  connections no longer hold a thread each for good.
 
 ## 0.10.2
 

@@ -1,4 +1,4 @@
-"""Hardening: redirects stay on this site (back() after a form post, the /theme fallback); a write's body that is
+"""Hardening: a client that stops sending is dropped after app.REQUEST_TIMEOUT; redirects stay on this site (back() after a form post, the /theme fallback); a write's body that is
 unreadable, too large or not a JSON object answers 400/413, and a bad claim length or a note whose frontmatter broke
 since it was indexed 422, instead of dropping the connection. A board runs in its own
 process (settings are read at import) on 127.0.0.1, serving a throwaway vault, and is talked to over raw HTTP."""
@@ -11,6 +11,7 @@ SERVER = textwrap.dedent('''
     import sys
     sys.path.insert(0, sys.argv[1])
     import app
+    app.REQUEST_TIMEOUT = float(sys.argv[3])       # the real one is 30 s; the test waits for a short one
     app.store.rebuild()
     app.serve(int(sys.argv[2]), "tailnet")
 ''')
@@ -26,7 +27,7 @@ def start(**extra):
                KANBAN_BIND="127.0.0.1", PYTHONDONTWRITEBYTECODE="1")
     env.update(extra)
     open(d + "/server.py", "w").write(SERVER)
-    proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env,
+    proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port), "1.5"], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     for _ in range(200):
         try:
@@ -124,6 +125,21 @@ try:
     assert status == 422 and "not valid YAML" in json.loads(body)["error"], (status, body)
     status, _, body = request(port, "POST", "/p/kura", same, b"next=after+the+break")
     assert status == 422 and b"not valid YAML" in body, (status, body)
+
+    # a stalled client: half a request line, or headers that promise a body never sent, then nothing
+    src = open(os.path.join(APP, "app.py")).read()
+    assert "REQUEST_TIMEOUT = 30 " in src and "timeout = REQUEST_TIMEOUT" in src
+    for partial in (b"GET / HT", b"POST /api/cards HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Length: 100\r\n\r\n{"):
+        s = socket.create_connection(("127.0.0.1", port), timeout=20)
+        s.sendall(partial)
+        t = time.time()
+        try:
+            got = s.recv(65536)
+        except ConnectionResetError:
+            got = b""
+        assert time.time() - t < 15 and not got.startswith(b"HTTP/1.0 2"), (partial, got, time.time() - t)
+        s.close()
+    assert request(port, "GET", "/healthz")[0] == 200      # and the board still answers
 finally:
     proc.kill()
     proc.wait()

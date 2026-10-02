@@ -118,6 +118,7 @@ REPO_SPARSE = [p.strip().strip("/") for p in os.environ.get("KANBAN_REPO_SPARSE"
 DB = os.environ.get("KANBAN_DB", "/data/kanban.sqlite3")
 STREAM_SECONDS = 600
 MAX_BODY = 1 << 20              # writes are small: a card's fields, a comment, an order of slugs
+REQUEST_TIMEOUT = 30           # seconds a client may stall mid-request (or not read the answer) before its thread is freed
 DRAIN_BODY = 16 << 20           # an oversized body is read and dropped up to this, so the client sees the 413
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -221,6 +222,7 @@ def make_handler(listener):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"  # no keep-alive, no chunked encoding
         server_version = "konbini/1"
+        timeout = REQUEST_TIMEOUT      # a client that stops sending lets its thread go
 
         def log_message(self, fmt, *args):
             if urlsplit(self.path).path == "/healthz":      # the container health check polls it; keep it out of the log

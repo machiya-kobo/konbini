@@ -124,7 +124,8 @@ KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
   KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal python3 app/app.py
 ```
 
-`KANBAN_AUTH=open` has no identity check: it is for localhost and a trusted network only.
+`KANBAN_AUTH=open` has no identity check: it is for localhost and a trusted network only. It answers only requests
+made to an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in `KANBAN_ALLOWED_HOSTS`.
 
 **4. Check that it is up.** The loop waits up to 30 seconds for the first start (the board indexes the vault):
 
@@ -192,7 +193,8 @@ vault, with Hister and SearXNG as optional search engines. What changes compared
 - **Who may use it.** Behind a proxy that sets `Tailscale-User-Login` (a Tailscale sidecar, for example) leave
   `KANBAN_AUTH` at its default `tailscale` and list the logins in `KANBAN_TAILNET_USERS` (`KONBINI_AUTH=tailscale` and
   `KONBINI_USERS` in the compose), and bind `KANBAN_BIND=127.0.0.1`. The reference compose defaults to
-  `KANBAN_AUTH=open` for the localhost demo.
+  `KANBAN_AUTH=open` for the localhost demo; there, list the name the other rooms call Konbini by (`konbini`) in
+  `KANBAN_ALLOWED_HOSTS`.
 - **Notes folder.** If the vault keeps its notes in a folder, set `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose);
   the default is the repository root.
 - **One vault copy.** `compose/mirror.yml` (or `demo-init --mirror`) keeps a single shared copy of the vault: it sets
@@ -228,6 +230,7 @@ On a phone, the board and a card:
 |---|---|---|
 | `KANBAN_ENV_FILE` (or `--env-file PATH`) | — | native installs (e.g. BSD rc.d): read these settings from a file of `KEY=VALUE` lines first; the real environment wins. A missing or bad file stops start-up, naming the file and line |
 | `KANBAN_AUTH` | `tailscale` | `tailscale`: every page and write needs a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS`. `open`: no identity check (a startup warning), for localhost or a trusted LAN only; the identity header is ignored and writes are logged as `local`. Either way, form posts must be same-origin and agents identify themselves with `X-Agent`. Any other value refuses to start |
+| `KANBAN_ALLOWED_HOSTS` | — | with `KANBAN_AUTH=open`: the host names the board answers to, comma-separated (case, port and a trailing dot don't matter), on top of IP addresses, `localhost` and `KANBAN_BOARD_URL`'s host. Any other `Host` gets 403, so a web page can't reach the board by pointing its own name at your machine (DNS rebinding). Ignored with `tailscale` |
 | `KANBAN_TAILNET_USERS` | — | allowed `Tailscale-User-Login`s, comma-separated; unset = nobody (with `KANBAN_AUTH=tailscale`) |
 | `KANBAN_BIND` | `0.0.0.0` | the address the listener binds. Behind `tailscale serve` on a native install, bind `127.0.0.1`: on a public bind anyone who reaches the port could send the `Tailscale-User-Login` header |
 | `KANBAN_TAILNET_PORT` | `8081` | the listener's port |

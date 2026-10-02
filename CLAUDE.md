@@ -70,7 +70,8 @@ settings table; `CONTRIBUTING.md` the workflow.
   pages from the API (a checkout is read whole) and keeps only commits whose subject mentions the card's slug, title or title words.
 - **Access.** `KANBAN_AUTH=tailscale` (default) allows only a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS`, and
   trusts the proxy in front (`tailscale serve`) to set and sanitise that header: bind `127.0.0.1` behind it. `open` has no
-  identity check (localhost or a trusted LAN). Form posts must be same-origin; API writes name themselves with `X-Agent`.
+  identity check (localhost or a trusted LAN) but answers only a `Host` that is an IP literal, `localhost`,
+  `KANBAN_BOARD_URL`'s host or in `KANBAN_ALLOWED_HOSTS` (DNS rebinding; `host_allowed`). Form posts must be same-origin; API writes name themselves with `X-Agent`.
   `GET /healthz` is open and returns `ok`; `/api/status` is gated.
 - **Hister is optional and single-user.** Every Hister call sends `Origin: hister://`; never `hister index --force` a URL
   Hister already has (it replaces the imported metadata). Saving pages into Hister is off unless `KANBAN_HISTER_SAVE`,

@@ -49,12 +49,32 @@ HARNESS = textwrap.dedent('''
     call("form_crosssite", "POST", "/p/kura", dict(owner, **{"Content-Type": "application/x-www-form-urlencoded"}), b"next=x")
     call("form_sameorigin", "POST", "/p/kura", dict(owner, **{"Content-Type": "application/x-www-form-urlencoded",
          "Origin": "http://127.0.0.1:%d" % port, "Host": "127.0.0.1:%d" % port}), b"next=y")
+    # KANBAN_AUTH=open and DNS rebinding: another site's name pointed at 127.0.0.1 arrives in Host (and Origin)
+    evil = "evil.example:%d" % port
+    call("rebind_get", "GET", "/", {"Host": evil})
+    call("rebind_patch", "PATCH", "/api/cards/kura", {"Host": evil, "Origin": "http://" + evil,
+         "Content-Type": "application/json", "X-Agent": "t"}, json.dumps({"next": "rebound"}).encode())
+    call("rebind_form", "POST", "/p/kura", {"Host": evil, "Origin": "http://" + evil,
+         "Content-Type": "application/x-www-form-urlencoded"}, b"next=rebound")
+    call("rebind_owner", "GET", "/", dict(owner, Host=evil))
+    call("rebind_healthz", "GET", "/healthz", {"Host": evil})
+    call("host_localhost", "GET", "/", {"Host": "LocalHost.:%d" % port})
+    call("host_v6", "GET", "/", {"Host": "[::1]:%d" % port})
+    call("host_listed", "GET", "/", {"Host": "other.example"})
+    call("host_empty", "GET", "/", {"Host": ""})
+    hosts = ["127.0.0.1", "127.0.0.1:8081", "10.0.0.5:80", "[::1]", "[::1]:8081", "[FE80::1]:9", "localhost",
+             "LOCALHOST:8081", "localhost.", "localhost.:8081", "kanban.example.net", "Kanban.Example.Net.:443",
+             "board.example", "BOARD.example.:8443", "other.example", "", None, "evil.example", "evil.example:8081",
+             "localhost.evil.example", "::1", "[::1", "[::1]x", "localhost:abc", "127.0.0.1.evil.example",
+             "evil@127.0.0.1", "0x7f.1"]
+    out["hosts"] = {str(h): app.host_allowed(h, app.ALLOWED_HOSTS) for h in hosts}
+    out["allowed_hosts"] = sorted(app.ALLOWED_HOSTS)
     out["actors"] = sorted({e.get("actor") for e in app.store.events(card="kura")})
     print(json.dumps(out))
 ''')
 
 
-def run(auth, bind="127.0.0.1"):
+def run(auth, bind="127.0.0.1", **extra):
     d = tempfile.mkdtemp()
     os.makedirs(d + "/Projects")
     open(d + "/Projects/Kura.md", "w").write(NOTE)
@@ -63,6 +83,7 @@ def run(auth, bind="127.0.0.1"):
     env = dict(os.environ, KANBAN_REPO=d, KANBAN_DB=d + "/db/k.db", KANBAN_TAILNET_USERS="owner@example",
                KANBAN_TAILNET_PORT=str(port), KANBAN_BIND=bind, PYTHONDONTWRITEBYTECODE="1")
     env.pop("KANBAN_AUTH", None)
+    env.update(extra)
     if auth is not None:
         env["KANBAN_AUTH"] = auth
     h = os.path.join(d, "harness.py"); open(h, "w").write(HARNESS)
@@ -92,6 +113,26 @@ assert out["actors"] == ["local"] and out["patch_none"] == 200 and out["health_a
 assert out["status_auth"] == "open", out
 assert out["healthz"] == [200, "ok\n"] and out["healthz_head"] == 200 and out["status_none"] == 200, out
 assert out["banner"][0].startswith("startup: WARNING: KANBAN_AUTH=open: no identity check. Anyone who can reach 127.0.0.1:"), out
+# DNS rebinding: in open mode only IP literals, localhost, KANBAN_BOARD_URL's host and KANBAN_ALLOWED_HOSTS are served
+assert (out["rebind_get"], out["rebind_patch"], out["rebind_form"], out["rebind_owner"]) == (403, 403, 403, 403), out
+assert out["rebind_healthz"] == 200, out                     # liveness answers whatever the Host
+assert out["host_localhost"] == 200 and out["host_v6"] == 200 and out["host_empty"] == 403, out
+assert out["host_listed"] == 403, out                        # nothing listed in this run
+assert out["allowed_hosts"] == ["localhost"], out
+assert "rebound" not in json.dumps(out), out
+
+r = run("open", KANBAN_BOARD_URL="https://Kanban.Example.Net.:443/", KANBAN_ALLOWED_HOSTS=" Board.Example.:8443 ,other.example,,")
+out = json.loads(r.stdout.strip().splitlines()[-1])
+assert out["allowed_hosts"] == ["board.example", "kanban.example.net", "localhost", "other.example"], out
+assert out["host_listed"] == 200 and out["rebind_get"] == 403 and out["rebind_patch"] == 403, out
+assert "other.example" in out["banner"][1], out
+refused = {"", "None", "evil.example", "evil.example:8081", "localhost.evil.example", "::1", "[::1", "[::1]x",
+           "localhost:abc", "127.0.0.1.evil.example", "evil@127.0.0.1", "0x7f.1"}
+assert {h for h, ok in out["hosts"].items() if not ok} == refused, out["hosts"]
+
+# tailscale mode never looks at Host (the proxy's identity header decides)
+r = run(None); out = json.loads(r.stdout.strip().splitlines()[-1])
+assert out["rebind_owner"] == 200 and out["rebind_get"] == 403, out
 
 # an unknown mode refuses to start
 r = run("opne")

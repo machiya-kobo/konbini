@@ -7,8 +7,9 @@ One listener, KANBAN_BIND:KANBAN_TAILNET_PORT (default 0.0.0.0:8081). KANBAN_AUT
   requests from tagged nodes or without the header are refused. A header allow-list on a public bind can be
   spoofed, so a native install behind `tailscale serve` binds 127.0.0.1.
 - `open`: no identity check at all, for localhost or a trusted LAN only; start-up
-  prints a warning. Every page and write goes through; the identity header is ignored (nothing vouches for it here) and
-  writes are logged as `local`. The same-origin rule for form posts and the X-Agent handling stay as they are.
+  prints a warning. It answers only when Host is an IP literal, localhost, KANBAN_BOARD_URL's host or a name in
+  KANBAN_ALLOWED_HOSTS (DNS rebinding: another site's name pointed at this machine gets 403). The identity header is
+  ignored (nothing vouches for it here) and writes are logged as `local`. The same-origin rule for form posts and the X-Agent handling stay as they are.
 
 Reads: the board, card pages, GET /api/cards. Writes edit the
 note's frontmatter in the board's clone, log an event to .board/events,
@@ -17,6 +18,7 @@ and the writer thread commits them as the configured author (KANBAN_GIT_AUTHOR_N
 it from the clone. Writes from the web UI need a same-origin Referer or
 Origin; API callers identify themselves with X-Agent.
 """
+import ipaddress
 import json
 import os
 import re
@@ -71,6 +73,42 @@ AUTH = auth_mode(os.environ.get("KANBAN_AUTH"))
 # Tailscale-User-Login header could be sent by anyone who reaches the port.
 BIND = os.environ.get("KANBAN_BIND", "0.0.0.0").strip() or "0.0.0.0"
 OPEN_ACTOR = "local"            # open mode: who every event names
+
+
+def host_name(value):
+    """A Host header's (or a setting's) name, lowercased, without the port and trailing dot; "" when it is not a
+    plain host[:port] or [v6][:port]."""
+    value = (value or "").strip().lower()
+    if value.startswith("["):
+        end = value.find("]")
+        if end < 0 or not re.fullmatch(r"(:\d*)?", value[end + 1:]):
+            return ""
+        return value[1:end]
+    name, _, port = value.partition(":")
+    if port and not port.isdigit():
+        return ""
+    return name.rstrip(".")
+
+
+def host_allowed(host_header, allowed):
+    """KANBAN_AUTH=open's guard against DNS rebinding: a page on another site whose name is pointed at this machine
+    arrives with that site's name in Host (and Origin, so same_origin() can't tell), and could read and write the
+    board. Only an IP literal, localhost, KANBAN_BOARD_URL's host or a KANBAN_ALLOWED_HOSTS name is served."""
+    host = host_name(host_header)
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return host in allowed
+
+
+def allowed_hosts(board_url, extra):
+    """The names KANBAN_AUTH=open answers to besides IP literals, normalised like a Host header."""
+    names = {"localhost", host_name(urlsplit(board_url or "").netloc)}
+    names |= {host_name(h) for h in (extra or "").split(",")}
+    return names - {""}
 REPO = os.environ.get("KANBAN_REPO", "/repo")
 # Machiya stack mode: the stack keeps one vault copy (a mirror). The board still writes,
 # so it keeps its own clone but borrows the mirror's objects (git alternates), and may check out only what it reads.
@@ -97,6 +135,7 @@ modern.KURA_URL = os.environ.get("KANBAN_KURA_URL", "").rstrip("/")
 # The Obsidian vault's name for "Edit in Obsidian" links (obsidian://open?vault=<name>); empty = no such links.
 modern.OBSIDIAN_VAULT = os.environ.get("KANBAN_OBSIDIAN_VAULT", "").strip()
 modern.set_sisters()
+ALLOWED_HOSTS = allowed_hosts(modern.BOARD_URL, os.environ.get("KANBAN_ALLOWED_HOSTS", ""))
 blog = Blog(os.environ.get("KANBAN_BLOG", "/blog"), os.environ.get("KANBAN_BLOG_URL", ""),
             os.environ.get("KANBAN_BLOG_PERMALINK"))   # optional: a Jekyll blog
 ARCHIVE, _warn = links_mod.archive_mode(os.environ.get("KANBAN_ARCHIVE"))
@@ -177,8 +216,15 @@ def make_handler(listener):
 
         def allowed(self):
             if AUTH == "open":
-                return True
+                return host_allowed(self.headers.get("Host"), ALLOWED_HOSTS)
             return self.headers.get("Tailscale-User-Login", "") in TAILNET_USERS
+
+        def refuse(self):
+            if AUTH == "open":
+                self.send(403, "forbidden: KANBAN_AUTH=open serves localhost, IP addresses, KANBAN_BOARD_URL's host "
+                               "and KANBAN_ALLOWED_HOSTS, not %r\n" % self.headers.get("Host", ""), "text/plain")
+            else:
+                self.send(403, "forbidden\n", "text/plain")
 
         def to_niwa(self, path):
             """/garden/<rest> (the garden's old home here) -> Niwa."""
@@ -275,7 +321,7 @@ def make_handler(listener):
 
         def do_write(self):
             if not self.allowed():
-                self.send(403, "forbidden\n", "text/plain")
+                self.refuse()
                 return
             url = urlsplit(self.path)
             path = unquote(url.path)
@@ -375,7 +421,7 @@ def make_handler(listener):
                 self.send(200, "ok\n", "text/plain", headers=[("Cache-Control", "no-store")])
                 return
             if not self.allowed():
-                self.send(403, "forbidden\n", "text/plain")
+                self.refuse()
                 return
             url = urlsplit(self.path)
             path, query = unquote(url.path), parse_qs(url.query)
@@ -714,7 +760,9 @@ def auth_banner():
     lines = ["startup: settings from %s" % ENV_FILE] if ENV_FILE else []
     if AUTH == "open":
         return lines + ["startup: WARNING: KANBAN_AUTH=open: no identity check. Anyone who can reach %s can read and "
-                        "change the board. Use it only on localhost or a trusted LAN." % where]
+                        "change the board. Use it only on localhost or a trusted LAN." % where,
+                        "startup: KANBAN_AUTH=open answers to IP addresses and %s (KANBAN_ALLOWED_HOSTS adds names)"
+                        % ", ".join(sorted(ALLOWED_HOSTS))]
     lines.append("startup: KANBAN_AUTH=tailscale on %s: only Tailscale-User-Login in KANBAN_TAILNET_USERS (%d user%s)"
                  % (where, len(TAILNET_USERS), "" if len(TAILNET_USERS) == 1 else "s"))
     if not TAILNET_USERS:

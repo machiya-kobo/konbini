@@ -3,6 +3,16 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.11.0
+
+### Security
+
+- `KANBAN_AUTH=open` answers only requests whose `Host` is an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a
+  name in the new `KANBAN_ALLOWED_HOSTS` (case, port and a trailing dot don't matter); others get 403. A web page that
+  pointed its own name at the board's machine (DNS rebinding) could read and change the board, since its `Origin`
+  and `Host` agree. If other rooms call Konbini by a name (`http://konbini:8081` in the reference compose), list it in
+  `KANBAN_ALLOWED_HOSTS`.
+
 ## 0.10.2
 
 ### Added

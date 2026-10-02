@@ -611,8 +611,33 @@ def setting(ctx, key):
     return None
 
 
-def settings(ctx, cards, version, vaultkit, status_text):
-    """/settings: Appearance, Board, Apps, About (docs/ui.md; per device, in Shiori's style)."""
+def account_section(name):
+    """Settings -> Account, for a principal signed in with the built-in sign-in (a session): who, and a sign-out
+    button (a same-origin form post to /signout, vaultkit.signin)."""
+    if not name:
+        return None
+    return ("Account", [shell.row("Signed In As", e(name)),
+                        '<form class="item" method="post" action="/signout"><span>This Browser</span>'
+                        '<button type="submit">Sign Out</button></form>'],
+            "Signing out ends the session in this browser only.")
+
+
+def signin_needed(ctx, target):
+    """The 401 page for a browser without a session when the built-in sign-in is on: a link to /signin?next=<target>.
+    No board data: the caller hasn't been let in (ctx is the bare appearance cookies)."""
+    href = "/signin?next=" + quote(target, safe="")
+    body = ('%s<main class="signin"><h1>Sign In</h1>'
+            '<form class="group" method="get" action="/signin"><input type="hidden" name="next" value="%s">'
+            '<p class="item">Konbini needs you to <a href="%s">sign in</a> first.</p>'
+            '<button type="submit">Sign In</button></form>'
+            '<p class="footnote">A session from another Machiya room counts here too when the rooms share a cookie '
+            'domain.</p></main>') % (shell.header("konbini", [], "", shell.rooms(), settings=False), e(target), e(href))
+    return shell.page(ctx, "konbini", "Sign In - konbini", body, manifest=False)
+
+
+def settings(ctx, cards, version, vaultkit, status_text, account=""):
+    """/settings: Appearance, Board, Apps, Account (a signed-in session only), About (docs/ui.md; per device, in
+    Shiori's style)."""
     board = ("Board", [shell.select(label, key, choices, setting(ctx, key), cookie=True)
                        for key, label, choices, _ in BOARD_SETTINGS] + [shell.offline_row()],
              "Group By picks the board's swimlanes: Area (a card's area tag) or Family (its family field). "
@@ -620,7 +645,7 @@ def settings(ctx, cards, version, vaultkit, status_text):
              "Offline Copies are the pages this device keeps to show when the board can't be reached; "
              "Clear Offline Copies removes them.")
     body = shell.settings_page([shell.appearance_section(ctx), board, shell.apps_section("konbini", shell.rooms(), {}),
-                                shell.about_section("konbini", version, status_text, vaultkit)], "konbini")
+                                account_section(account), shell.about_section("konbini", version, status_text, vaultkit)], "konbini")
     return page(ctx, "kanban", "settings - konbini", board_header(ctx, counts_of(cards), "Settings", "") + body,
                 KANBAN_TABS, "")
 

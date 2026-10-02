@@ -15,7 +15,9 @@ With MACHIYA_IDENTITY_FILE (Machiya's identity file, vaultkit.identity) the gate
 principal is resolved once (a token, a Tailscale login or tagged node, a trusted proxy's header with KANBAN_AUTH=header,
 a session), and needs the konbini grant `read` to get in, `write` for any change, `areas` for new area/* lanes and new
 tags (the owner's power that `agent == "web"` stood for). No proof or a bad one is 401, a missing grant 403. X-Agent
-is a label then, and every event's actor is the principal's name.
+is a label then, and every event's actor is the principal's name. With the file, vaultkit.signin adds GET/POST /signin
+(KANBAN_SIGNIN=1), POST /signout and POST /api/pair before the gate, and GET/PUT /api/prefs after it (konbini read);
+their same-origin checks take KANBAN_BOARD_URL's origin. Without the file those routes are 404.
 
 Reads: the board, card pages, GET /api/cards. Writes edit the
 note's frontmatter in the board's clone, log an event to .board/events,
@@ -50,6 +52,7 @@ import deps  # noqa: E402
 import goals
 from vaultkit import shell
 from vaultkit import identity
+from vaultkit import signin
 import vaultkit
 import digest
 import review
@@ -170,6 +173,19 @@ links = Links(store, garden, backends, enabled=ARCHIVE != "none", cold=cold,
               hister=HisterBackend(hister) if hister else None,
               hister_save=links_mod.setting_on(os.environ.get("KANBAN_HISTER_SAVE")))
 kits = Kits(store, garden, timeline, blog, modern.BOARD_URL, links, hister, garden_url=modern.GARDEN_URL)
+# The built-in sign-in, Shiori's device pairing and per-user preferences (vaultkit.signin), only with an identity file.
+# Their same-origin checks take KANBAN_BOARD_URL's origin, the setting the session cookie's Secure flag already
+# follows (load_for(secure=...) above); without it, only an https page naming the request's own Host counts.
+SIGNIN_ORIGINS = tuple(o for o in [signin.origin_of(modern.BOARD_URL)] if o)
+# Preferences live in their own SQLite file next to KANBAN_DB (the board's index is a cache that `rebuild` may
+# recreate; nobody's preferences go with it): <KANBAN_DB's folder>/prefs.sqlite3, 0600.
+PREFS_DB = os.path.join(os.path.dirname(os.path.abspath(DB)), "prefs.sqlite3")
+PREFS = signin.Prefs(PREFS_DB) if IDENTITY is not None else None
+# Routes that exist only with an identity file (without one they answer 404, as before). The three posts sit before
+# the gate (they are how a caller gets past it); /api/prefs after it (the konbini read grant).
+SIGNIN_POSTS = {"/signin": signin.MAX_FORM, "/signout": signin.MAX_FORM, "/api/pair": signin.MAX_PAIR}
+SIGNIN_ROUTES = set(SIGNIN_POSTS) | {"/api/prefs"}
+SHARED_UI = ("/static/machiya.css", "/static/machiya.js", "/static/machiya-sw.js")
 # The vault push into Hister and the note reader are Kura's (machiya-kobo/kura).
 
 
@@ -282,7 +298,7 @@ def make_handler(listener):
             return self.can("areas") if IDENTITY is not None else None
 
         def allowed(self):
-            if AUTH == "open" and not host_allowed(self.headers.get("Host"), ALLOWED_HOSTS):
+            if not self.host_ok():
                 return False            # DNS rebinding, with or without an identity file
             if IDENTITY is not None:
                 return self.can("read")
@@ -292,7 +308,7 @@ def make_handler(listener):
 
         def refuse(self):
             api = urlsplit(self.path).path.startswith("/api/")
-            if AUTH == "open" and not host_allowed(self.headers.get("Host"), ALLOWED_HOSTS):
+            if not self.host_ok():
                 status, text = 403, ("forbidden: KANBAN_AUTH=open serves localhost, IP addresses, KANBAN_BOARD_URL's "
                                      "host and KANBAN_ALLOWED_HOSTS, not %r" % self.headers.get("Host", ""))
             elif IDENTITY is not None:
@@ -302,10 +318,78 @@ def make_handler(listener):
                 status, text = 403, "forbidden"
             if IDENTITY is not None and api:
                 self.send_json(status, {"error": text}, headers=[("Cache-Control", "no-store")])
+            elif IDENTITY is not None and IDENTITY.signin and status == 401:
+                # a browser without a session: a page with the way in (KANBAN_SIGNIN=1), back here afterwards
+                target = self.path if self.command in ("GET", "HEAD") else "/"
+                self.send(status, modern.signin_needed(shell.prefs(self.headers.get("Cookie")), signin.safe_next(target)),
+                          headers=list(signin.PAGE_HEADERS[1:]))
             elif IDENTITY is not None:
                 self.send(status, text + "\n", "text/plain", headers=[("Cache-Control", "no-store")])
             else:
                 self.send(status, text + "\n", "text/plain")
+
+        def reply(self, status, headers, body):
+            """Send a vaultkit.signin answer: (status, [(header, value)], body bytes)."""
+            self.send_response(status)
+            for k, v in headers:
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+
+        def host_ok(self):
+            """Open mode's DNS-rebinding rule, which comes before everything, the sign-in routes too."""
+            return AUTH != "open" or host_allowed(self.headers.get("Host"), ALLOWED_HOSTS)
+
+        def host_refused(self):
+            if self.host_ok():
+                return False
+            self.refuse()
+            return True
+
+        def signin_post(self, path):
+            """POST /signin, /signout and /api/pair (vaultkit.signin), before the gate: they are how a caller gets
+            past it. Their bodies are read with signin.read_body and its limits, and Konbini's own CSRF rules don't
+            apply: sign-in and sign-out have vaultkit's same-origin rule (SIGNIN_ORIGINS), and pairing carries no
+            cookie (the one-time code is the proof), so it needs neither X-Agent nor an Origin."""
+            if self.host_refused():
+                return
+            if self.command != "POST":
+                return self.reply(405, [("Content-Type", "text/plain"), ("Allow", "POST")], b"POST only\n")
+            body = signin.read_body(self.headers, self.rfile, SIGNIN_POSTS[path])
+            if body is None:
+                self.close_connection = True
+                return self.reply(413, [("Content-Type", "text/plain"), ("Connection", "close")],
+                                  b"request body too large\n")
+            client = self.client_address[0] if self.client_address else ""
+            if path == "/signin":
+                return self.reply(*signin.handle_post(IDENTITY, self.headers, body, client, SIGNIN_ORIGINS))
+            if path == "/signout":
+                return self.reply(*signin.handle_signout(IDENTITY, self.headers, SIGNIN_ORIGINS))
+            return self.reply(*signin.handle_pair(IDENTITY, self.headers, body, client))
+
+        def prefs(self):
+            """GET/PUT /api/prefs, after the gate (konbini read), as the resolved principal. A PUT follows vaultkit's
+            rule, not the board's /api write rule: a token (Authorization) needs no Origin and no X-Agent (a browser
+            never adds a token on its own); a cookie, Tailscale, proxy or open-mode principal must be same-origin
+            (SIGNIN_ORIGINS). Preferences aren't the board, so no write grant is asked."""
+            body = b""
+            if self.command == "PUT":
+                body = signin.read_body(self.headers, self.rfile, signin.MAX_PREFS)
+                if body is None:
+                    self.close_connection = True
+                    return self.reply(413, list(signin.JSON_HEADERS) + [("Connection", "close")],
+                                      b'{"error": "request body too large"}')
+            method = "GET" if self.command == "HEAD" else self.command
+            status, headers, out = signin.handle_prefs(PREFS, self.who().principal, method, self.headers, body,
+                                                       IDENTITY.secure, SIGNIN_ORIGINS)
+            self.reply(status, headers + [("Set-Cookie", c) for c in self.session_cookies()], out)
+
+        def public_asset(self, path):
+            """The sign-in page's own look (the shared UI and the room's icons) answers before the gate when sign-in is
+            on: vendored static files, no board data."""
+            return IDENTITY is not None and IDENTITY.signin and (path in SHARED_UI or path.startswith("/static/icons/"))
 
         def session_cookies(self):
             """Set-Cookie values for this response: a renewed session, or a bad one cleared (vaultkit.identity)."""
@@ -428,11 +512,18 @@ def make_handler(listener):
             self.send(302, "", "text/plain", headers=[("Location", target or "/")])
 
         def do_write(self):
+            url = urlsplit(self.path)
+            path = unquote(url.path)
+            if IDENTITY is not None and path in SIGNIN_POSTS:
+                return self.signin_post(path)
             if not self.allowed():
                 self.refuse()
                 return
-            url = urlsplit(self.path)
-            path = unquote(url.path)
+            if path in SIGNIN_ROUTES:
+                if IDENTITY is None:            # no identity file: these routes don't exist
+                    return self.send_json(404, {"error": "not found"}) if path.startswith("/api/") \
+                        else self.send(404, "not found\n", "text/plain")
+                return self.prefs()
             if path == "/api/garden/suggest" or path == "/garden" or path.startswith("/garden/"):
                 # The garden's writes and suggestions are Niwa's.
                 target = modern.GARDEN_URL + "/api/suggest" if path == "/api/garden/suggest" else self.to_niwa(path)
@@ -537,17 +628,27 @@ def make_handler(listener):
                     ctx = self.ctx()
                     self.send(e.status, V(ctx).message(ctx, "Not saved", e.message), headers=close)
 
-        do_POST = do_PATCH = do_DELETE = do_write
+        do_POST = do_PATCH = do_PUT = do_DELETE = do_write
 
         def do_GET(self):
             if urlsplit(self.path).path == "/healthz":      # liveness only: no data, no identity check, any KANBAN_AUTH
                 self.send(200, "ok\n", "text/plain", headers=[("Cache-Control", "no-store")])
                 return
-            if not self.allowed():
-                self.refuse()
-                return
             url = urlsplit(self.path)
             path, query = unquote(url.path), parse_qs(url.query)
+            if IDENTITY is not None and path == "/signin":       # before the gate: the way in
+                if not self.host_refused():
+                    self.reply(*signin.handle_get(IDENTITY, self.headers, url.query))
+                return
+            if IDENTITY is not None and path in SIGNIN_POSTS:    # /signout, /api/pair: POST only
+                if not self.host_refused():
+                    self.reply(405, [("Content-Type", "text/plain"), ("Allow", "POST")], b"POST only\n")
+                return
+            if not (self.public_asset(path) and self.host_ok()) and not self.allowed():
+                self.refuse()
+                return
+            if path == "/api/prefs" and IDENTITY is not None:
+                return self.prefs()
             ctx = self.ctx()
             app_name = "kanban"
             if path == "/manifest.webmanifest":
@@ -688,7 +789,7 @@ def make_handler(listener):
                 # 302 back to the page the toggle was on, if it is on this site.
                 self.send(302, "", "text/plain", headers=[
                     ("Location", local_target(self.headers.get("Referer"), keep_query=False) or "/"), ("Set-Cookie", "theme=%s; path=/; max-age=31536000" % theme)])
-            elif path in ("/static/machiya.css", "/static/machiya.js", "/static/machiya-sw.js"):
+            elif path in SHARED_UI:
                 name = path.rsplit("/", 1)[1]      # the shared UI, vendored with vaultkit (app/vaultkit/ui/)
                 # shell.ui_url versions them (?v=<content hash>), so a versioned URL caches for good
                 cache = "public, max-age=31536000, immutable" if query.get("v") else "max-age=300"
@@ -696,8 +797,10 @@ def make_handler(listener):
                     self.send(200, f.read(), "text/css" if name.endswith(".css") else "text/javascript",
                               headers=[("Cache-Control", cache)])
             elif path == "/settings":
+                who = self.who() if IDENTITY is not None else None
+                account = who.principal.name if who and who.principal.via == "session" else ""
                 self.send(200, V(ctx).settings(ctx, store.cards(), VERSION, "v" + vaultkit.__version__,
-                                               footer_status()["text"]))
+                                               footer_status()["text"], account))
             elif path in ("/static/board.css", "/static/board.js", "/static/Sortable.min.js", "/static/mermaid.min.js"):
                 name = path.rsplit("/", 1)[1]
                 ctype = "text/css" if name.endswith(".css") else "text/javascript"

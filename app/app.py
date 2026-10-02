@@ -16,7 +16,8 @@ note's frontmatter in the board's clone, log an event to .board/events,
 and the writer thread commits them as the configured author (KANBAN_GIT_AUTHOR_NAME) and pushes in batches
 (writer.py). The SQLite index is only a cache: `app.py rebuild` recreates
 it from the clone. Writes from the web UI need a same-origin Referer or
-Origin; API callers identify themselves with X-Agent.
+Origin; API callers identify themselves with X-Agent and send no Origin or Referer (an API write with another
+site's Origin or Referer, or with neither X-Agent nor a same-origin header, is refused: CSRF).
 """
 import ipaddress
 import json
@@ -368,6 +369,14 @@ def make_handler(listener):
                 data = self.body()
                 if not api and not self.same_origin():
                     raise WriteError(403, "cross-site form post refused")
+                if api and not self.same_origin():
+                    # Like machiya-mcp: a browser always names the page it posts from, so an Origin (or Referer) that
+                    # isn't the board's own is another site's page riding the owner's login (CSRF). Agents and
+                    # scripts send neither, and name themselves with X-Agent; a write that does neither is refused.
+                    if self.headers.get("Origin") or self.headers.get("Referer"):
+                        raise WriteError(403, "cross-site API write refused")
+                    if not (self.headers.get("X-Agent") or "").strip():
+                        raise WriteError(403, "an API write names its caller with X-Agent")
                 actor, agent = self.actor(), self.agent()
                 if api and agent == "web" and not self.same_origin():
                     agent = "api"

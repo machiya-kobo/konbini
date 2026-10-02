@@ -49,6 +49,18 @@ HARNESS = textwrap.dedent('''
     call("form_crosssite", "POST", "/p/kura", dict(owner, **{"Content-Type": "application/x-www-form-urlencoded"}), b"next=x")
     call("form_sameorigin", "POST", "/p/kura", dict(owner, **{"Content-Type": "application/x-www-form-urlencoded",
          "Origin": "http://127.0.0.1:%d" % port, "Host": "127.0.0.1:%d" % port}), b"next=y")
+    # CSRF: another site's page posting to the API with the owner's login (Tailscale adds it to every request)
+    js = {"Content-Type": "application/json"}
+    same = {"Origin": "http://127.0.0.1:%d" % port, "Host": "127.0.0.1:%d" % port}
+    nxt = json.dumps({"next": "csrf"}).encode()
+    call("api_xsite_origin", "PATCH", "/api/cards/kura", dict(owner, **js, Origin="https://evil.example", **{"X-Agent": "t"}), nxt)
+    call("api_xsite_form", "POST", "/api/cards/kura/events", dict(owner, **{"Content-Type": "text/plain",
+         "Origin": "https://evil.example"}), b"body=csrf")
+    call("api_xsite_referer", "PATCH", "/api/cards/kura", dict(owner, **js, Referer="https://evil.example/x", **{"X-Agent": "t"}), nxt)
+    call("api_null_origin", "PATCH", "/api/cards/kura", dict(owner, **js, Origin="null", **{"X-Agent": "t"}), nxt)
+    call("api_no_agent", "PATCH", "/api/cards/kura", dict(owner, **js), nxt)
+    call("api_blank_agent", "PATCH", "/api/cards/kura", dict(owner, **js, **{"X-Agent": " "}), nxt)
+    call("api_web", "PATCH", "/api/cards/kura", dict(owner, **js, **same), json.dumps({"next": "board ui"}).encode())
     # KANBAN_AUTH=open and DNS rebinding: another site's name pointed at 127.0.0.1 arrives in Host (and Origin)
     evil = "evil.example:%d" % port
     call("rebind_get", "GET", "/", {"Host": evil})
@@ -103,6 +115,9 @@ assert out["healthz"] == [200, "ok\n"] and out["healthz_head"] == 200 and out["s
 import re as _re
 assert out["version"] == _re.search(r'VERSION = "([^"]+)"', open(os.path.join(APP, "version.py")).read()).group(1), out   # /api/status reports the release
 assert out["legacy_names"] == [], out                      # the field is always there, empty when the vault is clean
+assert [out[k] for k in ("api_xsite_origin", "api_xsite_form", "api_xsite_referer", "api_null_origin", "api_no_agent",
+                         "api_blank_agent")] == [403] * 6, out     # CSRF: another site's page, or a caller that names nobody
+assert out["api_web"] == 200, out                          # the board's own page: same origin, no X-Agent needed
 
 # open: everyone gets in; the header is ignored and every event names 'local'; same-origin still guards form posts
 r = run("open"); out = json.loads(r.stdout.strip().splitlines()[-1])

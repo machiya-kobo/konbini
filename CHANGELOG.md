@@ -15,6 +15,10 @@ API field is a minor bump; a fix, wording or internal change is a patch.
 - After a form post and from the `/theme` fallback, the board redirects back to the `Referer`'s path only when it is
   on this site: `//host`, `/\host` and paths with control characters (a tab between the slashes, for example) used to
   send the browser to another site; they now go to the card or to `/`.
+- API writes (`/api/…`) from anything but the board's own pages must send `X-Agent` and no `Origin` or `Referer`, as
+  machiya-mcp, Niwa and `tools/pm` already do. Before, another site's page could post a form or plain text to the API
+  while the owner browsed it, and the write went through under the owner's login (CSRF). A cross-site `Origin` or
+  `Referer` (including `Origin: null`), or a write naming no caller, now gets 403.
 
 ### Fixed
 

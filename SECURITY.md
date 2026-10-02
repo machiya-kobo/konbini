@@ -17,8 +17,9 @@ Know this before you deploy it:
   only requests whose `Host` is an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in
   `KANBAN_ALLOWED_HOSTS`, so a web page using DNS rebinding can't reach the board.
 - **What it can do.** It reads and edits the frontmatter of the notes in its own clone of your vault and pushes
-  commits. Anyone allowed in can change cards. Form posts must be same-origin; API writes identify themselves with
-  `X-Agent` (a label, not authentication).
+  commits. Anyone allowed in can change cards. Form posts must be same-origin; API writes from outside the board's
+  pages identify themselves with `X-Agent` (a label, not authentication) and must not carry another site's `Origin`
+  or `Referer`, so a page you browse can't write the board as you (CSRF).
 - **`GET /healthz`** is deliberately open and returns only `ok`.
 - **Outbound.** The link checker visits the links in card notes. It contacts the Wayback Machine only with
   `KANBAN_ARCHIVE=wayback`, and indexes pages into Hister only with `KANBAN_HISTER_SAVE=1`.

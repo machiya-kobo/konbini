@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# tools/vendor-vaultkit [ref] - copy the shared vault core (vaultkit/ in machiya-kobo/machiya) at <ref> (a tag, e.g. v0.1.0;
+# default: its newest tag) into app/vaultkit/. The build fails if app/vaultkit/ is edited in place, so a fix
+# goes into vaultkit, gets a tag, and comes back here with this script.
+# VAULTKIT_REPO (required): where vaultkit comes from, the machiya repo as a git URL or a local checkout.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")/.." && pwd)"
+repo="${VAULTKIT_REPO:?set VAULTKIT_REPO to the machiya repo (a git URL or a local checkout of it)}"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+git clone -q "$repo" "$tmp/vaultkit"
+ref="${1:-$(git -C "$tmp/vaultkit" describe --tags --abbrev=0 2>/dev/null || echo HEAD)}"
+"$tmp/vaultkit/vendor.sh" "$here/app" "$ref"
+python3 "$here/app/vaultkit/verify.py"
+git -C "$here" status --short -- app/vaultkit

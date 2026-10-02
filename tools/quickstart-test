@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Micheal Waltz and Machiya contributors
+"""quickstart-test - run the README's Quickstart exactly as written, from a fresh clone, and check what it says you
+should see.
+
+    tools/quickstart-test [--only container|native|all] [--worktree] [--with-packages] [--keep] [--dry-run]
+
+The README marks each runnable block with an HTML comment on the line above its fence:
+
+    <!-- quickstart: NAME [background] -->
+    ```bash
+    ...commands...
+    ```
+
+and the output it promises with `<!-- quickstart-expect: NAME -->` above a ```text fence (each non-empty line must
+appear, in order, in the output of the block NAME). The blocks run in a throwaway directory under
+$QUICKSTART_TMP (default /var/tmp/konbini-quickstart), from a fresh `git clone` of this repository (or, with
+--worktree, a copy of the working tree, to test README changes before they are committed). Scenarios:
+
+    container   [packages-container-debian with --with-packages, when there is no engine], vault, container-podman
+                (or container-docker), check, pm, stop-container
+    native      [packages-<os> with --with-packages], vault, native-install-debian (Linux), native-run-*, check, pm
+
+`background` blocks are servers: they are started, waited for, and killed at the end. A scenario that needs something
+this machine lacks (no podman or docker; an operating system the README has no block for) is skipped, and the
+exit code is 1 only if a step fails. Standard library only; needs git, curl and python3 on the machine.
+"""
+import argparse
+import os
+import platform
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+PORT = 8081
+BLOCK_RE = re.compile(r"<!--\s*quickstart:\s*(\S+)((?:\s+\S+)*?)\s*-->\s*\n```[a-z]*\n(.*?)\n```", re.S)
+EXPECT_RE = re.compile(r"<!--\s*quickstart-expect:\s*(\S+)\s*-->\s*\n```[a-z]*\n(.*?)\n```", re.S)
+
+
+def parse(readme):
+    text = open(readme, encoding="utf-8").read()
+    blocks = {m.group(1): {"flags": m.group(2).split(), "code": m.group(3)} for m in BLOCK_RE.finditer(text)}
+    expects = {m.group(1): [l for l in m.group(2).splitlines() if l.strip()] for m in EXPECT_RE.finditer(text)}
+    return blocks, expects
+
+
+def engine():
+    for e in ("podman", "docker"):
+        if shutil.which(e):
+            return e
+    return None
+
+
+def scenarios(only, with_packages):
+    """[(scenario name, [block names]) or (name, None, reason)] for this machine."""
+    out = []
+    system = platform.system().lower()
+    if only in ("all", "container"):
+        eng = engine()
+        if eng:
+            out.append(("container", ["vault", "container-" + eng, "check", "pm", "stop-container"]))
+        elif with_packages and platform.system().lower() == "linux":      # a clean Debian: install podman first
+            out.append(("container", ["packages-container-debian", "vault", "container-podman", "check", "pm", "stop-container"]))
+        else:
+            out.append(("container", None, "neither podman nor docker is installed"))
+    if only in ("all", "native"):
+        if system == "linux":
+            steps = (["packages-debian"] if with_packages else []) + ["vault", "native-install-debian", "native-run-debian", "check", "pm"]
+        elif system in ("openbsd", "freebsd", "netbsd"):
+            steps = (["packages-" + system] if with_packages else []) + ["vault", "native-run-bsd", "check", "pm"]
+        else:
+            steps = None
+        out.append(("native", steps) if steps else ("native", None, "no native blocks for %s" % platform.system()))
+    return out
+
+
+def port_free():
+    with socket.socket() as s:
+        s.settimeout(1)
+        return s.connect_ex(("127.0.0.1", PORT)) != 0
+
+
+def fresh_copy(dest, worktree):
+    if not os.path.isdir(os.path.join(ROOT, ".git")):      # an unpacked archive, not a clone: copy it as it is
+        shutil.copytree(ROOT, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    elif worktree:
+        files = subprocess.run(["git", "-C", ROOT, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                               capture_output=True, check=True).stdout.split(b"\0")
+        for f in filter(None, files):
+            src = os.path.join(ROOT, f.decode())
+            if os.path.isfile(src):
+                os.makedirs(os.path.dirname(os.path.join(dest, f.decode())), exist_ok=True)
+                shutil.copy2(src, os.path.join(dest, f.decode()))
+    else:
+        subprocess.run(["git", "clone", "--quiet", "--local", ROOT, dest], check=True)
+
+
+def expect_ok(lines, output):
+    pos = 0
+    for line in lines:
+        i = output.find(line, pos)
+        if i < 0:
+            return False, line
+        pos = i + len(line)
+    return True, ""
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--only", choices=["all", "container", "native"], default="all")
+    ap.add_argument("--worktree", action="store_true", help="test a copy of the working tree instead of a fresh clone of HEAD")
+    ap.add_argument("--with-packages", action="store_true", help="also run the (privileged) package-install blocks")
+    ap.add_argument("--keep", action="store_true", help="keep the temporary directory")
+    ap.add_argument("--dry-run", action="store_true", help="list the steps and exit")
+    a = ap.parse_args()
+
+    blocks, expects = parse(os.path.join(ROOT, "README.md"))
+    plan = scenarios(a.only, a.with_packages)
+    for sc in plan:
+        if sc[1] is None:
+            print("scenario %s: SKIPPED (%s)" % (sc[0], sc[2]))
+            continue
+        print("scenario %s:" % sc[0])
+        for name in sc[1]:
+            b = blocks.get(name)
+            if b is None:
+                print("  %-22s MISSING in the README" % name)
+                continue
+            first = b["code"].splitlines()[0]
+            print("  %-22s %s%s%s" % (name, "[background] " if "background" in b["flags"] else "", first,
+                                      "  (+expected output)" if name in expects else ""))
+    if a.dry_run:
+        return 0
+    runnable = [sc for sc in plan if sc[1] is not None]
+    if not runnable:
+        print("nothing to run on this machine")
+        return 0
+    missing = [n for sc in runnable for n in sc[1] if n not in blocks]
+    if missing:
+        print("README has no block named: " + ", ".join(sorted(set(missing))))
+        return 1
+    if not port_free():
+        print("port %d is in use on this machine; stop what listens there first" % PORT)
+        return 1
+
+    base = os.environ.get("QUICKSTART_TMP", "/var/tmp/konbini-quickstart")
+    os.makedirs(base, exist_ok=True)
+    failed = []
+    eng = engine()
+    image_before = bool(eng) and subprocess.run([eng, "image", "inspect", "konbini"], capture_output=True).returncode == 0
+    for sc in runnable:
+        work = tempfile.mkdtemp(prefix=sc[0] + "-", dir=base)
+        repo = os.path.join(work, "konbini")
+        background = []
+        try:
+            print("\n== scenario %s (%s)" % (sc[0], work))
+            fresh_copy(repo, a.worktree)
+            env = {k: v for k, v in os.environ.items() if not k.startswith(("KANBAN_", "MACHIYA_"))}
+            env["TMPDIR"] = work
+            for name in sc[1]:
+                b = blocks[name]
+                print("-- %s" % name, flush=True)
+                if "background" in b["flags"]:
+                    log = open(os.path.join(work, name + ".log"), "w")
+                    background.append(subprocess.Popen(["sh", "-ec", b["code"]], cwd=repo, env=env, stdout=log,
+                                                       stderr=subprocess.STDOUT, start_new_session=True))
+                    continue
+                r = subprocess.run(["sh", "-ec", b["code"]], cwd=repo, env=env, capture_output=True, text=True, timeout=1500)
+                out = r.stdout + r.stderr
+                if r.returncode != 0:
+                    print(out[-1500:])
+                    failed.append("%s/%s: exit %d" % (sc[0], name, r.returncode))
+                    break
+                if name in expects:
+                    ok, line = expect_ok(expects[name], out)
+                    if not ok:
+                        print(out[-1500:])
+                        failed.append("%s/%s: expected %r in the output" % (sc[0], name, line))
+                        break
+                    print("   output matches the README (%d lines)" % len(expects[name]))
+            else:
+                print("== scenario %s: PASS" % sc[0])
+        except Exception as exc:  # a crash is a failure, and the cleanup still runs
+            failed.append("%s: %s" % (sc[0], exc))
+        finally:
+            for p in background:
+                try:
+                    os.killpg(p.pid, signal.SIGTERM)
+                except OSError:
+                    pass
+            for name in ("stop-container",):
+                if sc[0] == "container" and name in blocks:
+                    subprocess.run(["sh", "-c", blocks[name]["code"]], capture_output=True)
+            if not a.keep:
+                shutil.rmtree(work, ignore_errors=True)
+            if sc[0] == "container" and not image_before and engine():
+                subprocess.run(["sh", "-c", "%s rmi -f konbini >/dev/null 2>&1 || true" % engine()])   # the image this run built
+            for _ in range(20):                                       # the port is free again before the next scenario
+                if port_free():
+                    break
+                time.sleep(0.5)
+        if any(f.startswith(sc[0]) for f in failed):
+            print("== scenario %s: FAIL" % sc[0])
+    print()
+    if failed:
+        print("FAILED:\n  " + "\n  ".join(failed))
+        return 1
+    print("quickstart test: all passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

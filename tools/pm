@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Micheal Waltz and Machiya contributors
+"""pm - command line for a Konbini board.
+
+  pm ls [--board COL] [--area A] [--machine M] [--topic T] [--tag TAG] [--json]
+  pm show <slug> [--json]          one card
+  pm health                        board status
+  pm roundup [day|week|month|year] [--date YYYY-MM-DD]   bullet summary of what got done (Markdown)
+  pm kit <slug>                    writing kit for a card (outline + facts) as Markdown
+  pm post <slug> <status> [url]    track the blog post: none|idea|outlined|drafting|published|skipped
+  pm dep <slug> +x -y             add/remove dependencies (card slugs or titles); pm dep <slug> lists them
+  pm stream <slug> <name|->        set a card's workstream (stream:), or - to clear it
+  pm goal <slug> <name|->          set the goal the card counts toward (goal:), or - to clear it
+  pm due <slug> <YYYY-MM-DD|->     set the card's due date (due:), or - to clear it
+  pm review [--json]               the weekly review: WIP over the limit, blocked, stale, no next action, done, Backlog
+  pm suggest <note> [reason]       suggest a note (card slug or vault path) for the garden
+  pm move <slug> <column>          backlog | ready | wip | blocked | done | archived
+  pm next <slug> "<next action>"
+  pm block <slug> "<reason>"       move to blocked with a reason
+  pm log <slug> "<message>"        add an event to the card's history
+  pm new "<title>" --area A [--board backlog] [--summary S]
+  pm tag <slug> +topic/x -topic/y
+  pm claim <slug>                  mark the card as being worked on (15 min)
+
+The board is at $KANBAN_URL (default http://127.0.0.1:8081). pm sends X-Agent (default pm@<host>, or $KANBAN_AGENT) so
+the board's history says which machine or agent made a change; behind `tailscale serve` the proxy identifies the
+caller, and with KANBAN_AUTH=open there is no identity check. The board writes the note's frontmatter, logs an event
+and commits it in batches. If the board answers 405 (an endpoint an older board lacks), pm says so.
+`pm suggest` talks to Niwa (the garden) at $NIWA_URL and is off while that is unset. Standard library only.
+"""
+import argparse
+import json
+import os
+import socket
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+URL = os.environ.get("KANBAN_URL", "http://127.0.0.1:8081").rstrip("/")
+# Garden suggestions go to Niwa (a separate service); unset = `pm suggest` is off.
+NIWA_URL = os.environ.get("NIWA_URL", "").rstrip("/")
+COLUMNS = ["backlog", "ready", "wip", "blocked", "done", "archived"]
+AGENT = os.environ.get("KANBAN_AGENT") or "pm@%s" % socket.gethostname().split(".")[0].lower()
+
+READ_ONLY_HINT = """\
+pm: the board answered HTTP 405 (no such write endpoint). Check that KANBAN_URL points at a current Konbini
+board: an older version may not have this endpoint."""
+
+
+def request(method, path, body=None, base=URL):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(base + path, data=data, method=method, headers={
+        "Accept": "application/json", "Content-Type": "application/json", "X-Agent": AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            payload = json.loads(e.read() or b"{}")
+        except ValueError:
+            payload = {}
+        return e.code, payload
+    except (urllib.error.URLError, OSError) as e:
+        sys.exit("pm: can't reach %s (%s). Is the board running and reachable from here?" % (base, e))
+
+
+def get(path):
+    status, data = request("GET", path)
+    if status == 403:
+        sys.exit("pm: 403 from the board: this identity is not allowed (see KANBAN_AUTH and KANBAN_TAILNET_USERS).")
+    if status != 200:
+        sys.exit("pm: %s -> HTTP %d %s" % (path, status, data.get("error", "")))
+    return data
+
+
+def write(method, path, body, base=URL):
+    status, data = request(method, path, body, base)
+    if status in (405, 501):
+        sys.exit(READ_ONLY_HINT)
+    if status == 404:
+        sys.exit("pm: %s" % data.get("error", "no such card"))
+    if status >= 400:
+        sys.exit("pm: HTTP %d %s" % (status, data.get("error", data)))
+    return data
+
+
+def short(text, n):
+    text = (text or "").replace("\n", " ")
+    return text if len(text) <= n else text[:n - 1] + "…"
+
+
+def print_cards(cards):
+    order = {c: i for i, c in enumerate(COLUMNS)}
+    cards = sorted(cards, key=lambda c: (order.get(c["board"] or "", 9), c.get("priority") or 9, c["title"].lower()))
+    rows = [(c["slug"], c["board"] or "-", "P%s" % c["priority"] if c.get("priority") else "",
+             c.get("effort", ""), c["area"], short(c.get("next") or c.get("summary"), 60)) for c in cards]
+    widths = [max([len(r[i]) for r in rows] + [len(h)]) for i, h in enumerate(("SLUG", "COLUMN", "PRI", "EFF", "AREA"))]
+    head = ("SLUG", "COLUMN", "PRI", "EFF", "AREA", "NEXT / SUMMARY")
+    for r in [head] + rows:
+        print("  ".join(v.ljust(widths[i]) for i, v in enumerate(r[:5])) + "  " + r[5])
+
+
+def main():
+    p = argparse.ArgumentParser(prog="pm", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    ls = sub.add_parser("ls")
+    for f in ("board", "area", "machine", "topic", "tag"):
+        ls.add_argument("--" + f)
+    ls.add_argument("--json", action="store_true")
+    show = sub.add_parser("show")
+    show.add_argument("slug")
+    show.add_argument("--json", action="store_true")
+    sub.add_parser("health")
+    dp = sub.add_parser("dep", help="list, add (+x) or remove (-x) a card's dependencies (dependsOn)")
+    dp.add_argument("slug")
+    dp.add_argument("changes", nargs="*")
+    sm = sub.add_parser("stream", help="set a card's workstream (stream:); - clears it")
+    sm.add_argument("slug")
+    sm.add_argument("name")
+    gl = sub.add_parser("goal", help="set the goal a card counts toward (goal:); - clears it")
+    gl.add_argument("slug")
+    gl.add_argument("name")
+    du = sub.add_parser("due", help="set a card's due date (due: YYYY-MM-DD); - clears it")
+    du.add_argument("slug")
+    du.add_argument("date")
+    rv = sub.add_parser("review", help="the weekly review (the board's /review page)")
+    rv.add_argument("--json", action="store_true", help="print the raw JSON")
+    ru = sub.add_parser("roundup")
+    ru.add_argument("period", nargs="?", default="week", choices=["day", "week", "month", "year"])
+    ru.add_argument("--date", default="")
+    mv = sub.add_parser("move")
+    mv.add_argument("slug")
+    mv.add_argument("column", choices=COLUMNS)
+    nx = sub.add_parser("next")
+    nx.add_argument("slug")
+    nx.add_argument("text")
+    bl = sub.add_parser("block")
+    bl.add_argument("slug")
+    bl.add_argument("reason")
+    lg = sub.add_parser("log")
+    lg.add_argument("slug")
+    lg.add_argument("message")
+    nw = sub.add_parser("new")
+    nw.add_argument("title")
+    nw.add_argument("--area", required=True)
+    nw.add_argument("--board", default="backlog", choices=COLUMNS)
+    nw.add_argument("--summary", default="")
+    tg = sub.add_parser("tag")
+    tg.add_argument("slug")
+    tg.add_argument("changes", nargs="*", help="+topic/x to add, -topic/y to remove")
+    cl = sub.add_parser("claim")
+    cl.add_argument("slug")
+    kt = sub.add_parser("kit", help="print the writing kit (outline + facts) for a card, as Markdown")
+    kt.add_argument("slug")
+    po = sub.add_parser("post", help="track the blog post: none|idea|outlined|drafting|published [url]")
+    po.add_argument("slug")
+    po.add_argument("status", choices=["none", "idea", "outlined", "drafting", "published", "skipped"])
+    po.add_argument("url", nargs="?", default=None)
+    sg = sub.add_parser("suggest", help="suggest a note (card slug or vault path) for the garden; never publishes")
+    sg.add_argument("note")
+    sg.add_argument("reason", nargs="?", default="")
+    # "-x" (remove) looks like an option to argparse; tag and dep take it as a change instead
+    a, extra = p.parse_known_args()
+    if extra:
+        if a.cmd in ("tag", "dep") and all(x.startswith("-") and len(x) > 1 for x in extra):
+            a.changes = list(a.changes or []) + extra
+        else:
+            p.error("unrecognized arguments: " + " ".join(extra))
+    if a.cmd == "tag" and not a.changes:
+        p.error("tag needs at least one +tag or -tag")
+
+    q = urllib.parse.quote
+    if a.cmd == "ls":
+        params = {k: getattr(a, k) for k in ("board", "area", "machine", "topic", "tag") if getattr(a, k)}
+        data = get("/api/cards" + ("?" + urllib.parse.urlencode(params) if params else ""))
+        if a.json:
+            print(json.dumps(data["cards"], indent=1))
+        else:
+            print_cards(data["cards"])
+    elif a.cmd == "show":
+        c = get("/api/cards/" + q(a.slug))
+        if a.json:
+            print(json.dumps(c, indent=1))
+            return
+        for k in ("title", "board", "priority", "effort", "area", "summary", "next", "blocked_by",
+                  "topics", "machines", "family", "repo", "post", "post_url", "updated", "path"):
+            v = c.get(k)
+            if v:
+                print("%-10s %s" % (k, ", ".join(v) if isinstance(v, list) else v))
+        if c.get("checks_total"):
+            print("%-10s %d/%d" % ("checklist", c["checks_done"], c["checks_total"]))
+        print("%-10s %s/p/%s" % ("url", URL, q(c["slug"])))
+    elif a.cmd == "dep":
+        card = get("/api/cards/" + q(a.slug))
+        deps = list(card.get("dependsOn") or [])
+        if not a.changes:
+            print("\n".join(deps) or "(no dependencies)")
+            return
+        for ch in a.changes:
+            name = ch[1:].strip()
+            if ch.startswith("+") and name.lower() not in (d.lower() for d in deps):
+                deps.append(name)
+            elif ch.startswith("-"):
+                # match a slug, a title or the note's file name to the stored link target
+                keys = {name.lower()}
+                for c in get("/api/cards")["cards"]:
+                    stem = c["path"].rsplit("/", 1)[-1][:-3].lower()
+                    if name.lower() in (c["slug"].lower(), c["title"].lower(), stem):
+                        keys |= {c["slug"].lower(), c["title"].lower(), stem, c["path"][:-3].lower()}
+                deps = [d for d in deps if not ({d.lower(), d.split("/")[-1].lower()} & keys)]
+            elif not ch.startswith(("+", "-")):
+                sys.exit("pm: dependencies are +name or -name (a card slug or title)")
+        card = write("PATCH", "/api/cards/" + q(a.slug), {"dependsOn": deps})
+        print("\n".join(card.get("dependsOn") or []) or "(no dependencies)")
+    elif a.cmd == "stream":
+        card = write("PATCH", "/api/cards/" + q(a.slug), {"stream": "" if a.name == "-" else a.name})
+        print(card.get("stream") or "(no stream)")
+    elif a.cmd == "goal":
+        card = write("PATCH", "/api/cards/" + q(a.slug), {"goal": "" if a.name == "-" else a.name})
+        print(card.get("goal") or "(no goal)")
+    elif a.cmd == "due":
+        card = write("PATCH", "/api/cards/" + q(a.slug), {"due": "" if a.date == "-" else a.date})
+        print(card.get("due") or "(no due date)")
+    elif a.cmd == "review":
+        data = get("/api/review")
+        if a.json:
+            print(json.dumps(data, indent=1))
+            return
+        over = ["%s %d/%d" % (x["area"], x["wip"], x["limit"]) for x in data["areas"] if x["over"]]
+        print("Weekly review (week of %s)%s" % (data["week_start"], ("; WIP over the limit: " + ", ".join(over)) if over else ""))
+        for sec in data["sections"]:
+            print("\n%s (%d)" % (sec["title"], len(sec["cards"])))
+            if not sec["cards"]:
+                print("  all clear")
+            width = max([len(c["slug"]) for c in sec["cards"]] + [4])
+            for c in sec["cards"]:
+                why = "; ".join(r["text"] for r in c["reasons"])
+                print("  %s  %-7s %s" % (c["slug"].ljust(width), c["board"] or "-", why))
+    elif a.cmd == "health":
+        print(json.dumps(get("/api/health"), indent=1))
+    elif a.cmd == "roundup":
+        params = {"period": a.period}
+        if a.date:
+            params["date"] = a.date
+        sys.stdout.write(get("/api/roundup?" + urllib.parse.urlencode(params))["markdown"])
+    elif a.cmd == "move":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"board": a.column}), indent=1))
+    elif a.cmd == "next":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"next": a.text}), indent=1))
+    elif a.cmd == "block":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"status": "blocked", "waiting": a.reason}), indent=1))
+    elif a.cmd == "log":
+        print(json.dumps(write("POST", "/api/cards/%s/events" % q(a.slug), {"type": "comment", "body": a.message}), indent=1))
+    elif a.cmd == "new":
+        print(json.dumps(write("POST", "/api/cards", {"title": a.title, "area": a.area, "board": a.board,
+                                                       "summary": a.summary}), indent=1))
+    elif a.cmd == "tag":
+        add = [t[1:] for t in a.changes if t.startswith("+")]
+        remove = [t[1:] for t in a.changes if t.startswith("-")]
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"tags_add": add, "tags_remove": remove}), indent=1))
+    elif a.cmd == "claim":
+        print(json.dumps(write("POST", "/api/cards/%s/claim" % q(a.slug), {}), indent=1))
+    elif a.cmd == "kit":
+        sys.stdout.write(get("/api/cards/%s/kit" % q(a.slug))["markdown"])
+    elif a.cmd == "suggest":
+        if not NIWA_URL:
+            sys.exit("pm: suggest is off: set NIWA_URL to Niwa's address (the garden) to use it")
+        print(json.dumps(write("POST", "/api/suggest", {"path": a.note, "reason": a.reason}, NIWA_URL), indent=1))
+    elif a.cmd == "post":
+        body = {"post": a.status}
+        if a.url is not None:
+            body["post_url"] = a.url
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), body), indent=1))
+
+
+if __name__ == "__main__":
+    main()

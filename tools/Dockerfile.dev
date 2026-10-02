@@ -1,0 +1,16 @@
+# Dev image for the throwaway instances (rootless podman): the app without the Hister CLI stage.
+#   podman build -f tools/Dockerfile.dev -t konbini-dev app
+# The release image is built from app/Dockerfile (it adds the Hister CLI).
+FROM public.ecr.aws/docker/library/python:3.13-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git openssh-client sqlite3 openssl \
+ && rm -rf /var/lib/apt/lists/* \
+ && pip install --no-cache-dir markdown pyyaml
+
+WORKDIR /app
+COPY . /app
+RUN python3 -m vaultkit.verify
+
+EXPOSE 8081
+CMD ["python3", "-u", "/app/app.py"]

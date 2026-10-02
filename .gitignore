@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+# local state and secrets: never commit them
+data/
+secrets/
+repo/
+.env
+.env.*
+*.sqlite3
+*.sqlite3-*

@@ -1,0 +1,8 @@
+# Secret scanning (gitleaks): the default rules, plus one allow-listed path.
+# app/static/mermaid.min.js is vendored upstream code (Mermaid, MIT) whose minified text trips a default rule.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "vendored Mermaid (minified upstream code)"
+paths = ['''app/static/mermaid\.min\.js''']

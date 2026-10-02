@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Micheal Waltz and Machiya contributors
+"""screenshots - make the README's screenshots from the sample vault.
+
+    tools/screenshots [out_dir]          # default: docs/screenshots
+
+Copies the sample vault into a throwaway git repository (tools/demo-vault), starts Konbini on it in the background
+(KANBAN_AUTH=open, 127.0.0.1, a free port, TZ=UTC), takes the shots with Playwright's Chromium, and stops the board:
+the board, a card and the weekly review at 1280x800 in light and dark, and the board and a card at phone width
+(390x844). PNGs are written as <out_dir>/konbini-<what>-<light|dark>.png and squeezed to a small palette when they
+are over 200 KB. Nothing but the sample vault is ever shown.
+
+Dates in the pictures ("stale 30d", "due in 45d") are relative to the day of the capture, so run the script again to
+refresh them.
+
+Needs Playwright for Python with its Chromium (`pip install playwright pillow && playwright install chromium`, in
+any virtual environment) and the packages Konbini itself needs (markdown, pyyaml); run it with that environment's
+python3. Standard library, Playwright and Pillow only.
+"""
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+from playwright.sync_api import sync_playwright
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "docs", "screenshots")
+LIMIT = 200 * 1024
+DESKTOP = {"width": 1280, "height": 800}
+PHONE = {"width": 390, "height": 844}
+THEMES = {"light": ("day", "light"), "dark": ("night", "dark")}      # name -> (the board's theme cookie, browser colour scheme)
+SHOTS = [                      # (what, path, viewport, themes)
+    ("board", "/", DESKTOP, ("light", "dark")),
+    ("card", "/p/lantern", DESKTOP, ("light", "dark")),
+    ("review", "/review", DESKTOP, ("light", "dark")),
+    ("board-phone", "/", PHONE, ("light",)),
+    ("card-phone", "/p/lantern", PHONE, ("light",)),
+]
+
+
+def squeeze(path):
+    if os.path.getsize(path) <= LIMIT:
+        return
+    from PIL import Image
+    im = Image.open(path).convert("RGB").quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    im.save(path, optimize=True)
+
+
+def main():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    work = tempfile.mkdtemp(prefix="konbini-shots-", dir=os.environ.get("SHOTS_TMP", "/var/tmp"))
+    server = None
+    try:
+        vault = os.path.join(work, "vault")
+        subprocess.run([os.path.join(ROOT, "tools", "demo-vault"), vault], check=True, capture_output=True)
+        env = dict(os.environ, KANBAN_REPO=vault, KANBAN_REPO_SUBDIR="personal", KANBAN_DB=os.path.join(work, "k.sqlite3"),
+                   KANBAN_AUTH="open", KANBAN_BIND="127.0.0.1", KANBAN_TAILNET_PORT=str(port), TZ="UTC",
+                   PYTHONDONTWRITEBYTECODE="1")
+        for k in [k for k in env if k.startswith(("KANBAN_NIWA", "KANBAN_KURA", "KANBAN_HISTER", "MACHIYA_"))]:
+            del env[k]
+        server = subprocess.Popen([sys.executable, os.path.join(ROOT, "app", "app.py")], env=env, start_new_session=True,
+                                  stdout=open(os.path.join(work, "log"), "w"), stderr=subprocess.STDOUT)
+        base = "http://127.0.0.1:%d" % port
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/healthz", timeout=2)
+                break
+            except OSError:
+                time.sleep(0.5)
+        else:
+            sys.exit("screenshots: the board did not start; see %s/log" % work)
+        os.makedirs(OUT, exist_ok=True)
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            for what, path, viewport, themes in SHOTS:
+                for theme in themes:
+                    cookie, scheme = THEMES[theme]
+                    kw = dict(viewport=viewport, device_scale_factor=1, color_scheme=scheme, service_workers="block")
+                    if viewport is PHONE:
+                        kw.update(is_mobile=True, has_touch=True, device_scale_factor=2)
+                    ctx = browser.new_context(**kw)
+                    ctx.add_cookies([{"name": "theme", "value": cookie, "url": base}])
+                    page = ctx.new_page()
+                    page.goto(base + path, wait_until="load")
+                    page.wait_for_timeout(600)
+                    stem = what.replace("-phone", "")
+                    fname = "konbini-%s%s-%s.png" % (stem, "-phone" if what.endswith("-phone") else "", theme)
+                    target = os.path.join(OUT, fname)
+                    page.screenshot(path=target)
+                    ctx.close()
+                    squeeze(target)
+                    print("%-36s %6.0f KB" % (fname, os.path.getsize(target) / 1024))
+            browser.close()
+    finally:
+        if server:
+            try:
+                os.killpg(server.pid, signal.SIGTERM)
+            except OSError:
+                pass
+        shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

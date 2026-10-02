@@ -21,6 +21,14 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   `Referer` (including `Origin: null`), or a write naming no caller, now gets 403.
 - No GET changes the board: `/p/<slug>/tags?remove=` removed a tag on a plain link, so an `<img>` on any page could
   do it while the owner browsed. The card page's form already posts; the GET route is gone.
+- **Identity** (Machiya's identity plan, phase 4; vaultkit v0.10.0): with `MACHIYA_IDENTITY_FILE`, Konbini asks the
+  identity file who is calling (a token, a Tailscale login or tagged node, a trusted proxy header, a session) instead
+  of `KANBAN_TAILNET_USERS`, and what they may do: the `konbini` grant `read` for pages and read APIs, `write` for
+  card edits, comments, claims and the board's forms, `areas` for new `area/*` lanes and new tags. `areas` replaces
+  the old test for the owner's powers (a same-origin request without `X-Agent`), which any client the gate admitted
+  could pass by sending the right headers. No proof or a bad one is 401, a missing grant 403. An event's `actor` is
+  the principal's name; `X-Agent` stays a label. New settings: `KANBAN_AUTH=header` with `KANBAN_AUTH_HEADER`,
+  `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS`. Without the file nothing changes.
 
 ### Fixed
 

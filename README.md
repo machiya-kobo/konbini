@@ -194,7 +194,9 @@ vault, with Hister and SearXNG as optional search engines. What changes compared
   `KANBAN_AUTH` at its default `tailscale` and list the logins in `KANBAN_TAILNET_USERS` (`KONBINI_AUTH=tailscale` and
   `KONBINI_USERS` in the compose), and bind `KANBAN_BIND=127.0.0.1`. The reference compose defaults to
   `KANBAN_AUTH=open` for the localhost demo; there, list the name the other rooms call Konbini by (`konbini`) in
-  `KANBAN_ALLOWED_HOSTS`.
+  `KANBAN_ALLOWED_HOSTS`. With Machiya's identity file, set `MACHIYA_IDENTITY_FILE` and mount its directory
+  read-only instead: grants then decide who reads, who writes and who adds lanes (see Settings); behind the
+  Tailscale sidecar also set `KANBAN_BIND_BEHIND_PROXY=1`.
 - **Notes folder.** If the vault keeps its notes in a folder, set `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose);
   the default is the repository root.
 - **One vault copy.** `compose/mirror.yml` (or `demo-init --mirror`) keeps a single shared copy of the vault: it sets
@@ -229,9 +231,13 @@ On a phone, the board and a card:
 | Setting | Default | |
 |---|---|---|
 | `KANBAN_ENV_FILE` (or `--env-file PATH`) | — | native installs (e.g. BSD rc.d): read these settings from a file of `KEY=VALUE` lines first; the real environment wins. A missing or bad file stops start-up, naming the file and line |
-| `KANBAN_AUTH` | `tailscale` | `tailscale`: every page and write needs a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS`. `open`: no identity check (a startup warning), for localhost or a trusted LAN only; the identity header is ignored and writes are logged as `local`. Either way, form posts must be same-origin, and an API write from outside the board's pages must send `X-Agent` and no cross-site `Origin` or `Referer` (CSRF; 403 otherwise). Any other value refuses to start |
+| `KANBAN_AUTH` | `tailscale` | `tailscale`: every page and write needs a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS` (or, with an identity file, a principal the file names). `open`: no identity check (a startup warning), for localhost or a trusted LAN only; the identity header is ignored and writes are logged as `local`. `header` (only with `MACHIYA_IDENTITY_FILE`): a trusted proxy's login header (`KANBAN_AUTH_HEADER`). Either way, form posts must be same-origin, and an API write from outside the board's pages must send `X-Agent` and no cross-site `Origin` or `Referer` (CSRF; 403 otherwise). Any other value refuses to start |
 | `KANBAN_ALLOWED_HOSTS` | — | with `KANBAN_AUTH=open`: the host names the board answers to, comma-separated (case, port and a trailing dot don't matter), on top of IP addresses, `localhost` and `KANBAN_BOARD_URL`'s host. Any other `Host` gets 403, so a web page can't reach the board by pointing its own name at your machine (DNS rebinding). Ignored with `tailscale` |
-| `KANBAN_TAILNET_USERS` | — | allowed `Tailscale-User-Login`s, comma-separated; unset = nobody (with `KANBAN_AUTH=tailscale`) |
+| `KANBAN_TAILNET_USERS` | — | allowed `Tailscale-User-Login`s, comma-separated; unset = nobody (with `KANBAN_AUTH=tailscale`). Not used with an identity file |
+| `MACHIYA_IDENTITY_FILE` | — | Machiya's identity file (vaultkit's `identity`; Machiya's `docs/plans/identity.md`): people, agents and services with grants. Set, it replaces `KANBAN_TAILNET_USERS` and the `X-Agent` test for owner powers: every page and read API needs the `konbini` `read` grant, every change (card edits, comments, claims, the board's forms) `write`, and new `area/*` lanes and new tags `areas`. No proof or a bad one gets 401, a missing grant 403; an event's actor is the principal (`X-Agent` stays a label). With `KANBAN_AUTH=open` a request without a token is the owner. Mount the file's directory read-only (not the file: the CLI replaces it, and a file mount keeps the old one) |
+| `KANBAN_AUTH_HEADER` | — | with an identity file and `KANBAN_AUTH=header`: the trusted proxy's login header (`Remote-User`, …), matched against the principals' `proxy` logins |
+| `KANBAN_BIND_BEHIND_PROXY` | — | `1`: with an identity file, `KANBAN_AUTH=tailscale` or `header` may bind a non-loopback address because a proxy (the Tailscale sidecar) is the only way in. Without it the board refuses to start on anything but a loopback address |
+| `KANBAN_ACCEPT_APP_CAPS` | — | `1`: read Tailscale's forwarded app capability (`Tailscale-App-Capabilities`) for tagged nodes. Only where Serve forwards it (`--accept-app-caps`, Tailscale v1.92+): an older Serve passes a client's own copy through |
 | `KANBAN_BIND` | `0.0.0.0` | the address the listener binds. Behind `tailscale serve` on a native install, bind `127.0.0.1`: on a public bind anyone who reaches the port could send the `Tailscale-User-Login` header |
 | `KANBAN_TAILNET_PORT` | `8081` | the listener's port |
 | `KANBAN_REPO`, `KANBAN_DB` | `/repo`, `/data/kanban.sqlite3` | the board's clone of the vault and its SQLite cache |

@@ -73,6 +73,16 @@ settings table; `CONTRIBUTING.md` the workflow.
   identity check (localhost or a trusted LAN) but answers only a `Host` that is an IP literal, `localhost`,
   `KANBAN_BOARD_URL`'s host or in `KANBAN_ALLOWED_HOSTS` (DNS rebinding; `host_allowed`). Form posts must be same-origin; API writes that aren't same-origin must send `X-Agent` and no `Origin`/`Referer` (a browser always sends one, so that's another site's page: CSRF).
   `GET /healthz` is open and returns `ok`; `/api/status` is gated.
+- **Identity.** With `MACHIYA_IDENTITY_FILE` (vaultkit `identity`, Machiya's `docs/plans/identity.md`) the file is the
+  gate instead of `KANBAN_TAILNET_USERS`: `Handler.who()` resolves the principal once per request and `Handler.can()`
+  asks its `konbini` grants. `read` for every page and read API (`/healthz` stays open), `write` for every change
+  (`do_write`), `areas` for new `area/*` lanes and new tags (`writer.check_tags(areas=...)`; it replaces
+  `agent == "web"`, which still decides when `areas` is None, i.e. without the file). 401 for no or a bad proof (never
+  a fall-through), 403 for a missing grant. `send()` and the event stream pass on the renewed or cleared session
+  cookie. The event `actor` is the principal's name; `X-Agent` is only a label. The CSRF rules above hold in every
+  mode. `KANBAN_AUTH=header` exists only with the file, and a header mode on a public bind needs
+  `KANBAN_BIND_BEHIND_PROXY=1`. `tests/test_identity.py` covers each grant and proof; `tests/test_auth.py` the
+  no-file gate, which must not change.
 - **Hister is optional and single-user.** Every Hister call sends `Origin: hister://`; never `hister index --force` a URL
   Hister already has (it replaces the imported metadata). Saving pages into Hister is off unless `KANBAN_HISTER_SAVE`,
   and the Wayback lookup is off unless `KANBAN_ARCHIVE=wayback`. When the Hister server's version changes, bump

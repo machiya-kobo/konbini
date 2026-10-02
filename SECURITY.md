@@ -16,8 +16,16 @@ Know this before you deploy it:
   can send the header. `KANBAN_AUTH=open` turns the identity check off entirely, for localhost or a trusted LAN only; it still answers
   only requests whose `Host` is an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in
   `KANBAN_ALLOWED_HOSTS`, so a web page using DNS rebinding can't reach the board.
+- **The identity file** (`MACHIYA_IDENTITY_FILE`, Machiya's identity plan). Set, it replaces `KANBAN_TAILNET_USERS`:
+  a token, a Tailscale login or tagged node, a trusted proxy's login header (`KANBAN_AUTH=header`) or a session names
+  the principal, and only its `konbini` grants decide: `read` for pages and read APIs, `write` for any change,
+  `areas` for new `area/*` lanes and new tags. Headers such as `Origin` or a missing `X-Agent` no longer give owner
+  powers. A missing or bad proof is 401 and never falls through to another proof. In `tailscale` and `header` mode the
+  board refuses to start on a non-loopback bind unless `KANBAN_BIND_BEHIND_PROXY=1` says the proxy is the only way in.
+  The file holds only hashes; mount its directory read-only. Report a principal doing more than its grants allow, or
+  a proof accepted that shouldn't be.
 - **What it can do.** It reads and edits the frontmatter of the notes in its own clone of your vault and pushes
-  commits. Anyone allowed in can change cards. Form posts must be same-origin; API writes from outside the board's
+  commits. Anyone allowed in can change cards (with an identity file: anyone with the `write` grant). Form posts must be same-origin; API writes from outside the board's
   pages identify themselves with `X-Agent` (a label, not authentication) and must not carry another site's `Origin`
   or `Referer`, so a page you browse can't write the board as you (CSRF).
 - **`GET /healthz`** is deliberately open and returns only `ok`.

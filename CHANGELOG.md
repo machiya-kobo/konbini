@@ -32,6 +32,8 @@ API field is a minor bump; a fix, wording or internal change is a patch.
 
 ### Fixed
 
+- With the identity file, `/api/status` and `/api/health` give their details (Hister's address, sync and Hister
+  error texts) to the owner only; others with `read` get `ok`, `version`, `head`, `cards`, `auth` and `error`.
 - A write with an unreadable `Content-Length` answers 400, one with a body over 1 MiB 413 (the body is read and
   dropped first, so the client sees the answer), and an API write whose JSON body is not an object 400; each used to
   drop the connection or wait for bytes that never came.

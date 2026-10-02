@@ -138,6 +138,8 @@ try:
     assert call(port, "GET", "/api/status")[0] == 401 and call(port, "GET", "/api/health")[0] == 401
     st, _, body = call(port, "GET", "/api/status", NIWA)
     assert st == 200 and json.loads(body)["auth"] == "tailscale", (st, body)
+    assert sorted(json.loads(body)) == ["auth", "cards", "error", "head", "ok", "version"], body   # no hister, no sync
+    assert "hister" in json.loads(call(port, "GET", "/api/status", OWNER)[2])                     # the owner: in full
 
     # Niwa: a service token with konbini read reads the cards and the digest, and writes nothing
     assert call(port, "GET", "/api/digest?days=7", NIWA)[0] == 200

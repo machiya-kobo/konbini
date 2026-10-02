@@ -261,6 +261,13 @@ def make_handler(listener):
                 self._who = IDENTITY.resolve(self.headers, self.client_address[0] if self.client_address else "")
             return self._who
 
+        def owner(self):
+            """The owner: everyone the gate admits without an identity file (as before), else the file's owner."""
+            if IDENTITY is None:
+                return True
+            who = self.who()
+            return bool(who) and who.principal.owner
+
         def can(self, action):
             """The principal holds the konbini grant `action` (read, write, areas). Without an identity file everyone
             the gate admits may read and write; the owner's powers are then `agent == "web"` (see areas())."""
@@ -747,6 +754,12 @@ def make_handler(listener):
                 self.send(200, json.dumps({"start": start + datetime.timedelta(days=1), "end": end, "days": days,
                                            "now": now, "entries": entries, "head": store.meta("head")},
                                           indent=1, default=str, ensure_ascii=False), "application/json")
+            elif path in ("/api/health", "/api/status") and not self.owner():
+                # with an identity file, only the owner sees the details below: Hister's internal address and raw git
+                # and Hister error texts (they can name hosts and paths). Others get what a probe needs.
+                self.send_json(200, {"ok": True, "version": VERSION, "head": store.meta("head"),
+                                     "cards": len(store.cards()), "auth": AUTH,
+                                     "error": "sync failed" if writer.status().get("error") else None})
             elif path in ("/api/health", "/api/status"):      # /api/status: the probe path every room answers
                 self.send_json(200, {"ok": True, "version": VERSION, "imported": store.meta("imported"), "head": store.meta("head"),
                                      "cards": len(store.cards()), "sync": writer.status(),

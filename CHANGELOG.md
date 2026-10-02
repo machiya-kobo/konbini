@@ -31,6 +31,8 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   valid YAML since the board indexed it (a phone edit, say), answer 422 instead of dropping the connection.
 - The listener drops a client that stalls for 30 seconds mid-request (or doesn't read the answer), so stalled
   connections no longer hold a thread each for good.
+- The card page's tag form (`POST /p/<slug>/tags`) adds and removes tags again: it reached the card's own form
+  handler, which saw no fields and changed nothing.
 
 ## 0.10.2
 

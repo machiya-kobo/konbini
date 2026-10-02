@@ -413,16 +413,6 @@ def make_handler(listener):
                 elif self.command == "POST" and path == "/move":
                     writer.update(data.get("slug", ""), {"board": data.get("board")}, actor, agent)
                     self.back()
-                elif self.command == "POST" and path.startswith("/p/"):
-                    slug = path[3:]
-                    if data.get("comment", "").strip():
-                        writer.event(slug, "comment", actor, agent, body=data["comment"].strip()[:2000])
-                        writer.touch(slug, slug + " (note)")
-                    fields = {k: data[k] for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due")
-                              if k in data}
-                    if fields:
-                        writer.update(slug, fields, actor, agent)
-                    self.back("/p/" + slug)
                 elif self.command == "POST" and re.match(r"^/p/[^/]+/tags$", path):
                     slug = path.split("/")[2]
                     add = [t.strip().lstrip("#") for t in str(data.get("add") or "").replace(",", " ").split() if t.strip()]
@@ -437,6 +427,16 @@ def make_handler(listener):
                             return
                         raise
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + slug)])
+                elif self.command == "POST" and path.startswith("/p/"):
+                    slug = path[3:]
+                    if data.get("comment", "").strip():
+                        writer.event(slug, "comment", actor, agent, body=data["comment"].strip()[:2000])
+                        writer.touch(slug, slug + " (note)")
+                    fields = {k: data[k] for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due")
+                              if k in data}
+                    if fields:
+                        writer.update(slug, fields, actor, agent)
+                    self.back("/p/" + slug)
                 elif self.command == "POST" and path == "/share":
                     url = str(data.get("url") or "").strip()
                     text = str(data.get("text") or "").strip()

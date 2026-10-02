@@ -127,6 +127,11 @@ try:
     assert "type/project" in tags, tags
     status, location, _ = request(port, "POST", "/p/kura/tags", same, b"remove=area/projects")
     assert status == 302, status                           # the card page's form (a same-origin POST) still removes
+    tags = json.loads(request(port, "GET", "/api/cards/kura", {"Host": host})[2]).get("tags") or []
+    assert "area/projects" not in tags, tags               # (it reached /p/<slug>, which changed nothing, before)
+    status, _, _ = request(port, "POST", "/p/kura/tags", same, b"add=area/projects")
+    tags = json.loads(request(port, "GET", "/api/cards/kura", {"Host": host})[2]).get("tags") or []
+    assert status == 302 and "area/projects" in tags, (status, tags)
     open(vault + "/Projects/Kura.md", "w").write(NOTE.replace("project: kura", "project: [kura"))   # a phone edit, say
     status, _, body = request(port, "PATCH", "/api/cards/kura", api, json.dumps({"next": "after the break"}).encode())
     assert status == 422 and "not valid YAML" in json.loads(body)["error"], (status, body)

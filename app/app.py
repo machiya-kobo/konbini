@@ -117,6 +117,8 @@ REPO_REFERENCE = os.environ.get("KANBAN_REPO_REFERENCE", "").strip()
 REPO_SPARSE = [p.strip().strip("/") for p in os.environ.get("KANBAN_REPO_SPARSE", "").split(",") if p.strip()]
 DB = os.environ.get("KANBAN_DB", "/data/kanban.sqlite3")
 STREAM_SECONDS = 600
+MAX_BODY = 1 << 20              # writes are small: a card's fields, a comment, an order of slugs
+DRAIN_BODY = 16 << 20           # an oversized body is read and dropped up to this, so the client sees the 413
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 from version import VERSION     # Konbini's release version: /api/status and Settings -> About
@@ -297,8 +299,8 @@ def make_handler(listener):
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
 
-        def send_json(self, status, obj):
-            self.send(status, json.dumps(obj, indent=1), "application/json")
+        def send_json(self, status, obj, headers=()):
+            self.send(status, json.dumps(obj, indent=1), "application/json", headers)
 
         def do_HEAD(self):
             self.do_GET()
@@ -313,13 +315,29 @@ def make_handler(listener):
             return (self.headers.get("X-Agent") or "web")[:80]
 
         def body(self):
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                raise WriteError(400, "invalid Content-Length")
+            if length < 0:
+                raise WriteError(400, "invalid Content-Length")
+            if length > MAX_BODY:
+                left = min(length, DRAIN_BODY)      # unread data at close would reset the connection before the 413
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 65536))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+                raise WriteError(413, "request body too large (%d bytes at most)" % MAX_BODY)
             raw = self.rfile.read(length) if length else b""
             if "json" in (self.headers.get("Content-Type") or ""):
                 try:
-                    return json.loads(raw or b"{}")
+                    data = json.loads(raw or b"{}")
                 except ValueError:
                     raise WriteError(400, "invalid JSON")
+                if not isinstance(data, dict):
+                    raise WriteError(400, "the JSON body must be an object")
+                return data
             form = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True)
             return {k: v[-1] for k, v in form.items()}
 
@@ -421,11 +439,12 @@ def make_handler(listener):
                 else:
                     raise WriteError(405, "no such write endpoint")
             except WriteError as e:
+                close = [("Connection", "close")] if e.status == 413 else []
                 if api:
-                    self.send_json(e.status, dict(error=e.message, **e.extra))
+                    self.send_json(e.status, dict(error=e.message, **e.extra), close)
                 else:
                     ctx = self.ctx()
-                    self.send(e.status, V(ctx).message(ctx, "Not saved", e.message))
+                    self.send(e.status, V(ctx).message(ctx, "Not saved", e.message), headers=close)
 
         do_POST = do_PATCH = do_DELETE = do_write
 

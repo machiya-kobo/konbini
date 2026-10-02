@@ -16,6 +16,12 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   on this site: `//host`, `/\host` and paths with control characters (a tab between the slashes, for example) used to
   send the browser to another site; they now go to the card or to `/`.
 
+### Fixed
+
+- A write with an unreadable `Content-Length` answers 400, one with a body over 1 MiB 413 (the body is read and
+  dropped first, so the client sees the answer), and an API write whose JSON body is not an object 400; each used to
+  drop the connection or wait for bytes that never came.
+
 ## 0.10.2
 
 ### Added

@@ -13,19 +13,72 @@ alone.
 
 ## Quickstart
 
-Two ways to run Konbini: **A. on its own**, with a small sample vault (about five minutes, nothing else needed), or
-**B. as one of the Machiya services** next to Kura, Niwa and the search engines. Every block below marked `quickstart:` is
-run by `tools/quickstart-test`, so these are exactly the commands that were tested.
+Konbini alone on your own machine, with the sample vault (a paper-lantern workshop and a trip to Kyoto: ten cards, three
+streams, two goals): no account, no Tailscale, no identity file. You need Python 3.11 or newer, `git` and `curl`; these
+are the commands for Debian or Ubuntu, and other systems and containers are under "More ways to run it":
 
-**You need:** `git`; one of `podman` (4 or newer) or `docker` (24 or newer) for the container path, or Python 3.11 or
-newer for the native path (the image uses 3.13; `markdown` 3.4+ and `pyyaml` 6+ are the only dependencies);
-`curl` for the checks. Port 8081 on this machine must be free.
+<!-- quickstart: packages-debian -->
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv git curl
+```
 
-### A. Standalone, with the sample vault
+**1. Clone Konbini:**
 
-**1. Install what you need** (skip what you already have; this is the only step that needs root). Pick your system:
+```sh
+git clone https://github.com/machiya-kobo/konbini.git && cd konbini
+```
 
-*Debian or Ubuntu, container path (podman):*
+**2. Install its two Python packages** (`markdown` and `pyyaml`) in a virtual environment:
+
+<!-- quickstart: native-install-debian -->
+```bash
+python3 -m venv .venv
+.venv/bin/pip install markdown pyyaml
+```
+
+**3. Make the sample vault a git repository.** Konbini commits its edits to the vault, so the demo copy has to be one;
+its notes are in `personal/`:
+
+<!-- quickstart: vault -->
+```bash
+tools/demo-vault demo-vault
+mkdir -p demo-data
+```
+
+**4. Start it** on `127.0.0.1:8081` with the identity check off (`KANBAN_AUTH=open`, for your own machine only):
+
+<!-- quickstart: native-run-debian background -->
+```bash
+KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
+  KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal .venv/bin/python app/app.py
+```
+
+**5. Open <http://127.0.0.1:8081/>**: ten cards across the board's columns, and the header leads to Review, Plan,
+Calendar and Search. Ctrl-C stops it; `rm -rf demo-vault demo-data .venv` cleans up.
+
+`tools/quickstart-test` runs these steps (and the checks, `pm` and the other systems below) from a fresh clone and checks
+the output.
+
+## Who can use it
+
+- **You, on localhost:** `KANBAN_AUTH=open` with `KANBAN_BIND=127.0.0.1`, as in the Quickstart: no login, and Konbini
+  answers only to an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in `KANBAN_ALLOWED_HOSTS`.
+- **People on your tailnet:** bind `127.0.0.1`, put `tailscale serve` in front, and list their Tailscale logins in
+  `KANBAN_TAILNET_USERS` (`KANBAN_AUTH=tailscale`, the default; unset = nobody).
+- **People, agents, sign-in or Shiori devices:** turn on Machiya's identity file with `python3 -m vaultkit.identity setup`,
+  which prints the settings for each room. It's off unless you set it; see [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
+- Konbini's identity settings: `MACHIYA_IDENTITY_FILE`, `KANBAN_SIGNIN`, `KANBAN_AUTH_HEADER`,
+  `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS` and `KANBAN_BOARD_URL` (under Settings).
+
+## More ways to run it
+
+Each starts in a clone with the sample vault made a repository (steps 1 and 3 of the Quickstart). Port 8081 must be free.
+
+### In a container
+
+You need `git`, `curl` and one of `podman` (4 or newer) or `docker` (24 or newer; install it with your system's own
+instructions). On Debian or Ubuntu, podman:
 
 <!-- quickstart: packages-container-debian -->
 ```bash
@@ -33,13 +86,27 @@ sudo apt update
 sudo apt install -y podman git curl
 ```
 
-*Debian or Ubuntu, native path:*
+*Container with podman* (`--cgroup-manager=cgroupfs` keeps podman from needing a systemd user session, which a freshly set-up or ssh-only machine may not have yet):
 
-<!-- quickstart: packages-debian -->
+<!-- quickstart: container-podman -->
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-venv git curl
+podman --cgroup-manager=cgroupfs build -t konbini app
+podman --cgroup-manager=cgroupfs run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 --userns=keep-id \
+  -v "$PWD/demo-vault":/repo -v "$PWD/demo-data":/data -e KANBAN_AUTH=open -e KANBAN_REPO_SUBDIR=personal konbini
 ```
+
+*Container with docker* (it runs as your own user, so the mounted folders stay yours):
+
+<!-- quickstart: container-docker -->
+```bash
+docker build -t konbini app
+docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(id -g)" \
+  -v "$PWD/demo-vault":/repo -v "$PWD/demo-data":/data -e KANBAN_AUTH=open -e KANBAN_REPO_SUBDIR=personal konbini
+```
+
+### Natively on the BSDs
+
+Python 3.11 or newer with `markdown` 3.4+ and `pyyaml` 6+, from packages only, no pip. Install them:
 
 *OpenBSD:*
 
@@ -65,58 +132,7 @@ sudo env PKG_PATH="https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/$(uname -p)
 sudo ln -sf /usr/pkg/bin/python3.13 /usr/pkg/bin/python3
 ```
 
-For the container path with docker, install docker with your system's own instructions.
-
-**2. Get the code and make the sample vault a git repository.** Konbini reads a git repository of Markdown notes and
-commits its edits to it, so the demo copy has to be one. Run these from the root of this repository
-(`git clone https://github.com/machiya-kobo/konbini && cd konbini`):
-
-<!-- quickstart: vault -->
-```bash
-tools/demo-vault demo-vault
-mkdir -p demo-data
-```
-
-The sample vault is a small invented one (a paper-lantern workshop and a trip to Kyoto: ten cards in every column, three
-streams, two goals); `tools/demo-vault` copies it into `demo-vault` and commits it. Its notes are in a `personal/`
-folder, which is why the commands below set `KANBAN_REPO_SUBDIR=personal` (by default Konbini reads the repository
-root).
-
-**3. Start it**, in a container or natively.
-
-*Container with podman* (`--cgroup-manager=cgroupfs` keeps podman from needing a systemd user session, which a freshly set-up or ssh-only machine may not have yet):
-
-<!-- quickstart: container-podman -->
-```bash
-podman --cgroup-manager=cgroupfs build -t konbini app
-podman --cgroup-manager=cgroupfs run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 --userns=keep-id \
-  -v "$PWD/demo-vault":/repo -v "$PWD/demo-data":/data -e KANBAN_AUTH=open -e KANBAN_REPO_SUBDIR=personal konbini
-```
-
-*Container with docker* (it runs as your own user, so the mounted folders stay yours):
-
-<!-- quickstart: container-docker -->
-```bash
-docker build -t konbini app
-docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(id -g)" \
-  -v "$PWD/demo-vault":/repo -v "$PWD/demo-data":/data -e KANBAN_AUTH=open -e KANBAN_REPO_SUBDIR=personal konbini
-```
-
-*Natively on Debian or Ubuntu:*
-
-<!-- quickstart: native-install-debian -->
-```bash
-python3 -m venv .venv
-.venv/bin/pip install markdown pyyaml
-```
-
-<!-- quickstart: native-run-debian background -->
-```bash
-KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
-  KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal .venv/bin/python app/app.py
-```
-
-*Natively on OpenBSD, FreeBSD or NetBSD* (packages only, no pip):
+Then start it:
 
 <!-- quickstart: native-run-bsd background -->
 ```bash
@@ -124,10 +140,9 @@ KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
   KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal python3 app/app.py
 ```
 
-`KANBAN_AUTH=open` has no identity check: it is for localhost and a trusted network only. It answers only requests
-made to an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in `KANBAN_ALLOWED_HOSTS`.
+### Check it and drive it with `pm`
 
-**4. Check that it is up.** The loop waits up to 30 seconds for the first start (the board indexes the vault):
+Whichever way it runs, this waits up to 30 seconds for the first start (the board indexes the vault) and checks it:
 
 <!-- quickstart: check -->
 ```bash
@@ -146,10 +161,7 @@ ok True cards 10
 <title>konbini
 ```
 
-Open http://127.0.0.1:8081/ in a browser: the board shows ten cards across its columns, and the header leads to
-Review, Plan, Calendar and Search.
-
-**5. Drive it from the command line with `pm`.** `tools/pm` is a one-file client (Python 3, no dependencies):
+`tools/pm` is a one-file client (Python 3, no dependencies):
 
 <!-- quickstart: pm -->
 ```bash
@@ -170,19 +182,19 @@ Projects/LED insert.md
 1 file changed
 ```
 
-**6. Stop it and clean up.**
+Stop a container with:
 
 <!-- quickstart: stop-container -->
 ```bash
 podman rm -f konbini-demo 2>/dev/null || docker rm -f konbini-demo
 ```
 
-For a native run, press Ctrl-C in its terminal. Then remove the demo files: `rm -rf demo-vault demo-data .venv`.
+A native run stops with Ctrl-C.
 
-### B. As part of the Machiya stack
+### As part of the Machiya stack
 
 [Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, Kura (the note reader) and Niwa (the garden) around one
-vault, with Hister and SearXNG as optional search engines. What changes compared with the quickstart above:
+vault, with Hister and SearXNG as optional search engines. What changes compared with the Quickstart:
 
 - **Start from the reference compose** in the Machiya repository (`compose/compose.yml`, profile `konbini`, plus
   `compose/mirror.yml` for a shared vault copy) instead of the commands above. With the sample vault, run its
@@ -190,13 +202,10 @@ vault, with Hister and SearXNG as optional search engines. What changes compared
   copy `compose/.env.example` to `.env`, edit it, and clone your vault into `KONBINI_REPO` first (Konbini needs its own
   read-write clone, and its origin must be reachable so the board can push). The compose builds the image from this
   repository's `app/`.
-- **Who may use it.** Behind a proxy that sets `Tailscale-User-Login` (a Tailscale sidecar, for example) leave
-  `KANBAN_AUTH` at its default `tailscale` and list the logins in `KANBAN_TAILNET_USERS` (`KONBINI_AUTH=tailscale` and
-  `KONBINI_USERS` in the compose), and bind `KANBAN_BIND=127.0.0.1`. The reference compose defaults to
-  `KANBAN_AUTH=open` for the localhost demo; there, list the name the other rooms call Konbini by (`konbini`) in
-  `KANBAN_ALLOWED_HOSTS`. With Machiya's identity file, set `MACHIYA_IDENTITY_FILE` and mount its directory
-  read-only instead: grants then decide who reads, who writes and who adds lanes (see Settings); behind the
-  Tailscale sidecar also set `KANBAN_BIND_BEHIND_PROXY=1`.
+- **Who may use it:** as in "Who can use it" above (`KONBINI_AUTH` and `KONBINI_USERS` in the compose). The reference
+  compose defaults to `KANBAN_AUTH=open` for the localhost demo; there, list the name the other rooms call Konbini by
+  (`konbini`) in `KANBAN_ALLOWED_HOSTS`. With the identity file behind the Tailscale sidecar, also set
+  `KANBAN_BIND_BEHIND_PROXY=1`.
 - **Notes folder.** If the vault keeps its notes in a folder, set `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose);
   the default is the repository root.
 - **One vault copy.** `compose/mirror.yml` (or `demo-init --mirror`) keeps a single shared copy of the vault: it sets
@@ -234,7 +243,7 @@ On a phone, the board and a card:
 | `KANBAN_AUTH` | `tailscale` | `tailscale`: every page and write needs a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS` (or, with an identity file, a principal the file names). `open`: no identity check (a startup warning), for localhost or a trusted LAN only; the identity header is ignored and writes are logged as `local`. `header` (only with `MACHIYA_IDENTITY_FILE`): a trusted proxy's login header (`KANBAN_AUTH_HEADER`). Either way, form posts must be same-origin, and an API write from outside the board's pages must send `X-Agent` and no cross-site `Origin` or `Referer` (CSRF; 403 otherwise). Any other value refuses to start |
 | `KANBAN_ALLOWED_HOSTS` | — | with `KANBAN_AUTH=open`: the host names the board answers to, comma-separated (case, port and a trailing dot don't matter), on top of IP addresses, `localhost` and `KANBAN_BOARD_URL`'s host. Any other `Host` gets 403, so a web page can't reach the board by pointing its own name at your machine (DNS rebinding). Ignored with `tailscale` |
 | `KANBAN_TAILNET_USERS` | — | allowed `Tailscale-User-Login`s, comma-separated; unset = nobody (with `KANBAN_AUTH=tailscale`). Not used with an identity file |
-| `MACHIYA_IDENTITY_FILE` | — | Machiya's identity file (vaultkit's `identity`; Machiya's `docs/plans/identity.md`): people, agents and services with grants. Set, it replaces `KANBAN_TAILNET_USERS` and the `X-Agent` test for owner powers: every page and read API needs the `konbini` `read` grant, every change (card edits, comments, claims, the board's forms) `write`, and new `area/*` lanes and new tags `areas`. No proof or a bad one gets 401, a missing grant 403; an event's actor is the principal (`X-Agent` stays a label). With `KANBAN_AUTH=open` a request without a token is the owner. Mount the file's directory read-only (not the file: the CLI replaces it, and a file mount keeps the old one) |
+| `MACHIYA_IDENTITY_FILE` | — | Machiya's identity file (vaultkit's `identity`; [Machiya's `docs/identity.md`](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md)): people, agents and services with grants. Set, it replaces `KANBAN_TAILNET_USERS` and the `X-Agent` test for owner powers: every page and read API needs the `konbini` `read` grant, every change (card edits, comments, claims, the board's forms) `write`, and new `area/*` lanes and new tags `areas`. No proof or a bad one gets 401, a missing grant 403; an event's actor is the principal (`X-Agent` stays a label). With `KANBAN_AUTH=open` a request without a token is the owner. Mount the file's directory read-only (not the file: the CLI replaces it, and a file mount keeps the old one) |
 | `KANBAN_SIGNIN` | — | `1`, with an identity file: the built-in sign-in (a person's name and password from the file, a `machiya_session` cookie; see "Sign-in, pairing and preferences" below). A browser without a session then gets a 401 page linking to `/signin?next=<the page>`. Behind an https proxy leave `KANBAN_BOARD_URL` https or unset; on plain http set it to the board's `http://` address, or every sign-in is refused (403) |
 | `KANBAN_AUTH_HEADER` | — | with an identity file and `KANBAN_AUTH=header`: the trusted proxy's login header (`Remote-User`, …), matched against the principals' `proxy` logins |
 | `KANBAN_BIND_BEHIND_PROXY` | — | `1`: with an identity file, `KANBAN_AUTH=tailscale` or `header` may bind a non-loopback address because a proxy (the Tailscale sidecar) is the only way in. Without it the board refuses to start on anything but a loopback address |

@@ -159,7 +159,17 @@ try:
     for s in manifest["shortcuts"]:
         assert s["name"] and s["icons"] and all(call(port, "GET", i["src"])[0] == 200 for i in s["icons"]), s
         assert call(port, "GET", s["url"])[0] == 200, s
-    assert manifest["theme_color"] in ("#16161e", "#d0d5e3")       # the colours stay as they were
+    assert manifest["background_color"] == "#1a1b26"              # System, the device unknown: Night
+    # a light device gets a light splash screen (vaultkit 0.14); a theme chosen in Settings still wins
+    st, h, body = call(port, "GET", "/manifest.webmanifest", {"Sec-CH-Prefers-Color-Scheme": "light"})
+    light = json.loads(body)
+    assert (light["background_color"], light["theme_color"]) == ("#e1e2e7", "#d0d5e3"), light
+    assert light["user_preferences"]["color_scheme_dark"]["background_color"] == "#1a1b26", light
+    assert "Sec-CH-Prefers-Color-Scheme" in h["Vary"], h["Vary"]
+    night = json.loads(call(port, "GET", "/manifest.webmanifest", {"Sec-CH-Prefers-Color-Scheme": "light",
+                                                                  "Cookie": "theme=night"})[2])
+    assert night["background_color"] == "#1a1b26", night
+    assert call(port, "GET", "/")[1]["Accept-CH"] == "Sec-CH-Prefers-Color-Scheme"
 
     # the share target is a GET: the Capture form, prefilled, and nothing written until that form posts
     assert manifest["share_target"] == {"action": "/share", "method": "GET",

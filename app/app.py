@@ -716,8 +716,8 @@ def make_handler(listener):
                 return self.prefs()
             ctx = self.ctx()
             if path == "/manifest.webmanifest":
-                self.send(200, json.dumps(modern.manifest(ctx.theme), indent=1), "application/manifest+json",
-                          headers=[("Cache-Control", "no-cache")])
+                self.send(200, json.dumps(modern.manifest(ctx.theme, self.headers), indent=1), "application/manifest+json",
+                          headers=[("Cache-Control", "no-cache"), ("Vary", shell.MANIFEST_VARY)])
                 return
             if path == "/sw.js":
                 self.send(200, modern.service_worker(), "text/javascript", headers=[("Cache-Control", "no-cache")])

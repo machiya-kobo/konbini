@@ -83,9 +83,9 @@ def shell_urls():
             static_url("Sortable.min.js"), icon_url(".svg"), icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
 
 
-def manifest(theme):
-    dark = theme != "day"
-    return {k: v for k, v in {
+def manifest(theme, headers=None):
+    """headers: the request's (Sec-CH-Prefers-Color-Scheme picks System's colours: shell.manifest_colors)."""
+    return {**{k: v for k, v in {
         "name": NAME, "short_name": NAME, "description": DESCRIPTION,
         "id": "/", "start_url": START, "scope": "/", "display": "standalone", "lang": "en",
         "categories": ["productivity"],
@@ -93,8 +93,6 @@ def manifest(theme):
         "shortcuts": [{"name": name, "short_name": short, "url": url, "description": desc,
                        "icons": [{"src": icon_url("-192.png"), "sizes": "192x192", "type": "image/png"}]}
                       for name, short, url, desc in SHORTCUTS],
-        "background_color": "#1a1b26" if dark else "#e1e2e7",
-        "theme_color": "#16161e" if dark else "#d0d5e3",
         # The share sheet opens the Capture form prefilled (a GET changes nothing); the card is made by that form's
         # same-origin POST. A POST share target came from the OS with no Origin, or "null", and was refused (403).
         "share_target": {"action": "/share", "method": "GET", "params": {"title": "title", "text": "text", "url": "url"}},
@@ -103,7 +101,7 @@ def manifest(theme):
             {"src": icon_url("-512.png"), "sizes": "512x512", "type": "image/png"},
             {"src": icon_url("-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
-    }.items() if v is not None}
+    }.items() if v is not None}, **shell.manifest_colors(theme, headers)}
 
 
 def service_worker():

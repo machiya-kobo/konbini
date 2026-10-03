@@ -1,5 +1,5 @@
-# vaultkit v0.11.0-8-gd7cec0b - vendored by vendor.sh; don't edit these files
-1cbac58e170d706da9fc1355d3ed454aa256053def94df5d4e9f76f2dee67229  __init__.py
+# vaultkit v0.11.0-4-g52f7ad7 - vendored by vendor.sh; don't edit these files
+7415770de14cf748912b92b8eda81185adc98177ecbe78fd900932696ea5a689  __init__.py
 5b563e708c9318bba58a413b101d62b037906b1dcd11d38b0aabe3c8e951c488  envfile.py
 bf7e6feb41f484a9fbde36877bcf0c74ee9bc310a76df3967fb1049bfbddb383  front.py
 30e34ef6bf3fe072759b0f33fafddc6ecf650341eeaf5fe835a94527e21146d5  frontmatter.py
@@ -8,7 +8,7 @@ cd763678e1092087d578ae8b7969cf237d79a3368ed0bf2d4f3aec5f5223a7ee  git.py
 e617d8ae21ecd8f9846fcd341da8701855abcf0e15cf724bb4f5780d1c500f92  identity.py
 b985f5a1710adc437be7d503f67e05b417e86b596a2ffdacb787742fa03ea337  notes.py
 52ff751e738bee0fb54c15f69fd9b54ecc815da9dcb6c37ce09ef0d1829fd439  sanitize.py
-cdabc913777071042087ab70100d424d7f4be7b48bee606d0d698eb20218ccca  shell.py
+96c7ddcc3c5e5b5383710fcc0004b9a24da03f6352c6fa7c227b288ac00445b1  shell.py
 2315c18be0f224ef84a3384aa3b378250a09afc668c1698af0dc9231fab86a16  signin.py
 d48f389646b7f457e02c3ab58139e12e302982d3458e08c1e9eb6409c2f53044  vault.py
 fd59de4fa69ddd02fcbb412fccd7edbc17e6f2dc0a222303e4cdd16db729f18a  verify.py

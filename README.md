@@ -54,8 +54,8 @@ KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
   KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal .venv/bin/python app/app.py
 ```
 
-**5. Open <http://127.0.0.1:8081/>**: ten cards across the board's columns, and the header leads to Review, Plan,
-Calendar and Search. Ctrl-C stops it; `rm -rf demo-vault demo-data .venv` cleans up.
+**5. Open <http://127.0.0.1:8081/>**: ten cards across the board's columns, and the header leads to Board, Now,
+Review, Plan, Posts, Calendar and Roundup, with a search field for the cards. Ctrl-C stops it; `rm -rf demo-vault demo-data .venv` cleans up.
 
 `tools/quickstart-test` runs these steps (and the checks, `pm` and the other systems below) from a fresh clone and checks
 the output.
@@ -260,7 +260,7 @@ On a phone, the board and a card:
 | `KANBAN_REPO_REFERENCE`, `KANBAN_REPO_SPARSE` | — | Machiya stack mode: borrow the stack's vault mirror's objects, and check out only `notes,.board` (your `KANBAN_REPO_SUBDIR` plus `.board`; see `CLAUDE.md`) |
 | `KANBAN_BOARD_URL` | — | this board's own address, for absolute links in writing kits. With an identity file it is also the one origin the sign-in, sign-out and preference checks accept (unset: an https page naming the request's own `Host`), and an `http://` address takes `Secure` off the session cookie |
 | `KANBAN_NIWA_URL`, `KANBAN_KURA_URL` | — | the sister rooms (Niwa: the garden links and the `/garden/` redirect; Kura: "View in Kura"). Unset = those links are off |
-| `KANBAN_OBSIDIAN_VAULT` | — | the Obsidian vault's name for "Edit in Obsidian" links (`obsidian://open?vault=my-vault`). Unset = no such links |
+| `KANBAN_OBSIDIAN_VAULT` | — | the Obsidian vault's name for "Open in Obsidian" links (`obsidian://open?vault=my-vault`). Unset = no such links |
 | `KANBAN_GIT_AUTHOR_NAME`, `KANBAN_GIT_AUTHOR_EMAIL` | `konbini`, `konbini@localhost` | who the board's commits to the vault are by |
 | `KANBAN_LINKS_USER_AGENT` | `konbini-links/1` | the link checker's User-Agent (add a contact URL for the sites it checks) |
 | `KANBAN_LINKS_SKIP_HOSTS` | — | more hosts the link checker never visits, comma-separated (loopback, `192.168.*`, `10.*`, `100.*`, `*.ts.net` and `archive.org` are always skipped) |
@@ -278,21 +278,26 @@ Every setting is in this table: the `KANBAN_*` ones, `TZ` and the `MACHIYA_*` on
 
 ### Sign-in, pairing and preferences
 
-Only with `MACHIYA_IDENTITY_FILE` (vaultkit's `signin`); without the file every route below answers 404.
+Sign-in and pairing exist only with `MACHIYA_IDENTITY_FILE` (vaultkit's `signin`); without the file they answer
+404. Preferences are served in every mode: without the file they are the person the old gate let in (the Tailscale
+login, or open mode's owner), so theme and text size follow them to another device.
 
 | Route | Gate | What it does |
 |---|---|---|
 | `GET /signin`, `POST /signin` | before (needs `KANBAN_SIGNIN=1`, else 404) | the sign-in form, and its same-origin post: a session cookie and a 303 to `next` (a local path) |
 | `POST /signout` | before | same-origin only: clears the session cookie |
 | `POST /api/pair` | before | Shiori's device pairing: `{"code", "device"}` (a code from `python3 -m vaultkit.identity pair <name>`) gives `{"token", "principal"}`, a device token for `Authorization: Bearer`. Works with or without `KANBAN_SIGNIN` |
-| `GET /api/prefs`, `PUT /api/prefs` | after (`konbini` `read`) | the caller's own preferences, `{"prefs": {key: value}}`; a PUT merges (`null` removes) |
+| `GET /api/prefs`, `PUT /api/prefs` | after (`konbini` `read`, or the old gate) | the caller's own preferences, `{"prefs": {key: value}}`; a PUT merges (`null` removes) |
 
 `KANBAN_AUTH=open`'s `Host` rule comes first for all of them. They follow vaultkit's rules, not the board's `/api`
 write rule: pairing carries no cookie (the code is the proof), so it needs neither `X-Agent` nor an `Origin`; a
 `PUT /api/prefs` made with a token needs neither either, and one made with a session cookie, a Tailscale or proxy
-login or in open mode must come from the board's own page (`Origin`, else `Referer`; `X-Agent` doesn't excuse it).
+login or in open mode must come from the board's own page (`Origin`, else `Referer`; `X-Agent` doesn't excuse it):
+`KANBAN_BOARD_URL`'s origin, else an https page naming the request's own `Host`, or in open mode without an identity
+file the request's own `Host` over http too (it already passed the `Host` rule).
 Preferences are kept per principal in `prefs.sqlite3` next to `KANBAN_DB` (mode 0600; not the board's cache, so a
-`rebuild` keeps them). Settings shows an Account section with a Sign Out button to a signed-in session.
+`rebuild` keeps them). With an identity file the header shows who is signed in, and Settings has an Account
+section (with Sign Out for a sign-in session).
 
 ## Vault layout
 

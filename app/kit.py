@@ -15,6 +15,7 @@ from urllib.parse import quote, urlsplit
 
 from store import VAULT, _str, commit_filter
 from timeline import LINK_RE, clean, local_date, log_rows, parse_date
+from vaultkit import sanitize
 
 FRONT_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 SYNC_RE = re.compile(r"<!--\s*project-sync:start\s*-->.*?<!--\s*project-sync:end\s*-->", re.S)
@@ -610,8 +611,10 @@ class Kits:
             time.sleep(every)
 
     def html(self, md):
+        """The kit page's body. The kit quotes the note (its overview, code, Log rows, links), and a note is data, never
+        code: the HTML goes through vaultkit's sanitizer like every rendered note (no script, handler or javascript:)."""
         import markdown
-        return markdown.markdown(md, extensions=["tables", "fenced_code"], output_format="html")
+        return sanitize.clean(markdown.markdown(md, extensions=["tables", "fenced_code"], output_format="html"))
 
     # -- the /posts view ---------------------------------------------------------
 

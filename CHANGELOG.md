@@ -29,6 +29,11 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   could pass by sending the right headers. No proof or a bad one is 401, a missing grant 403. An event's `actor` is
   the principal's name; `X-Agent` stays a label. New settings: `KANBAN_AUTH=header` with `KANBAN_AUTH_HEADER`,
   `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS`. Without the file nothing changes.
+- **A note's HTML never runs** (vaultkit 0.13): the writing kit's page quoted the note (its overview, code, Log rows
+  and links) as python-markdown rendered it, so a `<script>`, an `onerror` or a `javascript:` link in a note ran on
+  the kit page. It goes through vaultkit's sanitizer now. Every page also carries vaultkit's security headers (a
+  Content-Security-Policy allowing only the board's own scripts, `nosniff`, a same-origin `Referer`); the board's
+  markup has no inline handler left.
 
 ### Added
 
@@ -38,7 +43,20 @@ API field is a minor bump; a fix, wording or internal change is a patch.
   for a Shiori device token. `GET/PUT /api/prefs` keeps each principal's preferences in `prefs.sqlite3` next to
   `KANBAN_DB`. The sign-in, sign-out and preference checks accept `KANBAN_BOARD_URL`'s origin; over plain http, set
   it to the board's `http://` address. Pairing and token-made preference changes need no `X-Agent`. Without the
-  identity file these routes are 404.
+  identity file sign-in and pairing are 404; preferences (vaultkit 0.12) are the person the old gate let in.
+- The header shows who is signed in (identity file), and Settings has an Account section for them.
+- The installed app: shortcuts (Board, Now, Review, New Card), a category, and sharing a page to Konbini opens the
+  Capture form prefilled (the share target is a GET; the POST one was refused by the same-origin rule).
+- An empty column says "No cards"; on a phone the column tabs fade at the right edge, a hint that they scroll.
+
+### Changed
+
+- vaultkit 0.13: the shared 401, 404 and offline pages, "Title - Konbini" titles, the status bar follows the theme.
+- The icon files are `konbini-*`; the old `kanban-*` addresses answer 301. The browser keeps the board's own choices
+  under `konbini.*` (the old `kanban.*` values move over once).
+- A write made offline (a card move, an edit, a new card) stays on the page and says it wasn't saved, instead of the
+  browser's error page or an alert. The card sheet links Niwa only when it is configured and the note is published,
+  adds View in Kura, and says Open in Obsidian like the card page.
 
 ### Fixed
 

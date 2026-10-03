@@ -261,15 +261,15 @@ finally:
     proc.kill()
     proc.wait()
 
-# -- no identity file: every new route is 404 behind the old gate, as before
+# -- no identity file: sign-in and pairing are 404 behind the old gate, as before; preferences (vaultkit 0.12) are the
+# ambient owner's (tests/test_pages.py)
 proc, port, d, tokens, code = start(identity_file=False, KANBAN_AUTH="open")
 try:
     for method, path, body in (("GET", "/signin", None), ("POST", "/signin", b"name=owner"), ("POST", "/signout", b""),
-                               ("POST", "/api/pair", {"code": code, "device": "x"}), ("GET", "/api/prefs", None),
-                               ("PUT", "/api/prefs", {"prefs": {"a": "1"}})):
+                               ("POST", "/api/pair", {"code": code, "device": "x"})):
         st = call(port, method, path, {"Origin": "http://127.0.0.1:%d" % port, "X-Agent": "t"}, body)[0]
         assert st == 404, (method, path, st)
-    assert not os.path.exists(d + "/db/prefs.sqlite3")
+    assert call(port, "GET", "/api/prefs")[0] == 200
 finally:
     proc.kill()
     proc.wait()
@@ -278,7 +278,8 @@ try:
     assert call(port, "POST", "/api/pair", None, {"code": code, "device": "x"})[0] == 403      # the gate first
     assert call(port, "GET", "/signin")[0] == 403
     assert call(port, "GET", "/signin", {"Tailscale-User-Login": "owner@example"})[0] == 404
-    assert call(port, "GET", "/api/prefs", {"Tailscale-User-Login": "owner@example"})[0] == 404
+    assert call(port, "GET", "/api/prefs")[0] == 403                                            # the gate first
+    assert call(port, "GET", "/api/prefs", {"Tailscale-User-Login": "owner@example"})[0] == 200
 finally:
     proc.kill()
     proc.wait()

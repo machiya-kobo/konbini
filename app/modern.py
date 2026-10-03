@@ -13,18 +13,31 @@ from vaultkit import shell
 from common import (COLUMN_COLOR, KIND_MARK, PRIORITY_COLOR, SHOWN, collapse_history, e, event_line, facets, filter_cards,
                     lane_of, qget, stale_days)
 
+# The room key (vaultkit.shell): the seal, the wordmark, the icon files (static/icons/konbini-*), the localStorage keys.
+# The settings keep their KANBAN_ prefix (and envfile.load_for("kanban")) so existing installs need no change.
+ROOM = "konbini"
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 ICON_DIR = os.path.join(STATIC_DIR, "icons")
 ICONS = set(n for n in os.listdir(ICON_DIR) if n.endswith((".png", ".svg"))) if os.path.isdir(ICON_DIR) else set()
 BOARD_URL = ""        # app.py sets KANBAN_BOARD_URL
 GARDEN_URL = ""       # Niwa (machiya-kobo/niwa); app.py sets it from KANBAN_NIWA_URL; empty = no garden links
 KURA_URL = ""         # Kura (machiya-kobo/kura); app.py sets it from KANBAN_KURA_URL; empty = no "View in Kura"
-OBSIDIAN_VAULT = ""   # app.py sets it from KANBAN_OBSIDIAN_VAULT; empty = no "Edit in Obsidian"
+OBSIDIAN_VAULT = ""   # app.py sets it from KANBAN_OBSIDIAN_VAULT; empty = no "Open in Obsidian"
 
 
 def obsidian_url(note):
     """obsidian://open?vault=<KANBAN_OBSIDIAN_VAULT>&file=<note> ("" when no vault name is set)."""
     return ("obsidian://open?vault=%s&file=%s" % (quote(OBSIDIAN_VAULT, safe=""), quote(note, safe=""))) if OBSIDIAN_VAULT else ""
+def garden_url(card, note):
+    """The note in Niwa when Niwa is configured (KANBAN_NIWA_URL) and the note is published, else ""."""
+    return "%s/n/%s" % (GARDEN_URL, quote(note)) if GARDEN_URL and card.get("publish") else ""
+
+
+def kura_url(note):
+    """The note in Kura when Kura is configured (KANBAN_KURA_URL), else ""."""
+    return "%s/n/%s" % (KURA_URL, quote(note)) if KURA_URL else ""
+
+
 SHORT = {"backlog": "Backlog", "ready": "Ready", "wip": "WIP", "blocked": "Blocked", "done": "Done", "archived": "Archived"}
 
 
@@ -48,43 +61,57 @@ def static_url(name):
 
 # -- PWA: manifest, service worker ------------------------------------------
 
-APPS = {
-    "kanban": dict(name="Konbini", start="/now", desc="Konbini: the project board, built from the vault, open all hours"),
-}
+NAME, START = "Konbini", "/now"
+DESCRIPTION = "Konbini: the project board, built from the vault, open all hours"
 
 
-def shell_urls(app):
-    """What the service worker precaches."""
+SHORTCUTS = [("Board", "Board", "/", "Every card by lane and column"),
+             ("Now", "Now", "/now", "What's in progress, blocked and up next"),
+             ("Review", "Review", "/review", "The weekly review"),
+             ("New Card", "New Card", "/share", "Capture an idea or a link as a backlog card")]
+
+
+def icon_url(suffix=""):
+    """/static/icons/konbini<suffix> (".svg", "-192.png", ...): the files are named after the room key."""
+    return "/static/icons/%s%s" % (ROOM, suffix)
+
+
+def shell_urls():
+    """What the service worker precaches: the shared UI, the board's own files, the icons every page and the
+    installed app ask for (shell.page's <room>.svg and <room>-apple-180.png, the manifest's 192) and /offline."""
     return [shell.ui_url("machiya.css"), shell.ui_url("machiya.js"), static_url("board.css"), static_url("board.js"),
-            static_url("Sortable.min.js"),
-            "/static/icons/%s.svg" % app, "/static/icons/%s-192.png" % app, "/offline"]
+            static_url("Sortable.min.js"), icon_url(".svg"), icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
 
 
-def manifest(app, theme):
-    a = APPS[app]
+def manifest(theme):
     dark = theme != "day"
     return {k: v for k, v in {
-        "name": a["name"], "short_name": a["name"], "description": a["desc"],
-        "id": "/", "start_url": a["start"], "scope": "/", "display": "standalone",
+        "name": NAME, "short_name": NAME, "description": DESCRIPTION,
+        "id": "/", "start_url": START, "scope": "/", "display": "standalone", "lang": "en",
+        "categories": ["productivity"],
+        # a long press on the installed icon: the main pages, and Capture for a new card
+        "shortcuts": [{"name": name, "short_name": short, "url": url, "description": desc,
+                       "icons": [{"src": icon_url("-192.png"), "sizes": "192x192", "type": "image/png"}]}
+                      for name, short, url, desc in SHORTCUTS],
         "background_color": "#1a1b26" if dark else "#e1e2e7",
         "theme_color": "#16161e" if dark else "#d0d5e3",
-        "share_target": {"action": "/share", "method": "POST", "enctype": "application/x-www-form-urlencoded",
-                         "params": {"title": "title", "text": "text", "url": "url"}} if app == "kanban" else None,
+        # The share sheet opens the Capture form prefilled (a GET changes nothing); the card is made by that form's
+        # same-origin POST. A POST share target came from the OS with no Origin, or "null", and was refused (403).
+        "share_target": {"action": "/share", "method": "GET", "params": {"title": "title", "text": "text", "url": "url"}},
         "icons": [
-            {"src": "/static/icons/%s-192.png" % app, "sizes": "192x192", "type": "image/png"},
-            {"src": "/static/icons/%s-512.png" % app, "sizes": "512x512", "type": "image/png"},
-            {"src": "/static/icons/%s-maskable-512.png" % app, "sizes": "512x512", "type": "image/png",
-             "purpose": "maskable"},
+            {"src": icon_url("-192.png"), "sizes": "192x192", "type": "image/png"},
+            {"src": icon_url("-512.png"), "sizes": "512x512", "type": "image/png"},
+            {"src": icon_url("-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
     }.items() if v is not None}
 
 
-def service_worker(app):
+def service_worker():
     """/sw.js: the shared worker core (vaultkit v0.7, machiya-sw.js). Pages, card pages (/p/...) included, are
     network-first for 2.5 s and kept (the 120 most recent) for offline use; card pages aren't notes (Kura keeps
-    those). The APIs are never touched, and search, settings and the capture form are never stored."""
-    return shell.service_worker(VERSION, shell_urls(app), bypass=["^/api/"],
-                                network=["^/search$", "^/settings$", "^/share$", "^/theme$"], pages=120)
+    those). The APIs are never touched, and search, settings, the capture form and the sign-in page are never stored."""
+    return shell.service_worker(VERSION, shell_urls(), bypass=["^/api/"],
+                                network=["^/search$", "^/settings$", "^/share$", "^/theme$", "^/signin$"], pages=120)
 
 
 # -- shell -------------------------------------------------------------------
@@ -125,20 +152,22 @@ def tabbar(tabs, current):
         for href, key, label in tabs)
 
 
-def page(ctx, app, title, body, tabs=(), current="", foot=()):
+def page(ctx, what, body, tabs=(), current="", foot=()):
     """Every page: the Machiya shell (vaultkit.shell, room konbini: its icon, magenta) around the body, with the
-    footer's status line; foot = extra [(href, label)] footer links for the page."""
+    footer's status line; what = the page's name for its title ("Now - Konbini"; "" for the board: "Konbini");
+    foot = extra [(href, label)] footer links for the page."""
     status = getattr(ctx, "status", None)
     head = ('<meta name="obsidian-vault" content="%s">\n' % e(OBSIDIAN_VAULT)) if OBSIDIAN_VAULT else ""
-    return shell.page(ctx, "konbini", title, body + shell.footer("konbini", status, list(foot)), tabs, current,
-                      head=head, stylesheets=[static_url("board.css")], scripts=[static_url("board.js")], icons=ICON)
+    return shell.page(ctx, ROOM, shell.title(ROOM, what), body + shell.footer(ROOM, status, list(foot)), tabs, current,
+                      head=head, stylesheets=[static_url("board.css")], scripts=[static_url("board.js")], icons=ICON,
+                      prefs_url=getattr(ctx, "prefs_url", ""), who=getattr(ctx, "who", ""))
 
 
 def header(ctx, brand, brand_href, links, current, subtitle="", tools="", stats="", cls=""):
     """The shell's header (the room's icon, wordmark, nav, the Rooms switcher, the settings gear) with the board's stats row."""
     # the room's one search field (vaultkit v0.6): Konbini searches its cards (/search), then hands off to Shiori
     tools = shell.search_box(getattr(ctx, "q", ""), action="/search", placeholder="Search Cards") + tools
-    top = shell.header("konbini", links, current, shell.rooms(), subtitle, tools)
+    top = shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""))
     if cls:
         top = top.replace('<header class="top">', '<header class="top %s">' % e(cls), 1)
     return top.replace("</div></header>", "</div>%s</header>" % stats, 1) if stats else top
@@ -158,7 +187,7 @@ def board_header(ctx, counts, subtitle="", current="board"):
     if ctx.alert:
         links = "".join(' <a class="nlink" href="%s">open %s</a>' % (e(h), e(l)) for l, h in getattr(ctx, "alert_links", []))
         stats += '<p class="alert" role="alert">Needs a look: %s%s</p>' % (e(ctx.alert), links)
-    return header(ctx, "konbini", "/", KANBAN_NAV, current, subtitle, "", stats)
+    return header(ctx, ROOM, "/", KANBAN_NAV, current, subtitle, "", stats)
 
 
 def ago(value):
@@ -208,7 +237,7 @@ def move_form(card):
     opts = "".join('<option value="%s"%s>%s</option>' % (c, " selected" if c == card["board"] else "", e(SHORT[c]))
                    for c in SHOWN)
     return ('<form class="moveform" method="post" action="/move"><input type="hidden" name="slug" value="%s">'
-            '<select name="board" onchange="this.form.submit()">%s</select>'
+            '<select name="board" data-submit>%s</select>'
             '<noscript><button type="submit">Move</button></noscript></form>' % (e(card["slug"]), opts))
 
 
@@ -253,12 +282,13 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
     meta += ['<span class="chip why">%s</span>' % e(w) for w in why]
     if meta:
         lines.append('<div class="meta">%s</div>' % "".join(meta))
+    # the sheet's links to the sister rooms, only where the card page has them: Niwa for a published note, Kura
+    links = "".join(' data-%s="%s"' % (k, e(v)) for k, v in (("garden", garden_url(card, note)), ("kura", kura_url(note))) if v)
     return ('<article class="card is-card col-%s" id="c-%s" data-slug="%s" data-board="%s" data-title="%s" data-next="%s" '
-            'data-note="%s" data-publish="%s">%s'
+            'data-note="%s"%s>%s'
             '<button class="more" type="button" aria-label="Actions for %s">&#8943;</button>%s</article>'
             % (e(card["board"] or ""), e(card["slug"]), e(card["slug"]), e(card["board"] or ""), e(card["title"]),
-               e(card.get("next") or ""), e(note), "1" if card.get("publish") else "0", "\n".join(lines),
-               e(card["title"]), move_form(card)))
+               e(card.get("next") or ""), e(note), links, "\n".join(lines), e(card["title"]), move_form(card)))
 
 
 def lane_html(ctx, lane, cards, claims=None):
@@ -269,7 +299,7 @@ def lane_html(ctx, lane, cards, claims=None):
     for col in SHOWN:
         items = by_col[col]
         shown = items[:int(done_limit)] if col == "done" and done_limit != "all" else items
-        body = "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"])) for c in shown) or '<div class="colempty"></div>'
+        body = "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"])) for c in shown) or '<p class="colempty">No cards</p>'
         if len(shown) < len(items):
             body += ('<p class="colmore" data-more="%d">+%d more <a href="/settings">(Done Cards)</a></p>'
                      % (len(items) - len(shown), len(items) - len(shown)))
@@ -348,8 +378,9 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
             '<a href="/p/%s">%s</a>' % (quote(c["slug"]), e(c["title"])) for c in unsorted))
     archived_n = sum(1 for c in cards if c["board"] == "archived")
     parts.append('<p class="keys">Imported %s &middot; keys: j/k select, 1-5 move, / search, n new</p>' % e(imported))
-    main = '<main id="board" class="board" data-rev="%s">\n%s\n</main>' % (e(rev), "\n".join(parts))
-    return page(ctx, "kanban", "konbini", board_header(ctx, counts) + main, KANBAN_TABS, "board",
+    main = '<main id="board" class="board" data-rev="%s" data-sortable="%s">\n%s\n</main>' % (
+        e(rev), e(static_url("Sortable.min.js")), "\n".join(parts))
+    return page(ctx, "", board_header(ctx, counts) + main, KANBAN_TABS, "board",
                 foot=[("/archived", "Archived (%d)" % archived_n), ("/share", "Capture a Link"), ("/api/cards", "API")])
 
 
@@ -373,7 +404,7 @@ def now(ctx, cards, claims=None, rev=""):
                  '<a href="/posts">Posts</a> &middot; '
                  '<a href="/calendar">Calendar</a> &middot; <a href="/roundup?period=week">Roundup</a></p>')
     main = '<main id="board" class="now" data-rev="%s">%s</main>' % (e(rev), "\n".join(parts))
-    return page(ctx, "kanban", "now - konbini", board_header(ctx, counts, "", "now") + main, KANBAN_TABS, "now")
+    return page(ctx, "Now", board_header(ctx, counts, "", "now") + main, KANBAN_TABS, "now")
 
 
 def deps_page(ctx, cards, graph, chart):
@@ -391,7 +422,7 @@ def deps_page(ctx, cards, graph, chart):
             % (('<pre><code class="language-mermaid">%s</code></pre>' % e(chart)) if chart else "",
                ('<ul class="garden-list plain deplist">%s</ul>' % "".join(rows)) if rows
                else '<p class="none"><b>No Dependencies</b> No card has a <code>dependsOn</code> yet.</p>'))
-    return page(ctx, "kanban", "dependencies - konbini", board_header(ctx, counts_of(cards), "Dependencies", "") + body,
+    return page(ctx, "Dependencies", board_header(ctx, counts_of(cards), "Dependencies", "") + body,
                 KANBAN_TABS, "board")
 
 
@@ -411,7 +442,7 @@ def review(ctx, cards, data, claims=None, rev=""):
         parts.append('<section class="nowsec revsec" id="r-%s"><h2 class="colhead">%s <span class="colcount">%d</span></h2>'
                      '<p class="hint">%s</p><div class="nowlist">%s</div></section>' % (key, e(title), len(rows), e(hint), body))
     main = '<main id="board" class="now review" data-rev="%s">%s</main>' % (e(rev), "\n".join(parts))
-    return page(ctx, "kanban", "review - konbini", board_header(ctx, counts_of(cards), "Weekly review", "review") + main,
+    return page(ctx, "Review", board_header(ctx, counts_of(cards), "Weekly review", "review") + main,
                 KANBAN_TABS, "review")
 
 
@@ -451,8 +482,8 @@ def plan_nav(current):
         for href, key, label in PLAN_TABS)
 
 
-def streams_page(ctx, cards):
-    """/streams: every workstream (cards' stream: field) with its progress, busiest first."""
+def streams_page(ctx, cards, what="Plan"):
+    """/plan and /streams (what: the title): every workstream (cards' stream: field) with its progress, busiest first."""
     by = {}
     for c in cards:
         if c.get("board") and c.get("stream"):
@@ -464,7 +495,7 @@ def streams_page(ctx, cards):
         '<p class="none"><b>No Streams Yet</b> Give a card a stream on its page, and cards with the same stream group here.</p>'
     body += ('<p class="none">%d card%s without a stream &middot; <a href="/?group=stream">the board by stream</a></p>'
              % (loose, "" if loose == 1 else "s")) if loose else ""
-    return page(ctx, "kanban", "streams - konbini", board_header(ctx, counts_of(cards), "Streams", "plan") +
+    return page(ctx, what, board_header(ctx, counts_of(cards), "Streams", "plan") +
                 '<main class="streams">%s%s</main>' % (plan_nav("streams"), body), KANBAN_TABS, "")
 
 
@@ -479,9 +510,10 @@ def stream_page(ctx, name, cards, claims=None, rev=""):
             + ('<p class="none">%d archived</p>' % archived if archived else "")
             + '<p class="nowmore"><a href="/streams">All streams</a> &middot; <a href="/?stream=%s">on the board</a></p>'
             % quote(name, safe=""))
-    return page(ctx, "kanban", name + " - konbini", board_header(ctx, counts_of(cards), name, "plan") +
+    return page(ctx, name, board_header(ctx, counts_of(cards), name, "plan") +
                 # data-rev: board.js reloads a #board page whose revision differs from the server's
-                '<main id="board" class="board stream" data-rev="%s">%s%s</main>' % (e(rev), plan_nav("streams"), body), KANBAN_TABS, "board")
+                '<main id="board" class="board stream" data-rev="%s" data-sortable="%s">%s%s</main>'
+                % (e(rev), e(static_url("Sortable.min.js")), plan_nav("streams"), body), KANBAN_TABS, "board")
 
 
 def ago_or_in(value):
@@ -517,7 +549,7 @@ def goals_page(ctx, cards, goals, soon):
                      % "".join('<li><a class="ntl" href="/p/%s">%s</a> <span class="chip due due-%s">%s %s</span></li>'
                                % (quote(c["slug"]), e(c["title"]), goalsmod.due_state(c), e(c["due"]), e(ago_or_in(c["due"])))
                                for c in soon))
-    return page(ctx, "kanban", "goals - konbini", board_header(ctx, counts_of(cards), "Goals", "plan") +
+    return page(ctx, "Goals", board_header(ctx, counts_of(cards), "Goals", "plan") +
                 '<main class="streams goals">%s%s</main>' % (plan_nav("goals"), "".join(parts)), KANBAN_TABS, "")
 
 
@@ -572,7 +604,7 @@ def timeline_page(ctx, cards, data, start, end, group):
     body = nav + ticks + ("".join(sections) or '<p class="none"><b>Nothing in This Range</b> No card was worked on or is due '
                                                  'in these months.</p>')
     title = "%s &ndash; %s" % (start.strftime("%b %Y"), (end - datetime.timedelta(days=1)).strftime("%b %Y"))
-    return page(ctx, "kanban", "timeline - konbini", board_header(ctx, counts_of(cards), "Timeline", "plan") +
+    return page(ctx, "Timeline", board_header(ctx, counts_of(cards), "Timeline", "plan") +
                 '<main class="timeline">%s<h1 class="tltitle">%s</h1>%s</main>' % (plan_nav("timeline"), title, body), KANBAN_TABS, "")
 
 
@@ -594,7 +626,7 @@ def search_page(ctx, cards, q, claims=None):
                 % (len(hits), "" if len(hits) == 1 else "s",
                    "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"]), show_area=True, show_updated=True) for c in hits)))
     body += shell.handoff(q.strip())
-    return page(ctx, "kanban", ("%s - search - konbini" % q) if q else "search - konbini",
+    return page(ctx, ("%s - Search" % q) if q else "Search",
                 board_header(ctx, counts_of(cards), "Search", "") + '<main class="now search">%s</main>' % body, KANBAN_TABS, "")
 
 
@@ -611,31 +643,22 @@ def setting(ctx, key):
     return None
 
 
-def account_section(name):
-    """Settings -> Account, for a principal signed in with the built-in sign-in (a session): who, and a sign-out
-    button (a same-origin form post to /signout, vaultkit.signin)."""
+def account_section(name, session=False):
+    """Settings -> Account (#account, where the header's person button points) with an identity file: who this is,
+    and for a principal signed in with the built-in sign-in (a session) a sign-out button (a same-origin form post to
+    /signout, vaultkit.signin; machiya.js clears the offline copies first)."""
     if not name:
         return None
+    if not session:
+        return ("Account", [shell.row("Signed In As", e(name))],
+                "Konbini knows you from how you reached it, so there's nothing to sign out of here.")
     return ("Account", [shell.row("Signed In As", e(name)),
                         '<form class="item" method="post" action="/signout"><span>This Browser</span>'
                         '<button type="submit">Sign Out</button></form>'],
-            "Signing out ends the session in this browser only.")
+            "Signing out ends the session in this browser only, and removes the offline copies kept on it.")
 
 
-def signin_needed(ctx, target):
-    """The 401 page for a browser without a session when the built-in sign-in is on: a link to /signin?next=<target>.
-    No board data: the caller hasn't been let in (ctx is the bare appearance cookies)."""
-    href = "/signin?next=" + quote(target, safe="")
-    body = ('%s<main class="signin"><h1>Sign In</h1>'
-            '<form class="group" method="get" action="/signin"><input type="hidden" name="next" value="%s">'
-            '<p class="item">Konbini needs you to <a href="%s">sign in</a> first.</p>'
-            '<button type="submit">Sign In</button></form>'
-            '<p class="footnote">A session from another Machiya room counts here too when the rooms share a cookie '
-            'domain.</p></main>') % (shell.header("konbini", [], "", shell.rooms(), settings=False), e(target), e(href))
-    return shell.page(ctx, "konbini", "Sign In - konbini", body, manifest=False)
-
-
-def settings(ctx, cards, version, vaultkit, status_text, account=""):
+def settings(ctx, cards, version, vaultkit, status_text, account="", session=False):
     """/settings: Appearance, Board, Apps, Account (a signed-in session only), About (docs/ui.md; per device, in
     Shiori's style)."""
     board = ("Board", [shell.select(label, key, choices, setting(ctx, key), cookie=True)
@@ -644,9 +667,10 @@ def settings(ctx, cards, version, vaultkit, status_text, account=""):
              "Done Cards is how many finished cards each lane shows, newest first; All shows every one. "
              "Offline Copies are the pages this device keeps to show when the board can't be reached; "
              "Clear Offline Copies removes them.")
-    body = shell.settings_page([shell.appearance_section(ctx), board, shell.apps_section("konbini", shell.rooms(), {}),
-                                account_section(account), shell.about_section("konbini", version, status_text, vaultkit)], "konbini")
-    return page(ctx, "kanban", "settings - konbini", board_header(ctx, counts_of(cards), "Settings", "") + body,
+    body = shell.settings_page([shell.appearance_section(ctx, synced=bool(getattr(ctx, "prefs_url", ""))), board,
+                                shell.apps_section(ROOM, shell.rooms(), {}), account_section(account, session),
+                                shell.about_section(ROOM, version, status_text, vaultkit)], ROOM)
+    return page(ctx, "Settings", board_header(ctx, counts_of(cards), "Settings", "") + body,
                 KANBAN_TABS, "")
 
 
@@ -713,8 +737,8 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
          % (quote(card["slug"]), quote(card["slug"]))),
         # The note is read in Kura and edited in Obsidian; the board shows the project.
         ("Note", '%s%s%s' % (
-            e(card["path"]), (' &middot; <a href="%s/n/%s">View in Kura</a>' % (e(KURA_URL), quote(note))) if KURA_URL else "",
-            (' &middot; <a href="%s">Edit in Obsidian</a>' % e(obsidian)) if obsidian else "")),
+            e(card["path"]), (' &middot; <a href="%s">View in Kura</a>' % e(kura_url(note))) if KURA_URL else "",
+            (' &middot; <a href="%s">Open in Obsidian</a>' % e(obsidian)) if obsidian else "")),
     ]
     table = "".join('<tr><th>%s</th><td>%s</td></tr>' % (k, v) for k, v in rows if v)
     body = (
@@ -727,7 +751,7 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
                for key in ("stream", "goal")),
            tags_form(card, tagmsg, pending), reading,
            history(ctx, events), quote(card["slug"])))
-    return page(ctx, "kanban", card["title"] + " - konbini", board_header(ctx, counts_of(cards), card["title"], "") + body,
+    return page(ctx, card["title"], board_header(ctx, counts_of(cards), card["title"], "") + body,
                 KANBAN_TABS, "board")
 
 
@@ -789,7 +813,7 @@ def archived(ctx, cards, activity=None):
     body = ('<main class="posts"><p class="none">Archived cards keep their notes and kits; move one back from its card page to revive it.</p>'
             '<section><h2 class="sechead">Archived <span class="colcount">%d</span></h2><ul class="postlist plainlist">%s</ul></section></main>'
             % (len(items), rows))
-    return page(ctx, "kanban", "archived - konbini", board_header(ctx, counts_of(cards), "Archived", "") + body, KANBAN_TABS, "board")
+    return page(ctx, "Archived", board_header(ctx, counts_of(cards), "Archived", "") + body, KANBAN_TABS, "board")
 
 
 def share(ctx, cards, title="", url="", text="", lanes=()):
@@ -804,17 +828,27 @@ def share(ctx, cards, title="", url="", text="", lanes=()):
             '<label>Area <select name="area">%s</select></label>'
             '<div class="row"><button type="submit">Add to backlog</button></div></form></main>'
             % (e(title), e(url), e(text), opts))
-    return page(ctx, "kanban", "capture - konbini", board_header(ctx, counts_of(cards), "Capture", "") + body, KANBAN_TABS, "board")
+    return page(ctx, "Capture", board_header(ctx, counts_of(cards), "Capture", "") + body, KANBAN_TABS, "board")
 
 
-def message(ctx, title, text):
-    return page(ctx, "kanban", title, '<main class="msg"><h2>%s</h2><p>%s</p></main>' % (e(title), e(text)))
+def message(ctx, title, text, actions=(("/", "Go to the Board"),)):
+    """A short page (a write that wasn't saved, ...) inside the room's header and tabs, never a dead end."""
+    return page(ctx, title, header(ctx, ROOM, "/", KANBAN_NAV, "") + shell.message(title, text, actions),
+                KANBAN_TABS, "")
 
 
-def offline(ctx, app):
-    return page(ctx, app, "Offline", '<main class="msg"><h2>Offline</h2><p>This page needs the network. '
-                'If you are on the phone, check that you can reach the server. Pages you have opened before '
-                'still work: <a href="%s">Konbini</a>.</p></main>' % APPS[app]["start"], KANBAN_TABS, "")
+def not_found(ctx, what=""):
+    """A 404 inside the room's header and tabs: what wasn't found, and the way home."""
+    return page(ctx, "Not Found", header(ctx, ROOM, "/", KANBAN_NAV, "") + shell.not_found(ROOM, what),
+                KANBAN_TABS, "")
+
+
+def offline(ctx):
+    """The precached /offline (shell.offline): the header and tabs, but no search box, status line or anything else
+    that would be stale when it's shown."""
+    body = (shell.header(ROOM, KANBAN_NAV, "", shell.rooms()) + shell.offline(ROOM) + shell.footer(ROOM))
+    return shell.page(ctx, ROOM, shell.title(ROOM, "Offline"), body, KANBAN_TABS, "",
+                      stylesheets=[static_url("board.css")], scripts=[static_url("board.js")], icons=ICON)
 
 
 # -- calendar and roundups -------------------------------------------------------
@@ -879,11 +913,12 @@ def calendar(ctx, month, cards):
         bars.append(
             '<div class="grow"><a class="gname" href="/p/%s">%s</a>'
             '<div class="gtrack">%s<div class="gbar col-%s%s" style="left:%.1f%%;width:%.1f%%" title="%s &rarr; %s">%s</div></div>'
-            '<span class="gdates">%s &rarr; %s <span class="col-badge col-%s">%s</span></span></div>'
+            '<span class="gdates">%s <span class="col-badge col-%s">%s</span></span></div>'
             % (quote(c["slug"]), e(c["title"]),
                ('<span class="gtoday" style="left:%.1f%%"></span>' % ((today - start).days / days_in * 100)) if start <= today < month["end"] else "",
                c["board"] or "none", "" if en else " open", left, width, s.isoformat(), en.isoformat() if en else "ongoing", marks,
-               s.strftime("%b %d"), en.strftime("%b %d") if en else "&middot;", c["board"] or "none", e(SHORT.get(c["board"], ""))))
+               ("%s &rarr; %s" % (s.strftime("%b %d"), en.strftime("%b %d"))) if en else s.strftime("%b %d"),   # no end: no arrow
+               c["board"] or "none", e(SHORT.get(c["board"], ""))))
     spans = "".join(bars)
     # Phones: a compact month grid with dots, then only the days that have something.
     mini, daylist = [], []
@@ -933,7 +968,7 @@ def calendar(ctx, month, cards):
         phone +
         '<p class="legend">%s</p>' % legend +
         ('<section class="spans"><h3 class="sechead">Projects this month</h3><div class="gantt">%s</div></section>' % spans if spans else "") + '</main>')
-    return page(ctx, "kanban", "calendar - konbini",
+    return page(ctx, "Calendar",
                 board_header(ctx, counts_of(cards), start.strftime("%B %Y"), "calendar") + body, KANBAN_TABS, "calendar")
 
 
@@ -972,7 +1007,7 @@ def roundup(ctx, r, cards):
                      '<ul class="roundup">%s</ul></section>' % (key, e(name), len(rows), "".join(items)))
     if not parts:
         parts.append('<p class="none"><b>Nothing Recorded</b> No moves, Log rows or changes in this period.</p>')
-    return page(ctx, "kanban", "roundup - konbini",
+    return page(ctx, "Roundup",
                 board_header(ctx, counts_of(cards), "Roundup: " + r["label"], "roundup") +
                 '<main class="roundup">%s%s</main>' % (navline, "\n".join(parts)), KANBAN_TABS, "roundup")
 
@@ -1026,7 +1061,7 @@ def kit_page(ctx, card, k, html, cards):
             '<p class="foot"><a href="/posts">&larr; posts</a> &middot; <a href="/api/cards/%s/kit">json</a></p></main>'
             % (e(card["title"]), e(card["board"] or "none"), e(COLUMN_TITLES.get(card["board"], "Unsorted")), when,
                size_chips(k["size"]), tools, post_form(card), html, slug))
-    return page(ctx, "kanban", "kit: " + card["title"] + " - konbini",
+    return page(ctx, "Writing Kit: " + card["title"],
                 board_header(ctx, counts_of(cards), "Writing kit", "posts") + body, KANBAN_TABS, "posts")
 
 
@@ -1077,5 +1112,5 @@ def posts(ctx, data, cards, show="ready"):
                          % (quote(x["card"]["slug"]), e(x["card"]["title"]), quote(x["card"]["slug"]), quote(x["card"]["slug"]))
                          for x in data["skipped"]) or '<li class="none"><b>Nothing Skipped</b></li>'))
     parts.append("</main>")
-    return page(ctx, "kanban", "posts - konbini", board_header(ctx, counts_of(cards), "Posts", "posts") + "\n".join(parts),
+    return page(ctx, "Posts", board_header(ctx, counts_of(cards), "Posts", "posts") + "\n".join(parts),
                 KANBAN_TABS, "posts")

@@ -1,5 +1,5 @@
 // machiya.js: shared behaviour for Machiya's web rooms (docs/ui.md). Loaded as a module on every page, before the
-// app's own script. It does five things:
+// app's own script. It does these things:
 //  1. settings: every [data-set] control on /settings saves to localStorage under "<room>Settings" (per device, like
 //     Shiori); controls marked data-cookie also set a cookie of the same name, which the server reads for the first
 //     render (theme, textSize, …). Theme and text size apply at once.
@@ -11,6 +11,12 @@
 //  4. "/" focuses the room's search field (form.search), unless you're typing somewhere.
 //  5. updates (v0.6): when a new service worker is waiting, a "New Version · Reload" toast; Reload tells it to take
 //     over (postMessage {type: "SKIP_WAITING"}) and reloads once it has. Checks for updates on return to the app.
+//  6. server preferences (v0.12): with <meta name="machiya-prefs" content="/api/prefs"> (shell.page(prefs_url=)),
+//     theme and text size follow the person. On load the server's `theme` / `text_size` replace the cookies when they
+//     differ (applied without a reload); a change on /settings is also PUT there. Cookies stay the fast path for the
+//     first paint and offline; any failure (offline, 401, 404) is silent. Only known values are ever applied.
+//  7. sign-out (v0.13): a form posting to /signout first empties the service worker's offline copies (CLEAR_OFFLINE),
+//     so whoever uses this device next can't read what was kept; the server's answer also clears the HTTP cache.
 // Apps can listen for `machiya:setting` events ({detail: {key, value}}) to react to their own settings.
 
 const room = document.body.dataset.room || "app";
@@ -65,6 +71,42 @@ if (domain) {
 // hide rooms switched off on this device (every page)
 for (const [k, v] of Object.entries(settings)) if (k.startsWith("show_") && v === false) apply(k, v);
 
+// server preferences (6.): the values machiya.js itself writes, and their keys in /api/prefs
+const prefsUrl = (document.querySelector('meta[name="machiya-prefs"]') || {}).content || "";
+const KNOWN = { theme: ["system", "night", "day"], textSize: ["xsmall", "small", "standard", "large", "xlarge"] };
+const SERVER_KEY = { theme: "theme", textSize: "text_size" };
+let changedHere = false;                              // a choice made on this page wins over a late server answer
+function current(key) {                               // as shell.prefs() reads it: the shared cookie first
+  let v = readCookie("machiya_" + key) ?? readCookie(key);
+  if (v === "auto") v = "system";
+  return KNOWN[key].includes(v) ? v : (key === "theme" ? "system" : "standard");
+}
+function pushPrefs() {
+  if (!prefsUrl) return;
+  const body = JSON.stringify({ prefs: { theme: current("theme"), text_size: current("textSize") } });
+  fetch(prefsUrl, { method: "PUT", credentials: "same-origin", body,
+                    headers: { "Content-Type": "application/json", Accept: "application/json" } }).catch(() => {});
+}
+if (prefsUrl) {
+  fetch(prefsUrl, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      const p = data && data.prefs;
+      if (!p || typeof p !== "object" || changedHere) return;
+      for (const key of Object.keys(KNOWN)) {
+        const value = p[SERVER_KEY[key]];
+        if (!KNOWN[key].includes(value) || value === current(key)) continue;   // unknown values are never applied
+        setCookie(key, value);
+        const all = load();
+        all[key] = value;
+        save(all);
+        for (const el of document.querySelectorAll(`[data-set="${key}"]`)) el.value = value;
+        apply(key, value);
+      }
+    })
+    .catch(() => {});
+}
+
 // the /settings page
 for (const el of document.querySelectorAll("[data-set]")) {
   const key = el.dataset.set;
@@ -79,6 +121,7 @@ for (const el of document.querySelectorAll("[data-set]")) {
     save(all);
     if (cookie || (domain && shared(key))) setCookie(key, value);
     apply(key, value);
+    if (Object.hasOwn(KNOWN, key)) { changedHere = true; pushPrefs(); }
   });
 }
 
@@ -105,6 +148,15 @@ function askWorker(msg) {
     ch.port1.onmessage = (ev) => resolve(ev.data);
     w.postMessage(msg, [ch.port2]);
     setTimeout(() => resolve(null), 5000);
+  });
+}
+// sign-out (7.): the offline copies go first; at most a second's wait, then the form goes anyway
+for (const form of document.querySelectorAll('form[action="/signout"]')) {
+  form.addEventListener("submit", (ev) => {
+    if (form.dataset.cleared) return;
+    ev.preventDefault();
+    const go = () => { form.dataset.cleared = "1"; form.submit(); };
+    Promise.race([askWorker({ type: "CLEAR_OFFLINE" }), new Promise((r) => setTimeout(r, 1000))]).then(go, go);
   });
 }
 const offlineRow = document.querySelector(".offline-copies");

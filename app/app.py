@@ -44,6 +44,8 @@ import datetime
 # theirs on import. A missing or bad file stops start-up, naming the file and line (never the line's text).
 from vaultkit import envfile
 try:
+    # "kanban", not the room key "konbini": the settings keep their KANBAN_ prefix and env file name, so existing
+    # installs keep working (modern.ROOM names everything else).
     ENV_FILE = envfile.load_for("kanban")
 except (OSError, envfile.EnvFileError) as exc:
     sys.exit("konbini: env file: %s" % exc)
@@ -88,9 +90,11 @@ BIND = os.environ.get("KANBAN_BIND", "0.0.0.0").strip() or "0.0.0.0"
 OPEN_ACTOR = "local"            # open mode: who every event names
 # Machiya's identity file (MACHIYA_IDENTITY_FILE, vaultkit.identity): who is calling and what they may do here (the
 # konbini grants read, write, areas). None without one: the KANBAN_TAILNET_USERS gate and `agent == "web"`, as before.
+# The session cookie's Secure flag and vaultkit's same-origin rule follow KANBAN_BOARD_URL's scheme (https unless it
+# says http://), with or without an identity file.
+SECURE = not os.environ.get("KANBAN_BOARD_URL", "").strip().startswith("http://")
 try:
-    IDENTITY = identity.load_for("konbini", os.environ, bind=BIND,
-                                 secure=not os.environ.get("KANBAN_BOARD_URL", "").strip().startswith("http://"))
+    IDENTITY = identity.load_for("konbini", os.environ, bind=BIND, secure=SECURE)
 except identity.IdentityError as err:
     raise SystemExit("konbini: identity: %s" % err)
 
@@ -155,7 +159,7 @@ modern.BOARD_URL = os.environ.get("KANBAN_BOARD_URL", "").rstrip("/")
 # Niwa, the garden, is its own service (machiya-kobo/niwa): /garden/* here redirects there.
 modern.GARDEN_URL = os.environ.get("KANBAN_NIWA_URL", "").rstrip("/")
 modern.KURA_URL = os.environ.get("KANBAN_KURA_URL", "").rstrip("/")
-# The Obsidian vault's name for "Edit in Obsidian" links (obsidian://open?vault=<name>); empty = no such links.
+# The Obsidian vault's name for "Open in Obsidian" links (obsidian://open?vault=<name>); empty = no such links.
 modern.OBSIDIAN_VAULT = os.environ.get("KANBAN_OBSIDIAN_VAULT", "").strip()
 modern.set_sisters()
 ALLOWED_HOSTS = allowed_hosts(modern.BOARD_URL, os.environ.get("KANBAN_ALLOWED_HOSTS", ""))
@@ -178,13 +182,25 @@ kits = Kits(store, garden, timeline, blog, modern.BOARD_URL, links, hister, gard
 # follows (load_for(secure=...) above); without it, only an https page naming the request's own Host counts.
 SIGNIN_ORIGINS = tuple(o for o in [signin.origin_of(modern.BOARD_URL)] if o)
 # Preferences live in their own SQLite file next to KANBAN_DB (the board's index is a cache that `rebuild` may
-# recreate; nobody's preferences go with it): <KANBAN_DB's folder>/prefs.sqlite3, 0600.
+# recreate; nobody's preferences go with it): <KANBAN_DB's folder>/prefs.sqlite3, 0600. With an identity file they
+# are the principal's; without one (vaultkit 0.12) the Tailscale login's or open mode's owner's (identity.ambient),
+# so theme and text size follow the person to a new device either way. Opened on first use.
 PREFS_DB = os.path.join(os.path.dirname(os.path.abspath(DB)), "prefs.sqlite3")
-PREFS = signin.Prefs(PREFS_DB) if IDENTITY is not None else None
+_prefs = []
+# Without an identity file a prefs PUT must come from KANBAN_BOARD_URL (https unless it says http://), else from the
+# request's own Host over https (Tailscale serve), or over http too in open mode (prefs_origins()).
+PREFS_SECURE = SECURE if os.environ.get("KANBAN_BOARD_URL", "").strip() else AUTH != "open"
+
+
+def prefs_store():
+    if not _prefs:
+        _prefs.append(signin.Prefs(PREFS_DB))
+    return _prefs[0]
+
+
 # Routes that exist only with an identity file (without one they answer 404, as before). The three posts sit before
-# the gate (they are how a caller gets past it); /api/prefs after it (the konbini read grant).
+# the gate (they are how a caller gets past it). /api/prefs is served in every mode, after the gate.
 SIGNIN_POSTS = {"/signin": signin.MAX_FORM, "/signout": signin.MAX_FORM, "/api/pair": signin.MAX_PAIR}
-SIGNIN_ROUTES = set(SIGNIN_POSTS) | {"/api/prefs"}
 SHARED_UI = ("/static/machiya.css", "/static/machiya.js", "/static/machiya-sw.js")
 # The vault push into Hister and the note reader are Kura's (machiya-kobo/kura).
 
@@ -242,6 +258,15 @@ def local_target(referer, keep_query=True):
     return target
 
 
+def page_headers(headers):
+    """An HTML page's headers plus vaultkit's security headers (v0.13): the CSP (script-src 'self': no inline script or
+    on...= attribute runs), nosniff and a same-origin Referer. A header the page already has is kept, except that a CSP
+    is always added: a page with its own (the sign-in pages' frame-ancestors 'none') gets both, and both apply."""
+    have = {k.lower() for k, _ in headers}
+    return list(headers) + [(k, v) for k, v in shell.security_headers()
+                            if k == "Content-Security-Policy" or k.lower() not in have]
+
+
 def cookies(header):
     out = {}
     for part in (header or "").split(";"):
@@ -292,6 +317,19 @@ def make_handler(listener):
             who = self.who()
             return bool(who) and who.principal.can("konbini", action)
 
+        def principal(self):
+            """Whose preferences these are: the identity file's principal, or without a file the one the old gate let
+            in (identity.ambient: the Tailscale login, or open mode's owner). None: nobody known (no preferences)."""
+            if IDENTITY is not None:
+                who = self.who()
+                return who.principal if who else None
+            return identity.ambient(AUTH, self.headers) if self.allowed() else None
+
+        def signed_in(self):
+            """The signed-in name for the header's person button and Settings, Account (identity file mode only)."""
+            p = self.principal() if IDENTITY is not None else None
+            return p.name if p else ""
+
         def areas(self):
             """For writer's tag checks: whether this request may add area/* lanes and new tags (the areas grant), or
             None without an identity file (the writer then asks `agent == "web"`, as before)."""
@@ -318,18 +356,29 @@ def make_handler(listener):
                 status, text = 403, "forbidden"
             if IDENTITY is not None and api:
                 self.send_json(status, {"error": text}, headers=[("Cache-Control", "no-store")])
-            elif IDENTITY is not None and IDENTITY.signin and status == 401:
-                # a browser without a session: a page with the way in (KANBAN_SIGNIN=1), back here afterwards
+            elif IDENTITY is not None and status == 401 and (IDENTITY.signin or self.browser()):
+                # a browser nobody is signed in on: vaultkit's 401 page (the plain header, nothing about the house),
+                # with the way in when sign-in is on (KANBAN_SIGNIN=1), back here afterwards; else how Konbini knows
+                # people. Anything that isn't a browser without sign-in keeps the plain-text answer.
                 target = self.path if self.command in ("GET", "HEAD") else "/"
-                self.send(status, modern.signin_needed(shell.prefs(self.headers.get("Cookie")), signin.safe_next(target)),
-                          headers=list(signin.PAGE_HEADERS[1:]))
+                html = signin.needed("konbini", signin.safe_next(target), shell.prefs(self.headers.get("Cookie")),
+                                     signin=IDENTITY.signin)
+                self.reply(status, list(signin.PAGE_HEADERS) + [("Set-Cookie", c) for c in self.session_cookies()],
+                           html.encode())
             elif IDENTITY is not None:
                 self.send(status, text + "\n", "text/plain", headers=[("Cache-Control", "no-store")])
             else:
                 self.send(status, text + "\n", "text/plain")
 
+        def browser(self):
+            """A browser asking for a page (its Accept names HTML)."""
+            return "text/html" in (self.headers.get("Accept") or "")
+
         def reply(self, status, headers, body):
-            """Send a vaultkit.signin answer: (status, [(header, value)], body bytes)."""
+            """Send a vaultkit.signin answer: (status, [(header, value)], body bytes). A page (the sign-in form) also
+            gets vaultkit's security headers; its own CSP (frame-ancestors 'none') stays, and both apply."""
+            if any(k.lower() == "content-type" and v.startswith("text/html") for k, v in headers):
+                headers = page_headers(headers)
             self.send_response(status)
             for k, v in headers:
                 self.send_header(k, v)
@@ -370,10 +419,11 @@ def make_handler(listener):
             return self.reply(*signin.handle_pair(IDENTITY, self.headers, body, client))
 
         def prefs(self):
-            """GET/PUT /api/prefs, after the gate (konbini read), as the resolved principal. A PUT follows vaultkit's
-            rule, not the board's /api write rule: a token (Authorization) needs no Origin and no X-Agent (a browser
-            never adds a token on its own); a cookie, Tailscale, proxy or open-mode principal must be same-origin
-            (SIGNIN_ORIGINS). Preferences aren't the board, so no write grant is asked."""
+            """GET/PUT /api/prefs, after the gate (konbini read), as the resolved principal (without an identity file:
+            identity.ambient's). A PUT follows vaultkit's rule, not the board's /api write rule: a token
+            (Authorization) needs no Origin and no X-Agent (a browser never adds a token on its own); a cookie,
+            Tailscale, proxy or open-mode principal must be same-origin (SIGNIN_ORIGINS). Preferences aren't the
+            board, so no write grant is asked."""
             body = b""
             if self.command == "PUT":
                 body = signin.read_body(self.headers, self.rfile, signin.MAX_PREFS)
@@ -382,9 +432,20 @@ def make_handler(listener):
                     return self.reply(413, list(signin.JSON_HEADERS) + [("Connection", "close")],
                                       b'{"error": "request body too large"}')
             method = "GET" if self.command == "HEAD" else self.command
-            status, headers, out = signin.handle_prefs(PREFS, self.who().principal, method, self.headers, body,
-                                                       IDENTITY.secure, SIGNIN_ORIGINS)
+            secure = IDENTITY.secure if IDENTITY is not None else PREFS_SECURE
+            status, headers, out = signin.handle_prefs(prefs_store(), self.principal(), method, self.headers, body,
+                                                       secure, self.prefs_origins())
             self.reply(status, headers + [("Set-Cookie", c) for c in self.session_cookies()], out)
+
+        def prefs_origins(self):
+            """Where a cookie-borne (or open-mode) prefs PUT may come from: KANBAN_BOARD_URL's origin; else, in open
+            mode with no identity file, this request's own Host, which host_allowed() already checked (an IP literal,
+            localhost or a listed name, never a name a stranger's page pointed here), so the theme syncs over plain
+            http on localhost too. vaultkit's rule alone refuses every plain-http page without origins."""
+            if SIGNIN_ORIGINS or IDENTITY is not None or AUTH != "open":
+                return SIGNIN_ORIGINS
+            host = (self.headers.get("Host") or "").strip().lower()
+            return ("http://" + host, "https://" + host) if host_allowed(host, ALLOWED_HOSTS) else ()
 
         def public_asset(self, path):
             """The sign-in page's own look (the shared UI and the room's icons) answers before the gate when sign-in is
@@ -406,11 +467,15 @@ def make_handler(listener):
             c = common.Ctx(p.theme, p.text, p.extra)
             c.status = footer_status()
             c.alert = board_alert()
+            c.prefs_url = "/api/prefs" if self.principal() else ""     # machiya.js syncs theme and text size
+            c.who = self.signed_in()
             c.alert_links = [(os.path.splitext(os.path.basename(r))[0], modern.obsidian_url(r[:-3]))
                              for r in store.phone_conflicts[:5]] if modern.OBSIDIAN_VAULT else []
             return c
 
         def send(self, status, body, ctype="text/html", headers=()):
+            if ctype == "text/html":
+                headers = page_headers(headers)
             if isinstance(body, str):
                 data = body.encode("utf-8")
                 ctype += "; charset=utf-8"
@@ -519,10 +584,10 @@ def make_handler(listener):
             if not self.allowed():
                 self.refuse()
                 return
-            if path in SIGNIN_ROUTES:
-                if IDENTITY is None:            # no identity file: these routes don't exist
-                    return self.send_json(404, {"error": "not found"}) if path.startswith("/api/") \
-                        else self.send(404, "not found\n", "text/plain")
+            if path in SIGNIN_POSTS:            # no identity file: these routes don't exist
+                return self.send_json(404, {"error": "not found"}) if path.startswith("/api/") \
+                    else self.send(404, "not found\n", "text/plain")
+            if path == "/api/prefs":
                 return self.prefs()
             if path == "/api/garden/suggest" or path == "/garden" or path.startswith("/garden/"):
                 # The garden's writes and suggestions are Niwa's.
@@ -626,7 +691,7 @@ def make_handler(listener):
                     self.send_json(e.status, dict(error=e.message, **e.extra), close)
                 else:
                     ctx = self.ctx()
-                    self.send(e.status, V(ctx).message(ctx, "Not saved", e.message), headers=close)
+                    self.send(e.status, V(ctx).message(ctx, "Not Saved", e.message), headers=close)
 
         do_POST = do_PATCH = do_PUT = do_DELETE = do_write
 
@@ -647,25 +712,27 @@ def make_handler(listener):
             if not (self.public_asset(path) and self.host_ok()) and not self.allowed():
                 self.refuse()
                 return
-            if path == "/api/prefs" and IDENTITY is not None:
+            if path == "/api/prefs":
                 return self.prefs()
             ctx = self.ctx()
-            app_name = "kanban"
             if path == "/manifest.webmanifest":
-                self.send(200, json.dumps(modern.manifest(app_name, ctx.theme), indent=1), "application/manifest+json",
+                self.send(200, json.dumps(modern.manifest(ctx.theme), indent=1), "application/manifest+json",
                           headers=[("Cache-Control", "no-cache")])
                 return
             if path == "/sw.js":
-                self.send(200, modern.service_worker(app_name), "text/javascript", headers=[("Cache-Control", "no-cache")])
+                self.send(200, modern.service_worker(), "text/javascript", headers=[("Cache-Control", "no-cache")])
                 return
             if path == "/offline":
-                self.send(200, V(ctx).offline(ctx, app_name))
+                self.send(200, V(ctx).offline(ctx))
                 return
             if path.startswith("/static/icons/"):
                 name = path.rsplit("/", 1)[1]
-                if name.startswith("konbini"):      # the shell names icons after the room; the files are kanban-*
-                    name = "kanban" + name[len("konbini"):]
-                if name in modern.ICONS:
+                rest = name[len("kanban"):] if name.startswith("kanban") else None
+                if rest is not None and modern.ROOM + rest in modern.ICONS:
+                    # the icons' old names (kanban-*): home-screen icons and old caches still ask for them
+                    self.send(301, "", "text/plain", headers=[("Location", modern.icon_url(rest)),
+                                                             ("Cache-Control", "public, max-age=604800")])
+                elif name in modern.ICONS:
                     ctype = "image/svg+xml" if name.endswith(".svg") else "image/png"
                     with open(os.path.join(modern.ICON_DIR, name), "rb") as f:
                         self.send(200, f.read(), ctype, headers=[("Cache-Control", "public, max-age=604800")])
@@ -704,12 +771,12 @@ def make_handler(listener):
                 self.send(200, V(ctx).timeline_page(ctx, cards, timeline.range(start, end, cards, group), start, end, group))
                 return
             if path in ("/plan", "/streams"):          # Plan opens on Streams
-                self.send(200, V(ctx).streams_page(ctx, cards_with_deps()[0]))
+                self.send(200, V(ctx).streams_page(ctx, cards_with_deps()[0], "Plan" if path == "/plan" else "Streams"))
                 return
             if path.startswith("/streams/"):
                 html = V(ctx).stream_page(ctx, unquote(path[len("/streams/"):]), cards_with_deps()[0], store.claims(),
                                           store.meta("rev"))
-                self.send(200 if html else 404, html or V(ctx).message(ctx, "Not found", "No stream " + path[9:]))
+                self.send(200 if html else 404, html or V(ctx).not_found(ctx, path))
                 return
             if path == "/deps":
                 cards, graph = cards_with_deps()
@@ -742,7 +809,7 @@ def make_handler(listener):
                 slug = path.split("/")[2]
                 card = store.card(slug)
                 if not card:
-                    self.send(404, V(ctx).message(ctx, "Not found", "No card " + slug))
+                    self.send(404, V(ctx).not_found(ctx, path))
                 else:
                     k = kits.build(card)
                     md = kits.markdown(k)
@@ -765,7 +832,7 @@ def make_handler(listener):
                                                 (query.get("tagmsg") or [""])[0], (query.get("pending") or [""])[0],
                                                 reading, graph.get(card["slug"])))
                 else:
-                    self.send(404, V(ctx).message(ctx, "Not found", "No card " + path[3:]))
+                    self.send(404, V(ctx).not_found(ctx, path))
             elif path == "/calendar":
                 month = (query.get("month") or [""])[0]
                 anchor = anchor_date(month + "-01" if len(month) == 7 else month)
@@ -797,10 +864,10 @@ def make_handler(listener):
                     self.send(200, f.read(), "text/css" if name.endswith(".css") else "text/javascript",
                               headers=[("Cache-Control", cache)])
             elif path == "/settings":
-                who = self.who() if IDENTITY is not None else None
-                account = who.principal.name if who and who.principal.via == "session" else ""
+                p = self.principal() if IDENTITY is not None else None
                 self.send(200, V(ctx).settings(ctx, store.cards(), VERSION, "v" + vaultkit.__version__,
-                                               footer_status()["text"], account))
+                                               footer_status()["text"], p.name if p else "",
+                                               bool(p) and p.via == "session"))
             elif path in ("/static/board.css", "/static/board.js", "/static/Sortable.min.js", "/static/mermaid.min.js"):
                 name = path.rsplit("/", 1)[1]
                 ctype = "text/css" if name.endswith(".css") else "text/javascript"
@@ -871,7 +938,7 @@ def make_handler(listener):
                                                   "phone_conflicts": store.phone_conflicts},
                                      "auth": AUTH, "legacy_names": store.legacy})
             else:
-                self.send(404, V(ctx).message(ctx, "Not found", path))
+                self.send(404, V(ctx).not_found(ctx, path))
 
     return Handler
 

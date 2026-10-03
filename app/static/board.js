@@ -4,9 +4,9 @@ document.body.classList.add("js");
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-const app = document.body.dataset.app || "kanban";
-const gardenBase = app === "kanban" ? "/garden" : "";
-const board = document.getElementById("board");
+// The board's own <main id="board"> (the board, a stream's board, Now, Review): not Settings' "Board" section, whose
+// heading is <h2 id="board"> since vaultkit 0.13 (and which would reload Settings in a loop on every revision).
+const board = document.querySelector("main#board");
 const vault = ($('meta[name="obsidian-vault"]') || {}).content || "";   // KANBAN_OBSIDIAN_VAULT; empty = no Obsidian links
 const main = $("main");
 let rev = board ? board.dataset.rev : "";
@@ -19,6 +19,17 @@ function stored(key, fallback) {
 }
 function store(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode */ }
+}
+// This browser's own choices live under konbini.* (the room's name). Values saved under the old kanban.* names (and
+// app.hint) move over once; a value already saved under the new name wins.
+for (const [from, to] of [["kanban.col", "konbini.col"], ["kanban.collapsed", "konbini.collapsed"], ["app.hint", "konbini.hint"]]) {
+  try {
+    const old = localStorage.getItem(from);
+    if (old !== null) {
+      if (localStorage.getItem(to) === null) localStorage.setItem(to, old);
+      localStorage.removeItem(from);
+    }
+  } catch (e) { /* private mode */ }
 }
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -38,6 +49,12 @@ async function send(method, url, body) {
   if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
   return data;
 }
+// A write that didn't go through: "offline" when the request never reached the board (fetch throws a TypeError),
+// else the board's reason. Nothing is queued: the change is simply not made.
+function notSavedText(e) {
+  return e instanceof TypeError ? "You're offline, so this wasn't saved." : "Not saved: " + (e && e.message || e);
+}
+function notSaved(e) { toast(notSavedText(e), 4000); }
 async function refreshRev() {
   try { rev = (await (await fetch("/api/rev")).json()).rev; } catch (e) { /* next poll catches up */ }
 }
@@ -48,6 +65,47 @@ function banner(cls, html) {
   (main || document.body).prepend(el);
   return el;
 }
+
+// A card's column select posts its form when it changes (the page has no inline handlers: the CSP allows only
+// scripts from this site). requestSubmit, unlike submit(), fires the form's submit event.
+for (const s of $$("select[data-submit]")) {
+  s.addEventListener("change", () => (s.form.requestSubmit ? s.form.requestSubmit() : s.form.submit()));
+}
+
+// Forms that change the board (card moves, edits, tags, new cards, capture) post with fetch, so a lost connection
+// leaves the page as it is with a line saying nothing was saved, instead of the browser's error page. The board's
+// answer is followed as before: its redirect (back to the page, or to the new card), or its "Not Saved" reason
+// shown under the form. Sign-in and sign-out stay ordinary posts (machiya.js handles sign-out).
+document.addEventListener("submit", async (ev) => {
+  const form = ev.target;
+  if (ev.defaultPrevented || !(form instanceof HTMLFormElement) || form.method.toLowerCase() !== "post") return;
+  const action = new URL(form.action, location.href);
+  if (action.origin !== location.origin || ["/signin", "/signout"].includes(action.pathname)) return;
+  ev.preventDefault();
+  const data = new FormData(form);
+  if (ev.submitter && ev.submitter.name) data.append(ev.submitter.name, ev.submitter.value);
+  const controls = $$("button, select, input", form).filter((c) => !c.disabled);
+  controls.forEach((c) => { c.disabled = true; });
+  const say = (text) => {
+    let msg = form.nextElementSibling;
+    if (!msg || !msg.classList.contains("formmsg")) {
+      msg = document.createElement("p");
+      msg.className = "formmsg";
+      msg.setAttribute("role", "alert");
+      form.after(msg);
+    }
+    msg.textContent = text;
+  };
+  try {
+    const r = await fetch(action, { method: "POST", body: new URLSearchParams(data), credentials: "same-origin" });
+    if (r.ok) { location.assign(r.url); return; }              // the redirect fetch followed: the page to show
+    const page = new DOMParser().parseFromString(await r.text(), "text/html");
+    say(notSavedText(new Error((page.querySelector("main.msg p") || {}).textContent || "HTTP " + r.status)));
+  } catch (e) {
+    say(notSavedText(e));
+  }
+  controls.forEach((c) => { c.disabled = false; });
+});
 
 // -- PWA: service worker, offline copy, install hint ----------------------
 if ("serviceWorker" in navigator) {
@@ -60,12 +118,13 @@ if (document.body.dataset.offline !== undefined) {
     const mins = Math.max(1, Math.round((Date.now() - at) / 60000));
     when = mins < 60 ? mins + " min ago" : mins < 1440 ? Math.round(mins / 60) + " h ago" : Math.round(mins / 1440) + " d ago";
   }
-  banner("offline", "<span><b>Offline.</b> Showing a saved copy" + (when ? " from " + when : "") + ". Is Tailscale on?</span>");
+  banner("offline", "<span><b>Offline.</b> Showing a copy saved " + (when || "earlier")
+    + ". Changes can't be saved until Konbini can be reached again.</span>");
 }
 const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
 const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-// Installed apps have no browser chrome: give inner pages a back control.
-const roots = ["/", "/now", "/calendar", "/roundup", "/garden/", "/stream", "/tags", "/queue"];
+// Installed apps have no browser chrome: give inner pages a back control (not the top-level pages in the nav).
+const roots = ["/", "/now", "/review", "/plan", "/posts", "/calendar", "/roundup"];
 if (standalone && history.length > 1 && !roots.includes(location.pathname)) {
   const back = document.createElement("button");
   back.className = "back";
@@ -75,10 +134,10 @@ if (standalone && history.length > 1 && !roots.includes(location.pathname)) {
   back.addEventListener("click", () => history.back());
   $(".topbar")?.prepend(back);
 }
-if (ios && !standalone && !stored("app.hint", false)) {
+if (ios && !standalone && !stored("konbini.hint", false)) {
   const el = banner("hint", "<span>Install this as an app: tap <b>Share</b>, then <b>Add to Home Screen</b>.</span>"
     + '<button type="button" aria-label="Dismiss">&times;</button>');
-  $("button", el).addEventListener("click", () => { store("app.hint", true); el.remove(); });
+  $("button", el).addEventListener("click", () => { store("konbini.hint", true); el.remove(); });
 }
 
 // -- action sheet: everything you can do to a card, thumb-sized -----------
@@ -95,7 +154,7 @@ function recount() {
     if (cc) cc.textContent = n;
     totals[col.dataset.board] = (totals[col.dataset.board] || 0) + n;
     const empty = col.querySelector(":scope > .colempty");
-    if (n === 0 && !empty) { const d = document.createElement("div"); d.className = "colempty"; col.append(d); }
+    if (n === 0 && !empty) { const p = document.createElement("p"); p.className = "colempty"; p.textContent = "No cards"; col.append(p); }
     if (n > 0 && empty) empty.remove();
   }
   for (const lane of $$("section.lane")) {
@@ -129,7 +188,6 @@ function openSheet(card) {
     sheet.addEventListener("close", () => { sheetOpen = false; });
   }
   const d = card.dataset;
-  const note = d.note.split("/").map(encodeURIComponent).join("/");
   sheet.innerHTML = '<div class="grip"></div><button class="close" type="button" aria-label="Close">&times;</button>'
     + "<h4>" + esc(d.title) + "</h4>"
     + '<div class="moves">' + COLS.map(([c, l]) =>
@@ -140,7 +198,8 @@ function openSheet(card) {
     + '<button type="button" data-act="note">Add a note…</button>'
     + '<a href="/p/' + encodeURIComponent(d.slug) + '">Open card</a>'
     + '<a href="/p/' + encodeURIComponent(d.slug) + '/kit">Writing kit</a>'
-    + '<a href="' + gardenBase + "/n/" + note + '">' + (d.publish === "1" ? "Read in the garden" : "Garden preview / publish") + "</a>"
+    + (d.garden ? '<a href="' + esc(d.garden) + '">Read in the Garden</a>' : "")
+    + (d.kura ? '<a href="' + esc(d.kura) + '">View in Kura</a>' : "")
     + (vault ? '<a href="obsidian://open?vault=' + encodeURIComponent(vault) + '&file=' + encodeURIComponent(d.note) + '">Open in Obsidian</a>' : "") + '</div>';
   $(".close", sheet).onclick = () => sheet.close();
   for (const b of $$("[data-move]", sheet)) {
@@ -150,7 +209,7 @@ function openSheet(card) {
         sheet.close();
         moveCard(card, b.dataset.move);
         await refreshRev();
-      } catch (e) { alert("Not saved: " + e.message); }
+      } catch (e) { notSaved(e); }
     };
   }
   for (const b of $$("[data-prio]", sheet)) {
@@ -159,7 +218,7 @@ function openSheet(card) {
         await send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { priority: b.dataset.prio ? Number(b.dataset.prio) : null });
         sheet.close();
         location.reload();
-      } catch (e) { alert("Not saved: " + e.message); }
+      } catch (e) { notSaved(e); }
     };
   }
   $("[data-act=note]", sheet).onclick = async () => {
@@ -169,7 +228,7 @@ function openSheet(card) {
       await send("POST", "/api/cards/" + encodeURIComponent(d.slug) + "/events", { type: "comment", body: v.trim() });
       sheet.close();
       toast("Note added");
-    } catch (e) { alert("Not saved: " + e.message); }
+    } catch (e) { notSaved(e); }
   };
   $("[data-act=next]", sheet).onclick = () => {
     sheet.close();
@@ -178,7 +237,7 @@ function openSheet(card) {
     const v = prompt("Next step", d.next || "");
     if (v === null) return;
     send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { next: v.trim() })
-      .then(() => location.reload()).catch((e) => alert("Not saved: " + e.message));
+      .then(() => location.reload()).catch(notSaved);
   };
   sheetOpen = true;
   sheet.showModal();
@@ -188,12 +247,13 @@ for (const b of $$(".card .more")) {
 }
 
 // -- writing kit: hand the markdown to the share sheet, or copy it ---------
-function toast(text) {
+function toast(text, ms = 1800) {
   const el = document.createElement("div");
   el.className = "toast";
+  el.setAttribute("role", "status");
   el.textContent = text;
   document.body.append(el);
-  setTimeout(() => el.remove(), 1800);
+  setTimeout(() => el.remove(), ms);
 }
 for (const b of $$(".kit-share, .kit-copy")) {
   b.addEventListener("click", async () => {
@@ -234,7 +294,7 @@ for (const el of $$(".card .next")) {
           el.textContent = "next: " + input.value.trim();
           card.dataset.next = input.value.trim();
           await refreshRev();
-        } catch (e) { alert("Not saved: " + e.message); }
+        } catch (e) { notSaved(e); }
       }
       input.replaceWith(el);
     };
@@ -252,7 +312,7 @@ if (board) {
   if (coltabs) {
     const phone = matchMedia("(max-width: 760px)");
     const buttons = $$("button", coltabs);
-    let current = new URLSearchParams(location.search).get("col") || stored("kanban.col", "ready");
+    let current = new URLSearchParams(location.search).get("col") || stored("konbini.col", "ready");
     const select = (col, save) => {
       if (!phone.matches) {
         delete document.body.dataset.col;
@@ -261,7 +321,7 @@ if (board) {
       }
       document.body.dataset.col = col;
       buttons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.col === col)));
-      if (save) store("kanban.col", col);
+      if (save) store("konbini.col", col);
     };
     buttons.forEach((b) => b.addEventListener("click", () => { current = b.dataset.col; select(current, true); }));
     select(current, false);
@@ -328,12 +388,12 @@ if (board) {
         await send("PATCH", "/api/cards/" + encodeURIComponent(card.dataset.slug), { board: to });
         moveCard(card, to);
         await refreshRev();
-      } catch (e) { alert("Not saved: " + e.message); }
+      } catch (e) { notSaved(e); }
     }
   });
 
   // Collapsible swimlanes, remembered per browser.
-  const collapsed = new Set(stored("kanban.collapsed", []));
+  const collapsed = new Set(stored("konbini.collapsed", []));
   for (const lane of $$("section.lane")) {
     const head = lane.querySelector(".lanehead");
     if (!head) continue;
@@ -349,7 +409,7 @@ if (board) {
     };
     btn.addEventListener("click", () => {
       collapsed.has(lane.dataset.lane) ? collapsed.delete(lane.dataset.lane) : collapsed.add(lane.dataset.lane);
-      store("kanban.collapsed", [...collapsed]);
+      store("konbini.collapsed", [...collapsed]);
       sync();
     });
     head.prepend(btn);
@@ -375,7 +435,7 @@ if (board) {
   // Drag and drop within a swimlane (long press on touch); the drop sends the
   // column's new order and the server writes board + rank.
   if ($(".lane .col")) {
-    await load("/static/Sortable.min.js");
+    await load(board.dataset.sortable || "/static/Sortable.min.js");   // the versioned URL the worker precached
     for (const lane of $$("section.lane")) {
       for (const col of lane.querySelectorAll(".col")) {
         window.Sortable.create(col, {
@@ -402,8 +462,10 @@ if (board) {
               recount();
               await refreshRev();
             } catch (e) {
-              alert("Not saved: " + e.message);
-              location.reload();
+              notSaved(e);
+              if (!(e instanceof TypeError)) { location.reload(); return; }
+              ev.from.insertBefore(ev.item, ev.from.children[ev.oldIndex] || null);   // offline: put it back
+              recount();
             }
           },
         });

@@ -251,7 +251,7 @@ def boot(**extra):
 
 
 r = boot(KANBAN_AUTH="header", KANBAN_AUTH_HEADER="Remote-User", MACHIYA_IDENTITY_FILE="")
-assert r.returncode != 0 and "KANBAN_AUTH must be tailscale or open, not 'header'" in r.stderr, r.stderr[-300:]
+assert r.returncode != 0 and "KANBAN_AUTH must be tailscale or open or hister, not 'header'" in r.stderr, r.stderr[-300:]
 r = boot(KANBAN_AUTH="header")
 assert r.returncode != 0 and "konbini: identity: auth=header needs" in r.stderr, r.stderr[-300:]
 r = boot(KANBAN_BIND="0.0.0.0")

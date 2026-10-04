@@ -54,6 +54,7 @@ import deps  # noqa: E402
 import goals
 from vaultkit import shell
 from vaultkit import changelog
+from vaultkit import histerauth
 from vaultkit import identity
 from vaultkit import signin
 import vaultkit
@@ -75,10 +76,11 @@ TAILNET_PORT = int(os.environ.get("KANBAN_TAILNET_PORT", "8081"))
 TAILNET_USERS = set(filter(None, os.environ.get("KANBAN_TAILNET_USERS", "").split(",")))
 def auth_mode(value, identity_file=""):
     """KANBAN_AUTH: "tailscale" (the default: Tailscale-User-Login must be in KANBAN_TAILNET_USERS, or in the identity
-    file), "open" (no identity check, for localhost or a trusted LAN), or with an identity file "header" (a trusted
-    proxy's login header, KANBAN_AUTH_HEADER). Anything else refuses to start rather than guess (as Niwa, Kura)."""
+    file), "open" (no identity check, for localhost or a trusted LAN), "hister" (Hister's users are the sign-in, with
+    the tailnet as the fallback; vaultkit.histerauth, never with an identity file), or with an identity file "header"
+    (a trusted proxy's login header, KANBAN_AUTH_HEADER). Anything else refuses to start rather than guess."""
     value = (value or "tailscale").strip().lower()
-    allowed = ("tailscale", "open", "header") if identity_file else ("tailscale", "open")
+    allowed = ("tailscale", "open", "hister", "header") if identity_file else ("tailscale", "open", "hister")
     if value not in allowed:
         raise SystemExit("konbini: KANBAN_AUTH must be %s, not %r" % (" or ".join(allowed), value))
     return value
@@ -94,10 +96,19 @@ OPEN_ACTOR = "local"            # open mode: who every event names
 # The session cookie's Secure flag and vaultkit's same-origin rule follow KANBAN_BOARD_URL's scheme (https unless it
 # says http://), with or without an identity file.
 SECURE = not os.environ.get("KANBAN_BOARD_URL", "").strip().startswith("http://")
+# KANBAN_AUTH=hister (vaultkit.histerauth, docs/identity.md "Hister sign-in"): the board asks the hister-login helper who
+# is calling. None in every other mode, so nothing below changes for them. It is loaded before the identity file, which
+# it refuses to share a board with (not combined yet).
+try:
+    HISTERAUTH = histerauth.load_for("konbini", os.environ, bind=BIND, secure=SECURE)
+except identity.IdentityError as err:
+    raise SystemExit("konbini: hister sign-in: %s" % err)
 try:
     IDENTITY = identity.load_for("konbini", os.environ, bind=BIND, secure=SECURE)
 except identity.IdentityError as err:
     raise SystemExit("konbini: identity: %s" % err)
+# Answered without a sign-in in hister mode, for the probes and the status page (they reach the rest only as the owner)
+PROBES = ("/api/health", "/api/status", "/api/changelog")
 
 
 def host_name(value):
@@ -186,6 +197,7 @@ kits = Kits(store, garden, timeline, blog, modern.BOARD_URL, links, hister, gard
 # Their same-origin checks take KANBAN_BOARD_URL's origin, the setting the session cookie's Secure flag already
 # follows (load_for(secure=...) above); without it, only an https page naming the request's own Host counts.
 SIGNIN_ORIGINS = tuple(o for o in [signin.origin_of(modern.BOARD_URL)] if o)
+modern.SIGNIN_META = histerauth.signin_meta("/signout") if HISTERAUTH is not None else ""   # machiya.js: 401 -> sign-in, Sign Out
 # Preferences live in their own SQLite file next to KANBAN_DB (the board's index is a cache that `rebuild` may
 # recreate; nobody's preferences go with it): <KANBAN_DB's folder>/prefs.sqlite3, 0600. With an identity file they
 # are the principal's; without one (vaultkit 0.12) the Tailscale login's or open mode's owner's (identity.ambient),
@@ -296,10 +308,22 @@ def make_handler(listener):
             """Who is asking, for the log: the principal and how it was proven, or the login as before."""
             if getattr(self, "headers", None) is None:      # a request line too broken to have headers
                 return "-"
+            if HISTERAUTH is not None:
+                return self.hres().actor or "-"
             if IDENTITY is not None:
                 who = self.who()
                 return "%s(%s)" % (who.principal.name, who.principal.via) if who else "-"
             return OPEN_ACTOR if AUTH == "open" else self.headers.get("Tailscale-User-Login", "-")
+
+        def hres(self):
+            """KANBAN_AUTH=hister: vaultkit.histerauth's decision for this request (a Result), worked out once. A page is
+            a browser's top-level load; everything else (an API call, a fetch, the service worker) is never redirected."""
+            if getattr(self, "_hres", None) is None:
+                self._hres = HISTERAUTH.resolve(self.headers, is_page=self.is_page(), path=self.path)
+            return self._hres
+
+        def is_page(self):
+            return self.command in ("GET", "HEAD") and not urlsplit(self.path).path.startswith("/api/") and self.browser()
 
         def who(self):
             """The identity file's answer for this request (vaultkit.identity Result), worked out once."""
@@ -309,6 +333,8 @@ def make_handler(listener):
 
         def owner(self):
             """The owner: everyone the gate admits without an identity file (as before), else the file's owner."""
+            if HISTERAUTH is not None:
+                return self.allowed()           # one owner: whoever the gate admits (the probes pass without it)
             if IDENTITY is None:
                 return True
             who = self.who()
@@ -325,6 +351,9 @@ def make_handler(listener):
         def principal(self):
             """Whose preferences these are: the identity file's principal, or without a file the one the old gate let
             in (identity.ambient: the Tailscale login, or open mode's owner). None: nobody known (no preferences)."""
+            if HISTERAUTH is not None:
+                res = self.hres()
+                return res.principal if self.host_ok() and res else None
             if IDENTITY is not None:
                 who = self.who()
                 return who.principal if who else None
@@ -343,6 +372,8 @@ def make_handler(listener):
         def allowed(self):
             if not self.host_ok():
                 return False            # DNS rebinding, with or without an identity file
+            if HISTERAUTH is not None:
+                return bool(self.hres())
             if IDENTITY is not None:
                 return self.can("read")
             if AUTH == "open":
@@ -351,6 +382,12 @@ def make_handler(listener):
 
         def refuse(self):
             api = urlsplit(self.path).path.startswith("/api/")
+            if HISTERAUTH is not None and self.host_ok():
+                # signed out: a page goes to the helper (once, then a page with a link), an API call gets 401 JSON with
+                # the sign-in address; a Hister user this board doesn't admit is 403; no fallback and no helper is 503
+                status, headers, body = HISTERAUTH.respond(self.hres(), is_page=self.is_page(),
+                                                           ctx=shell.prefs(self.headers.get("Cookie")))
+                return self.reply(status, headers, body)
             if not self.host_ok():
                 status, text = 403, ("forbidden: KANBAN_AUTH=open serves localhost, IP addresses, KANBAN_BOARD_URL's "
                                      "host and KANBAN_ALLOWED_HOSTS, not %r" % self.headers.get("Host", ""))
@@ -423,6 +460,24 @@ def make_handler(listener):
                 return self.reply(*signin.handle_signout(IDENTITY, self.headers, SIGNIN_ORIGINS))
             return self.reply(*signin.handle_pair(IDENTITY, self.headers, body, client))
 
+        def hister_signout(self):
+            """POST /signout in hister mode, before the gate (a signed-out or expired session may still sign out): the
+            helper ends the Hister session and every id on it, the cookie is cleared, and the browser empties its HTTP
+            cache and goes to / (which sends it to the helper's sign-in). Same-origin only: vaultkit's rule."""
+            if self.host_refused():
+                return
+            if self.command != "POST":
+                return self.reply(405, [("Content-Type", "text/plain"), ("Allow", "POST")], b"POST only\n")
+            if signin.read_body(self.headers, self.rfile, signin.MAX_FORM) is None:
+                self.close_connection = True
+                return self.reply(413, [("Content-Type", "text/plain"), ("Connection", "close")], b"request body too large\n")
+            if not signin.same_origin(self.headers, SECURE, SIGNIN_ORIGINS):
+                return self.reply(403, [("Content-Type", "text/plain; charset=utf-8"), ("Cache-Control", "no-store")],
+                                  b"cross-site sign-out refused\n")
+            _, cookies = HISTERAUTH.signout(self.headers)
+            self.reply(303, [("Location", "/"), ("Cache-Control", "no-store"), ("Clear-Site-Data", '"cache"')]
+                       + [("Set-Cookie", c) for c in cookies], b"")
+
         def prefs(self):
             """GET/PUT /api/prefs, after the gate (konbini read), as the resolved principal (without an identity file:
             identity.ambient's). A PUT follows vaultkit's rule, not the board's /api write rule: a token
@@ -459,6 +514,8 @@ def make_handler(listener):
 
         def session_cookies(self):
             """Set-Cookie values for this response: a renewed session, or a bad one cleared (vaultkit.identity)."""
+            if getattr(self, "_hres", None) is not None:
+                return self._hres.cookies
             return self._who.cookies if getattr(self, "_who", None) is not None else ()
 
         def to_niwa(self, path):
@@ -487,6 +544,10 @@ def make_handler(listener):
                 ctype += "; charset=utf-8"
             else:
                 data = body
+            if ctype.startswith("text/html") and getattr(self, "_hres", None) is not None and self._hres.banner:
+                # signed in through the tailnet because sign-in is unavailable: say so at the top of the page
+                data = re.sub(rb"(<main\b[^>]*>)", lambda m: m.group(1) + histerauth.banner_html().encode("utf-8"), data,
+                              count=1)
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
@@ -538,6 +599,8 @@ def make_handler(listener):
         def actor(self):
             # With an identity file: the principal's name ("local" in open mode). Without: open mode is always
             # "local" (nothing vouches for the header there), else the Tailscale login.
+            if HISTERAUTH is not None:
+                return self.hres().principal.name
             if IDENTITY is not None:
                 return self.who().principal.name
             return OPEN_ACTOR if AUTH == "open" else self.headers.get("Tailscale-User-Login", "")
@@ -587,6 +650,8 @@ def make_handler(listener):
             path = unquote(url.path)
             if IDENTITY is not None and path in SIGNIN_POSTS:
                 return self.signin_post(path)
+            if HISTERAUTH is not None and path == "/signout":
+                return self.hister_signout()
             if not self.allowed():
                 self.refuse()
                 return
@@ -715,7 +780,8 @@ def make_handler(listener):
                 if not self.host_refused():
                     self.reply(405, [("Content-Type", "text/plain"), ("Allow", "POST")], b"POST only\n")
                 return
-            if not (self.public_asset(path) and self.host_ok()) and not self.allowed():
+            probe = HISTERAUTH is not None and path in PROBES and self.host_ok()
+            if not (self.public_asset(path) and self.host_ok()) and not probe and not self.allowed():
                 self.refuse()
                 return
             if path == "/api/prefs":
@@ -1067,6 +1133,13 @@ def auth_banner():
             lines.append("startup: WARNING: KANBAN_AUTH=open: a request without a token is the owner. Use it only on "
                          "localhost or a trusted LAN; it answers to IP addresses and %s"
                          % ", ".join(sorted(ALLOWED_HOSTS)))
+        return lines
+    if HISTERAUTH is not None:
+        h = HISTERAUTH
+        lines.append("startup: KANBAN_AUTH=hister on %s: Hister users %s sign in through %s; when sign-in is unavailable: %s"
+                     % (where, ", ".join(sorted(h.users)), h.signin,
+                        "the tailnet login in KANBAN_TAILNET_USERS (%d)" % len(h.fallback_users) if h.fallback == "tailscale"
+                        else "nobody (503)"))
         return lines
     if AUTH == "open":
         return lines + ["startup: WARNING: KANBAN_AUTH=open: no identity check. Anyone who can reach %s can read and "

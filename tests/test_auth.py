@@ -151,5 +151,5 @@ assert out["rebind_owner"] == 200 and out["rebind_get"] == 403, out
 
 # an unknown mode refuses to start
 r = run("opne")
-assert r.returncode != 0 and "konbini: KANBAN_AUTH must be tailscale or open, not 'opne'" in r.stderr, (r.returncode, r.stderr[-300:])
+assert r.returncode != 0 and "konbini: KANBAN_AUTH must be tailscale or open or hister, not 'opne'" in r.stderr, (r.returncode, r.stderr[-300:])
 print("auth tests: all passed")

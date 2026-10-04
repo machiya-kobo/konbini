@@ -151,12 +151,15 @@ def tabbar(tabs, current):
         for href, key, label in tabs)
 
 
+SIGNIN_META = ""      # app.py sets histerauth.signin_meta() with KANBAN_AUTH=hister: machiya.js then handles 401 and Sign Out
+
+
 def page(ctx, what, body, tabs=(), current="", foot=()):
     """Every page: the Machiya shell (vaultkit.shell, room konbini: its icon, magenta) around the body, with the
     footer's status line; what = the page's name for its title ("Now - Konbini"; "" for the board: "Konbini");
     foot = extra [(href, label)] footer links for the page."""
     status = getattr(ctx, "status", None)
-    head = ('<meta name="obsidian-vault" content="%s">\n' % e(OBSIDIAN_VAULT)) if OBSIDIAN_VAULT else ""
+    head = (('<meta name="obsidian-vault" content="%s">\n' % e(OBSIDIAN_VAULT)) if OBSIDIAN_VAULT else "") + SIGNIN_META
     return shell.page(ctx, ROOM, shell.title(ROOM, what), body + shell.footer(ROOM, status, list(foot)), tabs, current,
                       head=head, stylesheets=[static_url("board.css")], scripts=[static_url("board.js")], icons=ICON,
                       prefs_url=getattr(ctx, "prefs_url", ""), who=getattr(ctx, "who", ""))

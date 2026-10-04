@@ -174,7 +174,8 @@ if _warn:
     print("startup: WARNING: " + _warn, flush=True)
 backends = [WaybackBackend()] if ARCHIVE == "wayback" else []
 # Hister (optional): private copies of links, vault search, pages I've read. Single-user and private.
-hister = Hister(os.environ["KANBAN_HISTER_URL"], os.environ.get("KANBAN_HISTER_PUBLIC", "")) \
+hister = Hister(os.environ["KANBAN_HISTER_URL"], os.environ.get("KANBAN_HISTER_PUBLIC", ""),
+                token_file=os.environ.get("KANBAN_HISTER_TOKEN_FILE", "")) \
     if os.environ.get("KANBAN_HISTER_URL") else None
 cold = ColdArchive(os.environ["KANBAN_COLD_MAP"]) if os.environ.get("KANBAN_COLD_MAP") else None
 links = Links(store, garden, backends, enabled=ARCHIVE != "none", cold=cold,

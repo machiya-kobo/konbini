@@ -5,14 +5,18 @@ Konbini uses it two ways: link rot shows a private copy of external links (links
 pages and writing kits list "pages I've read". (The vault push into Hister is Kura's.)
 
 Every call sends `Origin: hister://` (without it Hister answers 500/403).
-There is no token: the network path to Hister (private) is the gate. API calls go
-to KANBAN_HISTER_URL (http://hister.example:4433); links shown in the browser use
+With KANBAN_HISTER_TOKEN_FILE (the owner's Hister token, a file holding one line) every call also sends it as
+`X-Access-Token`, and the hister CLI gets it as HISTER__APP__ACCESS_TOKEN in its own environment (never on its
+command line). The file is read at each call, so a rotated token needs no restart; the value is never logged, shown
+on a page or returned by the API. Unset: no token is sent, and the network path to Hister (private) is the gate.
+API calls go to KANBAN_HISTER_URL (http://hister.example:4433); links shown in the browser use
 KANBAN_HISTER_PUBLIC (Hister's own address, as your browser reaches it).
 
 Privacy: everything from here is single-user. Search results, copies and
 private_url stay on the board's authenticated pages."""
 import datetime
 import json
+import os
 import re
 import subprocess
 import threading
@@ -39,10 +43,12 @@ def domain_of(url):
 
 
 class Hister:
-    def __init__(self, api, public, cli="hister"):
+    def __init__(self, api, public, cli="hister", token_file=""):
         self.api = api.rstrip("/")
         self.public = (public or api).rstrip("/")
         self.cli = cli
+        self.token_file = token_file
+        self.token_problem = ""       # a token file that is set but missing or empty: shown as the error until it is fixed
         self.lock = threading.Lock()
         self.cache = {}
         self.error = ""
@@ -50,22 +56,44 @@ class Hister:
 
     # -- transport ---------------------------------------------------------------
 
+    def token(self):
+        """The owner's Hister token from KANBAN_HISTER_TOKEN_FILE (read each time, so a rotation is picked up); "" when
+        no file is set, or it is missing or empty (then nothing is sent, and the error names the file, not a value)."""
+        if not self.token_file:
+            return ""
+        self.token_problem = ""
+        try:
+            with open(self.token_file, encoding="utf-8") as f:
+                value = f.read().strip()
+        except (OSError, UnicodeDecodeError):
+            value = ""
+        if not value:
+            self.token_problem = self.error = "hister token file %s is missing or empty" % self.token_file
+        return value
+
+    def scrub(self, text, token):
+        """`text` (an error from Hister or the CLI) without the token, in case something echoed it."""
+        return text.replace(token, "***") if token else text
+
     def call(self, method, path, body=None, timeout=10):
         """(status, parsed JSON or text); status 0 when Hister can't be reached."""
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self.api + path, data=data, method=method, headers={
-            "Origin": "hister://", "Accept": "application/json", "Content-Type": "application/json"})
+        headers = {"Origin": "hister://", "Accept": "application/json", "Content-Type": "application/json"}
+        token = self.token()
+        if token:
+            headers["X-Access-Token"] = token
+        req = urllib.request.Request(self.api + path, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 raw, status = r.read(), r.status
         except urllib.error.HTTPError as e:
             raw, status = e.read(), e.code
         except (urllib.error.URLError, OSError, ValueError) as e:
-            self.error = "hister unreachable: %s" % e
+            self.error = "hister unreachable: %s" % self.scrub(str(e), token)
             return 0, None
         self.last_ok = datetime.datetime.now().isoformat(timespec="seconds")
         if status < 500:
-            self.error = ""
+            self.error = self.token_problem
         try:
             return status, json.loads(raw or b"null")
         except ValueError:
@@ -125,14 +153,19 @@ class Hister:
         """Fetch and store a page with the hister CLI (/api/add alone doesn't fetch).
         Callers check find() first: --force on an existing document would
         replace its metadata (the imported tags and archive link)."""
+        env = dict(os.environ)
+        env.pop("HISTER__APP__ACCESS_TOKEN", None)      # no token file, no token: nothing inherited either
+        token = self.token()
+        if token:
+            env["HISTER__APP__ACCESS_TOKEN"] = token     # the CLI's own setting, in its environment only (not argv)
         try:
             r = subprocess.run([self.cli, "-u", self.api, "index", "--label", label, url],
-                               capture_output=True, text=True, timeout=120)
+                               capture_output=True, text=True, timeout=120, env=env)
         except (subprocess.SubprocessError, OSError) as e:
-            self.error = "hister index failed: %s" % e
+            self.error = "hister index failed: %s" % self.scrub(str(e), token)
             return False
         if r.returncode != 0:
-            self.error = "hister index %s: %s" % (url[:80], (r.stderr or r.stdout).strip()[:120])
+            self.error = "hister index %s: %s" % (url[:80], self.scrub((r.stderr or r.stdout).strip()[:120], token))
             return False
         return True
 

@@ -39,6 +39,7 @@ GLYPH = {   # one glyph per room everywhere (Shiori uses SF Symbols for the same
     "searxng": _SVG % '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',  # web
     "person": _SVG % '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',               # who's signed in
     "search": _SVG % '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',                                  # every room's Search tab (v0.16.2)
+    "close": _SVG % '<path d="M6 6l12 12M18 6 6 18"/>',                                 # the search pill's clear X (v0.17.1)
     "rooms": _SVG % '<path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-5h6v5"/>',                           # the house
     "gear": _SVG % '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1'
                    'a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0'
@@ -117,6 +118,17 @@ def search_box(q="", action="/search", placeholder="Search", label="Search"):
     return ('<form class="search" role="search" action="%s"><input type="search" name="q" value="%s" placeholder="%s" '
             'aria-label="%s" autocomplete="off" spellcheck="false" enterkeyhint="search"></form>'
             % (e(action), e(q), e(placeholder), e(label)))
+
+
+def search_bar(q="", action="/search", placeholder="Search", label="Search"):
+    """The room's search pill (v0.17): a second row of the pinned header at every width, as Shiori's field. Pass it to
+    header(search=...). machiya.js shows results as you type (it fetches the room's search page and swaps <main>), and
+    "/" focuses it."""
+    return ('<form class="search bar" role="search" action="%s"><div class="field"><input type="search" name="q" value="%s" '
+            'placeholder="%s" aria-label="%s" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">'
+            '<button type="button" class="clear" aria-label="Clear" title="Clear search">%s</button>'
+            '<button type="submit" class="go" aria-label="Search" title="Search">%s</button></div></form>'
+            % (e(action), e(q), e(placeholder), e(label), GLYPH["close"], GLYPH["search"]))
 
 
 def handoff(q, links=None):
@@ -290,9 +302,9 @@ def switcher(room, links, cls="rooms", settings=False, who=""):
             % (cls, GLYPH["rooms"], "".join(rows), "<hr>" if nb else "", "".join(nb), gear))
 
 
-def header(room, nav, current, links, subtitle="", tools="", settings=True, who=""):
-    """nav = [(href, key, label)]; tools = extra HTML before the switcher (e.g. a search box); who = the signed-in
-    name (v0.13): a person button before the gear, to the Account settings."""
+def header(room, nav, current, links, subtitle="", tools="", settings=True, who="", search=""):
+    """nav = [(href, key, label)]; tools = extra HTML before the switcher; who = the signed-in name (v0.13): a person
+    button before the gear, to the Account settings; search = search_bar(...) (v0.17): the pill under the top bar."""
     _, name, seal, _ = room_info(room)
     items = "".join(('<b class="here">%s</b>' % e(label)) if key == current else '<a href="%s">%s</a>' % (e(href), e(label))
                     for href, key, label in nav)
@@ -301,9 +313,9 @@ def header(room, nav, current, links, subtitle="", tools="", settings=True, who=
         gear = ('<a class="iconbtn who" href="/settings#account" title="Signed in as %s" aria-label="Signed in as %s">%s</a>'
                 % (e(who), e(who), GLYPH["person"])) + gear
     return ('<header class="top"><div class="topbar"><a class="brand" href="/">%s'
-            '<span class="word">%s</span></a>%s<nav class="nav">%s</nav><div class="tools">%s%s%s</div></div></header>\n'
+            '<span class="word">%s</span></a>%s<nav class="nav">%s</nav><div class="tools">%s%s%s</div></div>%s</header>\n'
             % (mark(room), e(name), ('<span class="subtitle">%s</span>' % e(subtitle)) if subtitle else "", items, tools,
-               switcher(room, links), gear))
+               switcher(room, links), gear, ('<div class="searchrow">%s</div>' % search) if search else ""))
 
 
 def tabbar(tabs, current, room, links, icons=None, who=""):

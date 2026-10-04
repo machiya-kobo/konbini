@@ -9,7 +9,7 @@ FROM public.ecr.aws/docker/library/python:3.13-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client sqlite3 openssl \
  && rm -rf /var/lib/apt/lists/* \
- && pip install --no-cache-dir markdown pyyaml
+ && pip install --no-cache-dir markdown==3.11 pyyaml==6.0.3
 
 # ssh refuses to run for a uid without a passwd entry (git pull/push).
 RUN useradd --uid 1000 --home-dir /data --no-create-home --shell /usr/sbin/nologin kanban

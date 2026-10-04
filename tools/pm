@@ -23,7 +23,8 @@
   pm tag <slug> +topic/x -topic/y
   pm claim <slug>                  mark the card as being worked on (15 min)
 
-The board is at $KANBAN_URL (default http://127.0.0.1:8081). pm sends X-Agent (default pm@<host>, or $KANBAN_AGENT) so
+The board is at $KANBAN_URL (default http://127.0.0.1:8081). With $KANBAN_TOKEN_FILE (a file holding the owner's Hister
+token, for a board on KANBAN_AUTH=hister) pm also sends it to the board as `Authorization: Bearer`. pm sends X-Agent (default pm@<host>, or $KANBAN_AGENT) so
 the board's history says which machine or agent made a change; behind `tailscale serve` the proxy identifies the
 caller, and with KANBAN_AUTH=open there is no identity check. The board writes the note's frontmatter, logs an event
 and commits it in batches. If the board answers 405 (an endpoint an older board lacks), pm says so.
@@ -43,16 +44,36 @@ URL = os.environ.get("KANBAN_URL", "http://127.0.0.1:8081").rstrip("/")
 NIWA_URL = os.environ.get("NIWA_URL", "").rstrip("/")
 COLUMNS = ["backlog", "ready", "wip", "blocked", "done", "archived"]
 AGENT = os.environ.get("KANBAN_AGENT") or "pm@%s" % socket.gethostname().split(".")[0].lower()
+# A board that signs people in through Hister (KANBAN_AUTH=hister) wants the owner's Hister token as a Bearer token: a file
+# holding it (from `pass:`; never in an argument or a note). Read at each request, sent only to the board, never printed.
+TOKEN_FILE = os.environ.get("KANBAN_TOKEN_FILE", "").strip()
 
 READ_ONLY_HINT = """\
 pm: the board answered HTTP 405 (no such write endpoint). Check that KANBAN_URL points at a current Konbini
 board: an older version may not have this endpoint."""
 
 
+def token():
+    """The owner's Hister token from KANBAN_TOKEN_FILE, or "" when it isn't set. A file that is set but unreadable or empty
+    stops pm (naming the file, never the value) rather than going on without the sign-in the board needs."""
+    if not TOKEN_FILE:
+        return ""
+    try:
+        with open(TOKEN_FILE, encoding="utf-8") as f:
+            value = f.read().strip()
+    except (OSError, UnicodeError) as e:
+        sys.exit("pm: can't read KANBAN_TOKEN_FILE %s (%s)" % (TOKEN_FILE, getattr(e, "strerror", None) or "unreadable"))
+    if not value:
+        sys.exit("pm: KANBAN_TOKEN_FILE %s is empty" % TOKEN_FILE)
+    return value
+
+
 def request(method, path, body=None, base=URL):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(base + path, data=data, method=method, headers={
-        "Accept": "application/json", "Content-Type": "application/json", "X-Agent": AGENT})
+    headers = {"Accept": "application/json", "Content-Type": "application/json", "X-Agent": AGENT}
+    if base == URL and TOKEN_FILE:          # the board's token goes to the board only (suggestions go to Niwa)
+        headers["Authorization"] = "Bearer " + token()
+    req = urllib.request.Request(base + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.status, json.loads(resp.read() or b"{}")
@@ -68,6 +89,8 @@ def request(method, path, body=None, base=URL):
 
 def get(path):
     status, data = request("GET", path)
+    if status == 401:
+        sys.exit("pm: 401 from the board: sign in is required. Set KANBAN_TOKEN_FILE to a file holding the owner's Hister token.")
     if status == 403:
         sys.exit("pm: 403 from the board: this identity is not allowed (see KANBAN_AUTH and KANBAN_TAILNET_USERS).")
     if status != 200:

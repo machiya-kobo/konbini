@@ -7,7 +7,7 @@ CARD = {"slug": "one", "title": "One", "board": "wip", "priority": 1, "effort": 
         "summary": "s", "blocked_by": "", "topics": [], "machines": [], "dependsOn": ["Two"], "path": "Projects/One.md",
         "checks_total": 2, "checks_done": 1}
 TWO = dict(CARD, slug="two", title="Two", board="ready", priority=None, path="Projects/Two.md", dependsOn=[])
-seen, mode = [], {"status": 200}
+seen, auths, mode = [], [], {"status": 200}
 
 
 class H(BaseHTTPRequestHandler):
@@ -22,6 +22,7 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(n) or b"{}") if n else None
         seen.append((self.command, self.path, body, self.headers.get("X-Agent")))
+        auths.append(self.headers.get("Authorization"))
         if mode["status"] != 200 and self.command != "GET":
             return self.reply(mode["status"], {"error": "nope"})
         if mode["status"] == 403:
@@ -43,7 +44,7 @@ URL = "http://127.0.0.1:%d" % srv.server_port
 
 def pm(*args, env=None, status=200):
     mode["status"] = status
-    del seen[:]
+    del seen[:], auths[:]
     e = {"PATH": os.environ["PATH"], "KANBAN_URL": URL, "KANBAN_AGENT": "pm@test"}
     e.update(env or {})
     r = subprocess.run([sys.executable, PM] + list(args), env=e, capture_output=True, text=True, timeout=30)
@@ -77,4 +78,13 @@ src = open(PM).read()
 import re
 assert not re.search(r"\.ts\.net\b|/home/|\b\d{1,3}(\.\d{1,3}){3}\b", src.replace("127.0.0.1:8081", "")), "pm names a host, an address or a home path"
 r = subprocess.run([sys.executable, PM, "--help"], capture_output=True, text=True); assert "KANBAN_URL" in r.stdout and "pm move" in r.stdout, r.stdout[:300]
+# KANBAN_TOKEN_FILE: the owner's Hister token as a Bearer token, to the board only; none unset; a bad file stops pm
+import tempfile
+tok = os.path.join(tempfile.mkdtemp(), "token"); open(tok, "w").write("hister-token-xyz\n")
+r = pm("ls"); assert r.returncode == 0 and auths == [None], auths                                  # unset: nothing sent
+r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert r.returncode == 0 and auths == ["Bearer hister-token-xyz"], (r, auths)
+assert "hister-token-xyz" not in r.stdout + r.stderr
+r = pm("move", "one", "done", env={"KANBAN_TOKEN_FILE": tok}); assert auths == ["Bearer hister-token-xyz"], auths
+r = pm("ls", env={"KANBAN_TOKEN_FILE": tok + ".missing"}); assert r.returncode != 0 and (tok + ".missing") in r.stderr and "KANBAN_TOKEN_FILE" in r.stderr, r
+open(tok, "w").write("\n"); r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert r.returncode != 0 and "empty" in r.stderr, r
 print("pm tests: all passed")

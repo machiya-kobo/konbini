@@ -87,4 +87,26 @@ assert "hister-token-xyz" not in r.stdout + r.stderr
 r = pm("move", "one", "done", env={"KANBAN_TOKEN_FILE": tok}); assert auths == ["Bearer hister-token-xyz"], auths
 r = pm("ls", env={"KANBAN_TOKEN_FILE": tok + ".missing"}); assert r.returncode != 0 and (tok + ".missing") in r.stderr and "KANBAN_TOKEN_FILE" in r.stderr, r
 open(tok, "w").write("\n"); r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert r.returncode != 0 and "empty" in r.stderr, r
+# the sweep's KONB-10: the token never goes over plain http to a host that isn't this machine, a redirect isn't followed while
+# one is sent, and an address without a scheme is https
+tok2 = os.path.join(tempfile.mkdtemp(), "t"); open(tok2, "w").write("secret-token-9\n")
+r = pm("ls", env={"KANBAN_TOKEN_FILE": tok2, "KANBAN_URL": "http://board.example.test:9"})
+assert r.returncode != 0 and "not sending the Hister token over plain http" in r.stderr and "secret-token-9" not in r.stderr + r.stdout, r
+other_hits = []
+class Other(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self): other_hits.append(self.headers.get("Authorization")); self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"{}")
+class Redirect(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        seen.append(("GET", self.path, None, self.headers.get("X-Agent"))); auths.append(self.headers.get("Authorization"))
+        self.send_response(302); self.send_header("Location", OTHER + "/api/cards"); self.send_header("Content-Length", "0"); self.end_headers()
+osrv = HTTPServer(("127.0.0.1", 0), Other); threading.Thread(target=osrv.serve_forever, daemon=True).start()
+OTHER = "http://127.0.0.1:%d" % osrv.server_port
+rsrv = HTTPServer(("127.0.0.1", 0), Redirect); threading.Thread(target=rsrv.serve_forever, daemon=True).start()
+r = pm("ls", env={"KANBAN_TOKEN_FILE": tok2, "KANBAN_URL": "http://127.0.0.1:%d" % rsrv.server_port})
+assert r.returncode != 0 and "redirect" in r.stderr and auths == ["Bearer secret-token-9"] and other_hits == [], (r, auths, other_hits)
+assert "secret-token-9" not in r.stderr + r.stdout
+r = pm("ls", env={"KANBAN_URL": "localhost:%d" % srv.server_port})             # no scheme: https, so a plain-http board refuses the handshake
+assert r.returncode != 0 and "https://localhost:" in r.stderr, r.stderr
 print("pm tests: all passed")

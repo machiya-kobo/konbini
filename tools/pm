@@ -31,6 +31,7 @@ and commits it in batches. If the board answers 405 (an endpoint an older board 
 `pm suggest` talks to Niwa (the garden) at $NIWA_URL and is off while that is unset. Standard library only.
 """
 import argparse
+import ipaddress
 import json
 import os
 import socket
@@ -39,9 +40,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-URL = os.environ.get("KANBAN_URL", "http://127.0.0.1:8081").rstrip("/")
+
+
+def with_scheme(url):
+    """An address given without a scheme is https (the default for anything that isn't this machine)."""
+    url = url.strip()
+    return url if "://" in url or not url else "https://" + url
+
+
+URL = with_scheme(os.environ.get("KANBAN_URL", "http://127.0.0.1:8081")).rstrip("/")
 # Garden suggestions go to Niwa (a separate service); unset = `pm suggest` is off.
-NIWA_URL = os.environ.get("NIWA_URL", "").rstrip("/")
+NIWA_URL = with_scheme(os.environ.get("NIWA_URL", "")).rstrip("/")
 COLUMNS = ["backlog", "ready", "wip", "blocked", "done", "archived"]
 AGENT = os.environ.get("KANBAN_AGENT") or "pm@%s" % socket.gethostname().split(".")[0].lower()
 # A board that signs people in through Hister (KANBAN_AUTH=hister) wants the owner's Hister token as a Bearer token: a file
@@ -68,16 +77,40 @@ def token():
     return value
 
 
+def loopback(url):
+    host = urllib.parse.urlsplit(url).hostname or ""
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
 def request(method, path, body=None, base=URL):
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Accept": "application/json", "Content-Type": "application/json", "X-Agent": AGENT}
-    if base == URL and TOKEN_FILE:          # the board's token goes to the board only (suggestions go to Niwa)
+    credential = base == URL and bool(TOKEN_FILE)     # the board's token goes to the board only (suggestions go to Niwa)
+    if credential:
+        if urllib.parse.urlsplit(base).scheme != "https" and not loopback(base):
+            sys.exit("pm: not sending the Hister token over plain http to %s: use https (KANBAN_URL=https://...)"
+                     % (urllib.parse.urlsplit(base).hostname or base))
         headers["Authorization"] = "Bearer " + token()
     req = urllib.request.Request(base + path, data=data, method=method, headers=headers)
+    # with a credential no redirect is followed (the token must not travel to wherever the board points)
+    opener = urllib.request.build_opener(NoRedirect) if credential else urllib.request.build_opener()
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with opener.open(req, timeout=30) as resp:
             return resp.status, json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as e:
+        if credential and 300 <= e.code < 400:
+            sys.exit("pm: the board answered with a redirect to %s; pm doesn't follow one while sending a token"
+                     % (e.headers.get("Location") or "somewhere else"))
         try:
             payload = json.loads(e.read() or b"{}")
         except ValueError:

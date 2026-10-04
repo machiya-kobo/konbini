@@ -254,11 +254,15 @@ def cards_by_path():
     return {c["path"]: c for c in store.cards()}
 
 
+YEARS = range(1970, 2201)        # dates outside this are a mistake (9999-12-31 + a week overflows), not a request
+
+
 def anchor_date(value):
     try:
-        return datetime.date.fromisoformat((value or "")[:10])
+        day = datetime.date.fromisoformat((value or "")[:10])
     except ValueError:
         return today()
+    return day if day.year in YEARS else today()
 
 
 def local_target(referer, keep_query=True):
@@ -293,6 +297,15 @@ def cookies(header):
     return out
 
 
+# Anything that reaches a header or the log: no control characters (CR and LF would split the response; a crafted link such as
+# /garden/x%0D%0ASet-Cookie:... used to). Tab is fine in a header value.
+CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
+
+
+class HeaderInjection(ValueError):
+    pass
+
+
 def make_handler(listener):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"  # no keep-alive, no chunked encoding
@@ -300,9 +313,57 @@ def make_handler(listener):
         timeout = REQUEST_TIMEOUT      # a client that stops sending lets its thread go
 
         def log_message(self, fmt, *args):
-            if urlsplit(self.path).path == "/healthz":      # the container health check polls it; keep it out of the log
-                return
-            sys.stderr.write("%s %s %s\n" % (listener, self.log_name(), fmt % args))
+            try:
+                if urlsplit(self.path).path == "/healthz":      # the container health check polls it; keep it out of the log
+                    return
+            except ValueError:
+                pass
+            sys.stderr.write("%s %s %s\n" % (listener, self.log_name(), CONTROL.sub("?", fmt % args)))
+
+        def send_header(self, keyword, value):
+            """No header, in any answer, takes a control character (the last line of defence behind guarded())."""
+            if CONTROL.search(str(keyword)) or CONTROL.search(str(value)):
+                raise HeaderInjection("control character in a response header")
+            super().send_header(keyword, value)
+
+        def end_headers(self):
+            self._started = True
+            super().end_headers()
+
+        def guarded(self, fn):
+            """Runs a request: an address with a control character in its path or query (decoded, so %0D%0A counts) or one
+            urlsplit can't read is a 400, and anything unexpected from the handler is a plain 500 (JSON for the API)
+            instead of a dropped connection."""
+            self._started = False
+            try:
+                try:
+                    url = urlsplit(self.path)
+                except ValueError:
+                    raise HeaderInjection("unreadable address")
+                if CONTROL.search(unquote(url.path)) or CONTROL.search(unquote(url.query)):
+                    raise HeaderInjection("control character in the address")
+                return fn()
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                raise
+            except Exception as exc:        # nothing here may kill the thread or leave the client without an answer
+                bad = isinstance(exc, HeaderInjection)
+                if not bad:
+                    sys.stderr.write("%s %s internal error: %s\n" % (listener, self.log_name(), type(exc).__name__))
+                if self._started:
+                    self.close_connection = True
+                    return
+                try:
+                    text = "bad request" if bad else "internal error"
+                    try:
+                        api = urlsplit(self.path).path.startswith("/api/")
+                    except ValueError:
+                        api = False
+                    if api:
+                        self.send_json(400 if bad else 500, {"error": text})
+                    else:
+                        self.send(400 if bad else 500, text + "\n", "text/plain")
+                except Exception:
+                    self.close_connection = True
 
         def log_name(self):
             """Who is asking, for the log: the principal and how it was proven, or the login as before."""
@@ -525,7 +586,7 @@ def make_handler(listener):
         def to_niwa(self, path):
             """/garden/<rest> (the garden's old home here) -> Niwa."""
             url = urlsplit(self.path)
-            rest = path[len("/garden"):] or "/"
+            rest = quote(path[len("/garden"):] or "/", safe="/")        # the decoded path, encoded again: nothing raw in a header
             return modern.GARDEN_URL + rest + ("?" + url.query if url.query else "")
 
         def ctx(self):
@@ -655,6 +716,9 @@ def make_handler(listener):
             self.send(302, "", "text/plain", headers=[("Location", target or "/")])
 
         def do_write(self):
+            self.guarded(self._write)
+
+        def _write(self):
             url = urlsplit(self.path)
             path = unquote(url.path)
             if IDENTITY is not None and path in SIGNIN_POSTS:
@@ -714,12 +778,15 @@ def make_handler(listener):
                         raise WriteError(404, "not found")
                     try:
                         minutes = 0 if self.command == "DELETE" else int(data.get("minutes") or 15)
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError, OverflowError):
                         raise WriteError(422, "minutes must be a whole number")
                     store.claim(slug, actor, agent, min(minutes, 240))
                     self.send_json(200, {"card": slug, "claimed_by": agent if minutes else None, "minutes": minutes})
                 elif self.command == "POST" and path == "/api/order":
-                    writer.order(list(data.get("slugs") or []), data.get("board"), actor, agent, areas=areas)
+                    slugs = data.get("slugs") or []
+                    if not isinstance(slugs, list) or not all(isinstance(x, str) for x in slugs) or len(slugs) > 500:
+                        raise WriteError(422, "slugs must be a list of card slugs")
+                    writer.order(slugs, data.get("board"), actor, agent, areas=areas)
                     self.send_json(200, {"ok": True})
                 # HTML forms (no JavaScript needed)
                 elif self.command == "POST" and path == "/move":
@@ -776,6 +843,9 @@ def make_handler(listener):
         do_POST = do_PATCH = do_PUT = do_DELETE = do_write
 
         def do_GET(self):
+            self.guarded(self._get)
+
+        def _get(self):
             if urlsplit(self.path).path == "/healthz":      # liveness only: no data, no identity check, any KANBAN_AUTH
                 self.send(200, "ok\n", "text/plain", headers=[("Cache-Control", "no-store")])
                 return
@@ -843,6 +913,8 @@ def make_handler(listener):
                     months = 7
                 try:
                     start = datetime.date.fromisoformat((query.get("from") or [""])[0] + "-01")
+                    if start.year not in YEARS:
+                        raise ValueError("year out of range")
                 except ValueError:
                     first = datetime.date.today().replace(day=1)
                     start = (first - datetime.timedelta(days=4 * 30)).replace(day=1)   # four months back, three ahead
@@ -990,8 +1062,11 @@ def make_handler(listener):
                 self.send_json(200 if card else 404, card or {"error": "not found"})
             elif path == "/api/events":
                 q = lambda k: (query.get(k) or [None])[0]
-                self.send_json(200, {"events": store.events(since=q("since"), until=q("until"),
-                                                            limit=int(q("limit") or 200))})
+                try:
+                    limit = min(max(int(q("limit") or 200), 1), 10000)
+                except ValueError:
+                    limit = 200
+                self.send_json(200, {"events": store.events(since=q("since"), until=q("until"), limit=limit)})
             elif path == "/api/links":
                 status = (query.get("status") or [""])[0]
                 rows = store.links("status = ?", (status,)) if status else store.links()

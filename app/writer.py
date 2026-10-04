@@ -42,6 +42,15 @@ TAG_RE = re.compile(r"^[a-z]+/[A-Za-z0-9][A-Za-z0-9._-]*$")
 LISTS = ("dependsOn",)          # list fields the board writes (a block list of quoted links)
 
 
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def one_line(value, limit):
+    """Text for a title or a summary: control characters and every kind of line break collapse to single spaces, then
+    the first `limit` characters."""
+    return " ".join(CONTROL_CHARS.sub(" ", str(value or "")).split())[:limit].strip()
+
+
 class WriteError(Exception):
     def __init__(self, status, message, **extra):
         super().__init__(message)
@@ -238,6 +247,10 @@ class Writer:
                 raise WriteError(403, "only a maintainer publishes to the garden, from the web UI")
 
             fields = dict(fields)
+            for key in ("tags_add", "tags_remove"):
+                value = fields.get(key)
+                if value is not None and (not isinstance(value, list) or not all(isinstance(x, str) for x in value)):
+                    raise WriteError(422, "%s must be a list of text" % key)
             if "waiting" in fields and "blocked_by" not in fields:      # API input aliases for the old names
                 fields["blocked_by"] = fields.pop("waiting")
             if "status" in fields and "board" not in fields:
@@ -388,7 +401,18 @@ class Writer:
 
     def create(self, fields, actor, agent, areas=None):
         with self.lock:
-            title = str(fields.get("title") or "").strip()
+            # Text that ends up in a note is one line of plain text: a newline in a summary could write a bare "=======" (a
+            # Markdown heading underline, and a git conflict marker to the export, which then refused every batch).
+            for key in ("title", "summary", "area", "project"):
+                if fields.get(key) is not None and not isinstance(fields.get(key), str):
+                    raise WriteError(422, "%s must be text" % key)
+            for key in ("topics", "machines"):
+                value = fields.get(key)
+                if value is not None and (not isinstance(value, list) or not all(isinstance(x, str) for x in value)):
+                    raise WriteError(422, "%s must be a list of text" % key)
+            title = one_line(fields.get("title"), 120)
+            summary = one_line(fields.get("summary"), 500)
+            fields = dict(fields, summary=summary)
             if not title:
                 raise WriteError(422, "title is required")
             area = str(fields.get("area") or "").strip().replace("area/", "")
@@ -400,7 +424,7 @@ class Writer:
             slug = slugify(fields.get("project") or title)
             if self.store.card(slug):
                 raise WriteError(409, "a card with slug %s exists" % slug, code="exists", slug=slug)
-            name = re.sub(r'[\\/:*?"<>|#^\[\]]', "", title).strip()
+            name = re.sub(r'[\\/:*?"<>|#^\[\]]', "", title).strip().lstrip(".")[:100].strip() or slug   # a file name, never ".md"
             rel = os.path.join("Projects", name + ".md")
             if os.path.exists(self.full(rel)):
                 raise WriteError(409, "note %s already exists" % rel, code="exists")
@@ -425,11 +449,11 @@ class Writer:
                 lines.append("priority: " + PRIORITY_NAMES[int(pr)])
             if col == "wip":
                 lines.append("started: " + today)
-            lines += ["summary: " + yaml_scalar(str(fields.get("summary") or "")),
+            lines += ["summary: " + yaml_scalar(summary),
                       "created_by: " + yaml_scalar("%s (%s)" % (actor, agent)),
                       "updated: " + today, "publish: false", "---", "",
                       "# " + title, "", "> Stub created by Konbini. Flesh out as needed.", "",
-                      "## Overview", "", str(fields.get("summary") or ""), "", "## Next Steps", "", "- [ ] ", "",
+                      "## Overview", "", summary, "", "## Next Steps", "", "- [ ] ", "",
                       "## Related Notes", "", "- ", ""]
             os.makedirs(os.path.dirname(self.full(rel)), exist_ok=True)
             self.write_file(rel, "\n".join(lines))
@@ -479,13 +503,14 @@ class Writer:
             self.git("add", "-A", "--", GIT_SCOPE, ".board", ".gitattributes")
             bad = self.conflicted()
             if bad:
-                self.git("reset", "-q")
-                self.error = "refusing to commit git conflict markers in " + ", ".join(bad[:3])
+                # only the bad notes stay out of the commit: one note's text must not stop every other change from being
+                # exported (the board shows the alert until someone fixes the note)
+                self.git("reset", "-q", "--", *bad)
+                self.error = "not committed: git conflict markers in " + ", ".join(bad[:3])
                 print("export: " + self.error, flush=True)
-                return  # pending stays; the board shows the alert until someone fixes the note
             if self.store.git("diff", "--cached", "--name-only").strip():
                 self.git("commit", "-q", "-m", msg)
-            self.pending = []
+            self.pending = [("", "held back: " + ", ".join(bad[:3]))] if bad else []
             print("export: " + msg, flush=True)
 
     def ahead(self):

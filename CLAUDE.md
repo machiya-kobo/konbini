@@ -73,7 +73,7 @@ settings table; `CONTRIBUTING.md` the workflow.
   identity check (localhost or a trusted LAN) but answers only a `Host` that is an IP literal, `localhost`,
   `KANBAN_BOARD_URL`'s host or in `KANBAN_ALLOWED_HOSTS` (DNS rebinding; `host_allowed`). Form posts must be same-origin; API writes that aren't same-origin must send `X-Agent` and no `Origin`/`Referer` (a browser always sends one, so that's another site's page: CSRF).
   `GET /healthz` is open and returns `ok`; `/api/status` is gated.
-- **Identity.** With `MACHIYA_IDENTITY_FILE` (vaultkit `identity`, Machiya's `docs/plans/identity.md`) the file is the
+- **Identity.** With `MACHIYA_IDENTITY_FILE` (vaultkit `identity`, [Machiya's `docs/identity.md`](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md)) the file is the
   gate instead of `KANBAN_TAILNET_USERS`: `Handler.who()` resolves the principal once per request and `Handler.can()`
   asks its `konbini` grants. `read` for every page and read API (`/healthz` stays open), `write` for every change
   (`do_write`), `areas` for new `area/*` lanes and new tags (`writer.check_tags(areas=...)`; it replaces

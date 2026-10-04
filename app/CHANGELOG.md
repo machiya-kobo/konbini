@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.11.12
+
+- Hister queries leave out code documents (`-metadata.source:code`, from the coming code search): a repo, README or issue is never shown as a page you read or a saved copy.
+
 ## 0.11.11
 
 - `MACHIYA_SSO_COOKIE` names the Hister sign-in cookie (default `machiya_sso`, unchanged), so a second stack on the same domain (the dev stack) can use its own (vaultkit 0.20.0).

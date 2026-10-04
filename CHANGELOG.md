@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.11.3
+
+- On a phone the tabs are Board, Now, Search and Roundup (then Rooms): Search is third, as in every room; Review is a button at the top of Now. On a wide screen Search is the third nav link.
+- No search field in the header at any width, and the header is solid on a phone (vaultkit 0.16.4): the installed app on iOS drew the header's blur over its own title.
+
 ## 0.11.2
 
 - The phone tab bar is more see-through, frosted glass like Shiori's (vaultkit 0.16.1). 0.11.1 was tagged but never deployed.

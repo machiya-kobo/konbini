@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.11.10
+
+- The Rooms menu's Machiya row reads "Machiya · home": the stack's front door; its status page moved to /status (vaultkit 0.19.1).
+
 ## 0.11.9
 
 - `KANBAN_AUTH=hister`: Hister's sign-in (through the hister-login helper) as the board's gate; when sign-in is unavailable the owner's tailnet login still gets in, with a banner; the owner's events keep their actor; `pm` sends `KANBAN_TOKEN_FILE` as a Bearer token (vaultkit 0.19.0). Off by default; `tailscale` is unchanged.

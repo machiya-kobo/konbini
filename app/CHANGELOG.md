@@ -3,6 +3,19 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.12.1
+
+Fixes from the stack's security sweep (October 2026):
+
+- A link such as `/garden/x%0D%0ASet-Cookie:…` could inject a response header (a cookie planted for the whole tailnet domain): a control character in an address is now a 400, no response header can carry one, and the garden redirect encodes its path.
+- One card's text could stop the board's git export for good: a newline in a title or summary could write a bare `=======` line. Titles and summaries are one line of plain text now, a card always gets a usable file name, and a note that still has a conflict marker is held out of a commit while everything else is exported.
+- The card form saves only the fields you changed and refuses one that somebody else changed meanwhile (it used to write back every field it was drawn with, undoing an agent's edits); the note is written after the update was accepted, and only on a card that exists. Drag and drop leaves a card alone that was moved meanwhile.
+- Bad input (a non-numeric `limit`, years like 9999, a list of the wrong type, a title over 255 bytes, `minutes: 1e999`) is an answer, and anything unexpected is a JSON 500, instead of a dropped connection.
+- The link checker only calls public addresses (it resolves every name and checks each redirect, IPv6 included), and the private network is never reached from a link in a note.
+- SVG answers are sandboxed and every answer carries `nosniff`; `repo:` and `post_url:` are links only when they are http(s).
+- A merge a replay had to drop is shown on the board, comments are written under the writer lock.
+- `pm` (and the dotfiles wrapper) send the Hister token only to the board, never over plain http (except to this machine), never follow a redirect while sending it, and default to https.
+
 ## 0.12.0
 
 - Settings follow the signed-in person (vaultkit 0.21): with `KANBAN_AUTH=hister` and the helper, Theme, Appearance, Text Size, which apps the Rooms menu shows, and Konbini's own Group By and Done Cards are kept in your account and follow you to every app and device. A fresh browser is drawn in your theme from its first page. `/settings` starts with a Shared section (where they are kept now), then Board, This Device (Use This Device's Size, Offline Copies), Account and About.

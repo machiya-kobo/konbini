@@ -66,14 +66,17 @@ the output.
   answers only to an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in `KANBAN_ALLOWED_HOSTS`.
 - **People on your tailnet:** bind `127.0.0.1`, put `tailscale serve` in front, and list their Tailscale logins in
   `KANBAN_TAILNET_USERS` (`KANBAN_AUTH=tailscale`, the default; unset = nobody).
-- **People, agents, sign-in or Shiori devices:** turn on Machiya's identity file with `python3 -m vaultkit.identity setup`,
-  which prints the settings for each room. It's off unless you set it; see [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
+- **People, agents, sign-in or Shiori devices:** turn on Machiya's identity file with `cd app && python3 -m vaultkit.identity setup` (the command is the vendored
+  vaultkit, standard library only), which prints the settings for each room. It's off unless you set it; see [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
+- **People signed in to Hister:** `KANBAN_AUTH=hister` with Machiya's hister-login helper (`KANBAN_AUTH_SIGNIN_URL`, `KANBAN_AUTH_URL`,
+  `KANBAN_HISTER_USERS`, `KANBAN_BOARD_URL`; see [Machiya's Hister sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#hister-sign-in-authhister)).
+  Not with an identity file.
 - Konbini's identity settings: `MACHIYA_IDENTITY_FILE`, `KANBAN_SIGNIN`, `KANBAN_AUTH_HEADER`,
   `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS` and `KANBAN_BOARD_URL` (under Settings).
 
 ## More ways to run it
 
-Each starts in a clone with the sample vault made a repository (steps 1 and 3 of the Quickstart). Port 8081 must be free.
+Install the packages each one names first, then do steps 1 and 3 of the Quickstart (clone Konbini, make the sample vault a repository), then start it. Port 8081 must be free.
 
 ### In a container
 
@@ -106,7 +109,9 @@ docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(i
 
 ### Natively on the BSDs
 
-Python 3.11 or newer with `markdown` 3.4+ and `pyyaml` 6+, from packages only, no pip. Install them:
+Python 3.11 or newer with `markdown` 3.4+ and `pyyaml` 6+, from packages only, no pip. Install them (as root, or with `doas` or `sudo` set up: a fresh OpenBSD has `doas` but no `/etc/doas.conf`, and a fresh FreeBSD or NetBSD has no `sudo`; `pkg install sudo` or `pkg_add sudo`, or run the line as root without the prefix):
+
+**OpenBSD needs a vaultkit with the scrypt fix:** OpenBSD's Python has no `hashlib.scrypt` (LibreSSL), which the vendored vaultkit used at import before the fix; until a release carries it, Konbini does not start there. FreeBSD and NetBSD are tested.
 
 *OpenBSD:*
 
@@ -158,7 +163,7 @@ You should see:
 ```text
 ok
 ok True cards 10
-<title>konbini
+<title>Konbini
 ```
 
 `tools/pm` is a one-file client (Python 3, no dependencies):
@@ -201,10 +206,9 @@ vault, with Hister and SearXNG as optional search engines. What changes compared
   `compose/demo-init` (it writes a `.env` and makes Konbini's clone of a bare copy of the vault); with your own vault,
   copy `compose/.env.example` to `.env`, edit it, and clone your vault into `KONBINI_REPO` first (Konbini needs its own
   read-write clone, and its origin must be reachable so the board can push). The compose builds the image from this
-  repository's `app/`.
+  repository's `app/` (it expects this clone next to the Machiya clone, `../../konbini` from `compose/`, or set `KONBINI_SRC`).
 - **Who may use it:** as in "Who can use it" above (`KONBINI_AUTH` and `KONBINI_USERS` in the compose). The reference
-  compose defaults to `KANBAN_AUTH=open` for the localhost demo; there, list the name the other rooms call Konbini by
-  (`konbini`) in `KANBAN_ALLOWED_HOSTS`. With the identity file behind the Tailscale sidecar, also set
+  compose defaults to `KANBAN_AUTH=open` for the localhost demo and sets `KANBAN_ALLOWED_HOSTS=konbini` (the name the other rooms call Konbini by); keep that if you run it your own way. With the identity file behind the Tailscale sidecar, also set
   `KANBAN_BIND_BEHIND_PROXY=1`.
 - **Notes folder.** If the vault keeps its notes in a folder, set `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose);
   the default is the repository root.
@@ -219,7 +223,7 @@ vault, with Hister and SearXNG as optional search engines. What changes compared
 - **Source link.** Set `MACHIYA_SOURCE_URL` to where this room's source is published to add a "Source code" link to the
   footer and the About page (the AGPL asks for it when people use a service over a network).
 - **Settings from a file.** `KANBAN_ENV_FILE` (or `--env-file PATH`) reads `KEY=VALUE` lines first, for a native
-  service (the rc.d scripts and the BSD install guide are in the Machiya repository).
+  service (the rc.d scripts are in the Machiya repository's [contrib/rc.d/](https://github.com/machiya-kobo/machiya/tree/main/contrib/rc.d) and the guide in [docs/install/bsd.md](https://github.com/machiya-kobo/machiya/blob/main/docs/install/bsd.md)).
 
 ## Screenshots
 
@@ -246,11 +250,12 @@ On a phone, the board and a card:
 | `MACHIYA_IDENTITY_FILE` | — | Machiya's identity file (vaultkit's `identity`; [Machiya's `docs/identity.md`](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md)): people, agents and services with grants. Set, it replaces `KANBAN_TAILNET_USERS` and the `X-Agent` test for owner powers: every page and read API needs the `konbini` `read` grant, every change (card edits, comments, claims, the board's forms) `write`, and new `area/*` lanes and new tags `areas`. No proof or a bad one gets 401, a missing grant 403; an event's actor is the principal (`X-Agent` stays a label). With `KANBAN_AUTH=open` a request without a token is the owner. Mount the file's directory read-only (not the file: the CLI replaces it, and a file mount keeps the old one) |
 | `KANBAN_SIGNIN` | — | `1`, with an identity file: the built-in sign-in (a person's name and password from the file, a `machiya_session` cookie; see "Sign-in, pairing and preferences" below). A browser without a session then gets a 401 page linking to `/signin?next=<the page>`. Behind an https proxy leave `KANBAN_BOARD_URL` https or unset; on plain http set it to the board's `http://` address, or every sign-in is refused (403) |
 | `KANBAN_AUTH_HEADER` | — | with an identity file and `KANBAN_AUTH=header`: the trusted proxy's login header (`Remote-User`, …), matched against the principals' `proxy` logins |
-| `KANBAN_BIND_BEHIND_PROXY` | — | `1`: with an identity file, `KANBAN_AUTH=tailscale` or `header` may bind a non-loopback address because a proxy (the Tailscale sidecar) is the only way in. Without it the board refuses to start on anything but a loopback address |
+| `KANBAN_BIND_BEHIND_PROXY` | — | `1`: a proxy (the Tailscale sidecar) is the only way in, so a header-trusting mode may bind a non-loopback address. It applies with an identity file (`KANBAN_AUTH=tailscale` or `header`) and with `KANBAN_AUTH=hister` (its `tailscale` fallback); in those modes, without it, the board refuses to start on anything but a loopback address. Plain `tailscale` mode without an identity file doesn't check the bind (see `KANBAN_BIND`) |
 | `KANBAN_AUTH_SIGNIN_URL` | — | with `KANBAN_AUTH=hister` (required): the hister-login helper's public sign-in page, where a signed-out page is sent (it comes back to the page it left; at most one trip per 30 s per browser, then a page with a link). With `KANBAN_HISTER_USERS`, `KANBAN_BOARD_URL` and `KANBAN_AUTH_URL` this is the whole of [Machiya's Hister sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#hister-sign-in-authhister) |
-| `KANBAN_AUTH_URL` | — | with `KANBAN_AUTH=hister`: the helper's internal address (`http://hister-login:8081`), which the board asks who is calling. Unset: Konbini runs on the tailnet login alone, with a start-up warning |
+| `KANBAN_AUTH_URL` | — | with `KANBAN_AUTH=hister`: the helper's internal address (`http://hister-login:8081`), which the board asks who is calling. Unset: Konbini runs on the tailnet login alone, with a start-up warning (with `KANBAN_AUTH_FALLBACK=none` it refuses to start) |
 | `KANBAN_HISTER_USERS` | — | with `KANBAN_AUTH=hister` (required): the Hister usernames admitted, comma-separated, never `*`. Another Hister account is refused (403), never passed on to the fallback |
 | `KANBAN_AUTH_FALLBACK` | `tailscale` | with `KANBAN_AUTH=hister`: what happens when sign-in is unavailable (the helper or Hister unreachable, a 5xx, or Hister's user handling off). `tailscale`: the `Tailscale-User-Login`s in `KANBAN_TAILNET_USERS` are admitted as the owner, with a banner; `none`: 503. Someone who is simply signed out is never let in this way. `KANBAN_BOARD_URL` is required in this mode (the way back). `/api/health`, `/api/status` and `/api/changelog` answer without a sign-in, so probes and the status page keep working (the owner sees the full health). Sign out is `POST /signout` (same-origin). An API client sends the owner's Hister token as `X-Access-Token` or `Authorization: Bearer` (`pm`: `KANBAN_TOKEN_FILE`) |
+| `MACHIYA_SSO_COOKIE` | `machiya_sso` | with `KANBAN_AUTH=hister`: the name of the Hister sign-in cookie; set the same value in the hister-login helper and every room. Only for a second stack under the same cookie domain (a dev stack, say). Letters, digits, `_` and `-` |
 | `KANBAN_ACCEPT_APP_CAPS` | — | `1`: read Tailscale's forwarded app capability (`Tailscale-App-Capabilities`) for tagged nodes. Only where Serve forwards it (`--accept-app-caps`, Tailscale v1.92+): an older Serve passes a client's own copy through |
 | `KANBAN_BIND` | `0.0.0.0` | the address the listener binds. Behind `tailscale serve` on a native install, bind `127.0.0.1`: on a public bind anyone who reaches the port could send the `Tailscale-User-Login` header |
 | `KANBAN_TAILNET_PORT` | `8081` | the listener's port |
@@ -275,7 +280,7 @@ On a phone, the board and a card:
 | `KANBAN_LIVESYNC_STATUS` | — | optional: a JSON file written by whatever syncs phone edits into the repository (an Obsidian LiveSync bridge), re-read every 10 s and shown in the board's alerts. Keys the board reads: `daemon` (`"running"` or an alert), `last_cycle_ts` (unix seconds, alert if older than 5 minutes) and `last_cycle` (its text), `git_ok_ts` (unix seconds of the last good push, alert after 30 minutes) and `git_ok_at` (its text), `held_deletes` and `unresolved` (lists, alerted by length). Unset or missing = no alerts |
 | `KANBAN_REPOS` | `/repos` | optional: read-only checkouts of project repos, for the writing kits' commit lists |
 | `TZ` | `UTC` | the board's days (calendar, roundups, the review's week) |
-| `MACHIYA_ROOMS` | — | the Rooms switcher, `shiori=https://…,konbini=…,niwa=…,kura=…,hister=…,searxng=…` (the stack sets it) |
+| `MACHIYA_ROOMS` | — | the Rooms switcher, `shiori=https://…,konbini=…,niwa=…,kura=…,hister=…,searxng=…,machiya=…` (`machiya` is the stack's front door: the menu's "Machiya · home" row and the footer link; the stack sets it) |
 | `MACHIYA_SOURCE_URL` | — | where this room's source code is published; when set, the footer and About link to it (AGPL section 13: people who use a service over a network are offered its source). A plain http(s) address |
 | `MACHIYA_COOKIE_DOMAIN` | — | share the theme and text-size cookies across rooms on one domain, e.g. `example.net` |
 
@@ -291,7 +296,7 @@ login, or open mode's owner), so theme and text size follow them to another devi
 |---|---|---|
 | `GET /signin`, `POST /signin` | before (needs `KANBAN_SIGNIN=1`, else 404) | the sign-in form, and its same-origin post: a session cookie and a 303 to `next` (a local path) |
 | `POST /signout` | before | same-origin only: clears the session cookie |
-| `POST /api/pair` | before | Shiori's device pairing: `{"code", "device"}` (a code from `python3 -m vaultkit.identity pair <name>`) gives `{"token", "principal"}`, a device token for `Authorization: Bearer`. Works with or without `KANBAN_SIGNIN` |
+| `POST /api/pair` | before | Shiori's device pairing: `{"code", "device"}` (a code from `python3 -m vaultkit.identity pair <name>`, run in `app/`) gives `{"token", "principal"}`, a device token for `Authorization: Bearer`. Works with or without `KANBAN_SIGNIN` |
 | `GET /api/prefs`, `PUT /api/prefs` | after (`konbini` `read`, or the old gate) | the caller's own preferences, `{"prefs": {key: value}}`; a PUT merges (`null` removes) |
 
 `KANBAN_AUTH=open`'s `Host` rule comes first for all of them. They follow vaultkit's rules, not the board's `/api`

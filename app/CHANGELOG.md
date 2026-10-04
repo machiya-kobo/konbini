@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.11.9
+
+- `KANBAN_AUTH=hister`: Hister's sign-in (through the hister-login helper) as the board's gate; when sign-in is unavailable the owner's tailnet login still gets in, with a banner; the owner's events keep their actor; `pm` sends `KANBAN_TOKEN_FILE` as a Bearer token (vaultkit 0.19.0). Off by default; `tailscale` is unchanged.
+
 ## 0.11.8
 
 - `KANBAN_HISTER_TOKEN_FILE`: the owner's Hister token, sent as `X-Access-Token` on every call to Hister (and to the `hister` command's environment, never its arguments), for the coming Hister sign-in. Unset sends nothing, as before.

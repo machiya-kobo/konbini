@@ -328,7 +328,7 @@ pm health                                # the board's /api/health
 
 The area in `pm new` must already exist: the board refuses new `area/*` tags from the command line, so create a first lane in the web form. `pm tag` takes existing tags only. `pm suggest <note>` asks Niwa to consider a note for the garden; it needs `NIWA_URL` (Niwa's address) and is off without it. If the board answers 405 (an endpoint an older board lacks), `pm` says so. The `X-Agent` label (and with it your host name) is recorded in the card's history in the repository's `.board/events`. The settings that start with `KANBAN_` keep the prefix from Konbini's earlier name.
 
-Layout and rules for working on the code: see `CLAUDE.md`; changes by release: `CHANGELOG.md`.
+Layout and rules for working on the code: see `CLAUDE.md`; changes by release: [`app/CHANGELOG.md`](app/CHANGELOG.md).
 
 ## Licence
 

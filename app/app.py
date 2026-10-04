@@ -53,6 +53,7 @@ except (OSError, envfile.EnvFileError) as exc:
 import deps  # noqa: E402
 import goals
 from vaultkit import shell
+from vaultkit import changelog
 from vaultkit import identity
 from vaultkit import signin
 import vaultkit
@@ -146,6 +147,9 @@ REQUEST_TIMEOUT = 30           # seconds a client may stall mid-request (or not 
 DRAIN_BODY = 16 << 20           # an oversized body is read and dropped up to this, so the client sees the 413
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+# GET /api/changelog serves the app's own CHANGELOG.md (docs/principles.md, principle 7): app/CHANGELOG.md, which the
+# image carries because it builds from app/
+CHANGELOG = os.path.join(APP_DIR, "CHANGELOG.md")
 from version import VERSION     # Konbini's release version: /api/status and Settings -> About
 
 
@@ -925,15 +929,20 @@ def make_handler(listener):
                 self.send(200, json.dumps({"start": start + datetime.timedelta(days=1), "end": end, "days": days,
                                            "now": now, "entries": entries, "head": store.meta("head")},
                                           indent=1, default=str, ensure_ascii=False), "application/json")
+            elif path == "/api/changelog":      # behind the same gate as /api/health (a 404 without the file, a 304 on a match)
+                status, body, hdrs = changelog.handle(CHANGELOG, self.headers)
+                ctype = next((v for k, v in hdrs if k == "Content-Type"), "text/plain")
+                self.send(status, body, ctype, [(k, v) for k, v in hdrs if k != "Content-Type"])
             elif path in ("/api/health", "/api/status") and not self.owner():
                 # with an identity file, only the owner sees the details below: Hister's internal address and raw git
                 # and Hister error texts (they can name hosts and paths). Others get what a probe needs.
                 self.send_json(200, {"ok": True, "version": VERSION, "head": store.meta("head"),
                                      "cards": len(store.cards()), "auth": AUTH,
+                                     "vaultkit": "v" + vaultkit.__version__,
                                      "error": "sync failed" if writer.status().get("error") else None})
             elif path in ("/api/health", "/api/status"):      # /api/status: the probe path every room answers
                 self.send_json(200, {"ok": True, "version": VERSION, "imported": store.meta("imported"), "head": store.meta("head"),
-                                     "cards": len(store.cards()), "sync": writer.status(),
+                                     "vaultkit": "v" + vaultkit.__version__, "cards": len(store.cards()), "sync": writer.status(),
                                      "hister": hister.status() if hister else "off",
                                      "livesync": {"status": livesync_status(), "problems": livesync_problems(),
                                                   "phone_conflicts": store.phone_conflicts},

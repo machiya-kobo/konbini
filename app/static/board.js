@@ -68,9 +68,12 @@ function banner(cls, html) {
 
 // A card's column select posts its form when it changes (the page has no inline handlers: the CSP allows only
 // scripts from this site). requestSubmit, unlike submit(), fires the form's submit event.
-for (const s of $$("select[data-submit]")) {
-  s.addEventListener("change", () => (s.form.requestSubmit ? s.form.requestSubmit() : s.form.submit()));
-}
+// Delegated, like the card menu and the inline edit below: the header's search pill swaps <main> for live results
+// (vaultkit 0.17), and those cards must work too.
+document.addEventListener("change", (ev) => {
+  const s = ev.target;
+  if (s instanceof HTMLSelectElement && s.matches("select[data-submit]")) s.form.requestSubmit ? s.form.requestSubmit() : s.form.submit();
+});
 
 // Forms that change the board (card moves, edits, tags, new cards, capture) post with fetch, so a lost connection
 // leaves the page as it is with a line saying nothing was saved, instead of the browser's error page. The board's
@@ -242,9 +245,10 @@ function openSheet(card) {
   sheetOpen = true;
   sheet.showModal();
 }
-for (const b of $$(".card .more")) {
-  b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); openSheet(b.closest(".card")); });
-}
+document.addEventListener("click", (e) => {
+  const b = e.target instanceof Element ? e.target.closest(".card .more") : null;
+  if (b) { e.preventDefault(); e.stopPropagation(); openSheet(b.closest(".card")); }
+});
 
 // -- writing kit: hand the markdown to the share sheet, or copy it ---------
 function toast(text, ms = 1800) {
@@ -274,8 +278,10 @@ for (const b of $$(".kit-share, .kit-copy")) {
 if (!(navigator.canShare)) for (const b of $$(".kit-share")) b.remove();
 
 // -- inline edit: click a card's "next:" line to change it in place -------
-for (const el of $$(".card .next")) {
-  el.addEventListener("click", (ev) => {
+document.addEventListener("click", (ev) => {
+  const el = ev.target instanceof Element ? ev.target.closest(".card .next") : null;
+  if (!el) return;
+  {
     ev.preventDefault();
     const card = el.closest(".card");
     const input = document.createElement("input");
@@ -303,7 +309,18 @@ for (const el of $$(".card .next")) {
       if (k.key === "Escape") done(false);
     });
     input.addEventListener("blur", () => done(true), { once: true });
-  });
+  }
+});
+
+// The header's search pill (vaultkit 0.17) swaps <main> for live results and, when cleared, puts the page's own markup
+// back. The cards in results work through the delegated handlers above; a board that comes back has lost the lanes' and
+// columns' bindings (tabs, drag and drop, the filter sheet), so it reloads instead of binding twice.
+if (board && main && $(".lane .col, .coltabs")) {
+  let away = false;
+  new MutationObserver(() => {
+    if (!$(".lane .col, .coltabs", main)) away = true;
+    else if (away) location.reload();
+  }).observe(main, { childList: true });
 }
 
 if (board) {

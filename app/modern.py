@@ -129,14 +129,13 @@ ICON = {
     "chain": _SVG % '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
 }
 # The rooms (Niwa, Kura, Shiori, ...) are in the shell's Rooms switcher (MACHIYA_ROOMS); the phone gets four tabs
-# (Search third, in every room) plus Rooms, which ends in Settings. Review, Posts and Calendar are in the desktop nav
-# and linked from Now (Review at its top).
+# plus Rooms, which ends in Settings; search is the pill under the header (vaultkit v0.17), not a tab. Posts and Calendar
+# are in the desktop nav and linked from Now.
 # Plan holds Streams, Goals and Timeline behind one entry with a sub-nav; the old URLs stay.
-KANBAN_NAV = [("/", "board", "Board"), ("/now", "now", "Now"), ("/search", "search", "Search"), ("/review", "review", "Review"),
-              ("/plan", "plan", "Plan"),
+KANBAN_NAV = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"), ("/plan", "plan", "Plan"),
               ("/posts", "posts", "Posts"),
               ("/calendar", "calendar", "Calendar"), ("/roundup?period=week", "roundup", "Roundup")]
-KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), ("/search", "search", "Search"),
+KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"),
                ("/roundup?period=week", "roundup", "Roundup")]
 
 
@@ -165,8 +164,10 @@ def page(ctx, what, body, tabs=(), current="", foot=()):
 
 def header(ctx, brand, brand_href, links, current, subtitle="", tools="", stats="", cls=""):
     """The shell's header (the room's icon, wordmark, nav, the Rooms switcher, the settings gear) with the board's stats row."""
-    # no search field in the header (vaultkit v0.16.4): Search is in the nav and the tab bar, and /search has its own field
-    top = shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""))
+    # the room's one search field (vaultkit v0.17): a pill under the header on every page, results as you type
+    # (machiya.js fetches /search?q= and swaps <main>); the query is only set on the search page
+    bar = shell.search_bar(getattr(ctx, "q", ""), "/search", "Search Cards", "Search cards")
+    top = shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""), search=bar)
     if cls:
         top = top.replace('<header class="top">', '<header class="top %s">' % e(cls), 1)
     return top.replace("</div></header>", "</div>%s</header>" % stats, 1) if stats else top
@@ -392,7 +393,7 @@ def now(ctx, cards, claims=None, rev=""):
         sections.append((name, col, items))
     ready = sorted((c for c in cards if c["board"] == "ready"), key=lambda c: (c.get("priority") or 9, sort_key(c)))[:5]
     sections.append(("Up next", "ready", ready))
-    parts = ['<p class="revlink"><a class="btn quiet" href="/review">Weekly review &rsaquo;</a></p>']
+    parts = []
     for name, col, items in sections:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'
@@ -466,7 +467,7 @@ def rollup_html(name, r, link=True):
     if r["blocked"]:
         stats.append('<span class="stat col-blocked">Blocked <b>%d</b></span>' % r["blocked"])
     parts = ["<span>%s</span>" % " &middot; ".join(text)] + stats     # the stats carry their own coloured dots
-    return ('<div class="rollup"><h2 class="rollname">%s</h2><div class="bar" role="progressbar" aria-valuenow="%d" '
+    return ('<div class="rollup"><h2 class="rollname">%s</h2><div class="pbar" role="progressbar" aria-valuenow="%d" '
             'aria-valuemin="0" aria-valuemax="100" aria-label="%s done"><span style="width:%d%%"></span></div>'
             '<p class="rollmeta">%s</p></div>' % (title, pct, e(name), pct, "".join(parts)))
 
@@ -536,7 +537,7 @@ def goals_page(ctx, cards, goals, soon):
         rows = "".join('<li><a class="ntl" href="/p/%s">%s</a> <span class="chip col-%s colchip">%s</span>%s</li>'
                        % (quote(c["slug"]), e(c["title"]), e(c["board"]), e(SHORT.get(c["board"], "")),
                           (' <span class="when">due %s</span>' % e(c["due"])) if c.get("due") else "") for c in g["cards"])
-        parts.append('<section class="goal" id="g-%s"><h2 class="rollname">%s %s</h2><div class="bar" role="progressbar" '
+        parts.append('<section class="goal" id="g-%s"><h2 class="rollname">%s %s</h2><div class="pbar" role="progressbar" '
                      'aria-valuenow="%d" aria-valuemin="0" aria-valuemax="100"><span style="width:%d%%"></span></div>'
                      '<p class="rollmeta"><span>%d of %d done</span></p><ul class="garden-list plain">%s</ul></section>'
                      % (slugify(g["name"]), e(g["name"]), target, pct, pct, g["done"], g["total"], rows))
@@ -624,10 +625,10 @@ def search_page(ctx, cards, q, claims=None):
         body = ('<p class="none">%d card%s</p><div class="nowlist">%s</div>'
                 % (len(hits), "" if len(hits) == 1 else "s",
                    "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"]), show_area=True, show_updated=True) for c in hits)))
-    body = shell.search_box(q, action="/search", placeholder="Search Cards") + body + shell.handoff(q.strip())
+    body += shell.handoff(q.strip())      # the field is the header's pill, which fetches this page as you type
     return page(ctx, ("%s - Search" % q) if q else "Search",
-                board_header(ctx, counts_of(cards), "", "search") + '<main class="now search">%s</main>' % body,
-                KANBAN_TABS, "search")
+                board_header(ctx, counts_of(cards), "Search", "search") + '<main class="now search">%s</main>' % body,
+                KANBAN_TABS, "")
 
 
 BOARD_SETTINGS = [("group", "Group By", [("area", "Area"), ("family", "Family")], "area"),

@@ -2,8 +2,6 @@
    settings and footer come from machiya.css (vendored with vaultkit, app/vaultkit/ui/), loaded first. */
 
 /* ---- base -------------------------------------------------------------- */
-.revlink { margin: 0 0 12px; }
-@media (min-width: 761px) { .revlink { display: none; } }   /* the desktop nav has Review */
 .none, .unsorted, .keys, .nowmore, .colmore { color: var(--muted); font-size: 13px; }
 .colmore { margin: 6px 2px 0; font-size: 12px; }
 .none > b:first-child { display: block; color: var(--fg); font-size: 15px; font-weight: 600; margin-bottom: 2px; }
@@ -164,8 +162,8 @@ main.streams { max-width: 900px; }
 .rollup { margin: 0 0 var(--sp-5); }
 .rollname { margin: 0 0 6px; font-size: var(--fs-l); color: var(--magenta); }
 .rollname a { color: var(--magenta); }
-.bar { height: 8px; border-radius: 999px; background: var(--hl); overflow: hidden; max-width: 640px; }
-.bar > span { display: block; height: 100%; background: var(--green); border-radius: 999px; }
+.pbar { height: 8px; border-radius: 999px; background: var(--hl); overflow: hidden; max-width: 640px; }
+.pbar > span { display: block; height: 100%; background: var(--green); border-radius: 999px; }
 .rollmeta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; color: var(--muted); font-size: var(--fs-s); }
 main.stream .rollup { margin-bottom: var(--sp-4); }
 

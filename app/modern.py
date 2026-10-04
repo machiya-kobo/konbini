@@ -129,12 +129,13 @@ ICON = {
     "chain": _SVG % '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
 }
 # The rooms (Niwa, Kura, Shiori, ...) are in the shell's Rooms switcher (MACHIYA_ROOMS); the phone gets four tabs
-# plus Rooms, which ends in Settings. Posts and Calendar are in the desktop nav and linked from Now.
+# (Search third, in every room) plus Rooms, which ends in Settings. Review, Posts and Calendar are in the desktop nav
+# and linked from Now (Review at its top).
 # Plan holds Streams, Goals and Timeline behind one entry with a sub-nav; the old URLs stay.
 KANBAN_NAV = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"), ("/plan", "plan", "Plan"),
               ("/posts", "posts", "Posts"),
               ("/calendar", "calendar", "Calendar"), ("/roundup?period=week", "roundup", "Roundup")]
-KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"),
+KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), ("/search", "search", "Search"),
                ("/roundup?period=week", "roundup", "Roundup")]
 
 
@@ -391,7 +392,7 @@ def now(ctx, cards, claims=None, rev=""):
         sections.append((name, col, items))
     ready = sorted((c for c in cards if c["board"] == "ready"), key=lambda c: (c.get("priority") or 9, sort_key(c)))[:5]
     sections.append(("Up next", "ready", ready))
-    parts = []
+    parts = ['<p class="revlink"><a class="btn quiet" href="/review">Weekly review &rsaquo;</a></p>']
     for name, col, items in sections:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'
@@ -623,9 +624,10 @@ def search_page(ctx, cards, q, claims=None):
         body = ('<p class="none">%d card%s</p><div class="nowlist">%s</div>'
                 % (len(hits), "" if len(hits) == 1 else "s",
                    "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"]), show_area=True, show_updated=True) for c in hits)))
-    body += shell.handoff(q.strip())
+    body = shell.search_box(q, action="/search", placeholder="Search Cards") + body + shell.handoff(q.strip())
     return page(ctx, ("%s - Search" % q) if q else "Search",
-                board_header(ctx, counts_of(cards), "Search", "") + '<main class="now search">%s</main>' % body, KANBAN_TABS, "")
+                board_header(ctx, counts_of(cards), "Search", "search") + '<main class="now search">%s</main>' % body,
+                KANBAN_TABS, "search")
 
 
 BOARD_SETTINGS = [("group", "Group By", [("area", "Area"), ("family", "Family")], "area"),

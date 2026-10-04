@@ -23,7 +23,10 @@ html = modern.search_page(ctx, cards, "machiya", {})
 slugs = re.findall(r'data-slug="([^"]+)"', html)
 assert slugs == ["m", "s", "k"], slugs                         # title match first, then by column (ready, wip)
 assert "3 cards" in html and 'href="https://shiori.example/#/search?q=machiya"' in html
-assert html.count('<form class="search"') == 1 and 'value="machiya"' in html      # one search field, in the header
+assert html.count('<form class="search"') == 2 and html.count('value="machiya"') == 2   # the header's field and the page's own
+main = html[html.index("<main"):]
+assert main.startswith('<main class="now search"><form class="search"')   # the page's field is first in <main> (phones have none in the header)
+assert 'aria-current="page"' in html and re.search(r'class="here" aria-current="page"><svg[^>]*>.*?</svg><span>Search</span>', html)
 assert "spare" not in html
 html = modern.search_page(ctx, cards, "spare", {})
 assert re.findall(r'data-slug="([^"]+)"', html) == ["b"]                           # summary matches
@@ -32,4 +35,8 @@ empty = modern.search_page(common.Ctx("night"), cards, "", {})
 assert "Search Cards" in empty and 'class="handoff"' not in empty                 # no hand-off without a query
 board = modern.board(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], query={})
 assert board.count('<form class="search"') == 1 and 'name="q" placeholder="search"' not in board
+# the phone tab bar: Board, Now, Search, Roundup (Search third in every room); Review is on the desktop nav and linked from Now
+assert [k for _, k, _ in modern.KANBAN_TABS] == ["board", "now", "search", "roundup"]
+assert [k for _, k, _ in modern.KANBAN_NAV][:3] == ["board", "now", "review"]
+assert 'class="revlink"' in modern.now(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], {}, "1")
 print("search tests: all passed")

@@ -132,7 +132,8 @@ ICON = {
 # (Search third, in every room) plus Rooms, which ends in Settings. Review, Posts and Calendar are in the desktop nav
 # and linked from Now (Review at its top).
 # Plan holds Streams, Goals and Timeline behind one entry with a sub-nav; the old URLs stay.
-KANBAN_NAV = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"), ("/plan", "plan", "Plan"),
+KANBAN_NAV = [("/", "board", "Board"), ("/now", "now", "Now"), ("/search", "search", "Search"), ("/review", "review", "Review"),
+              ("/plan", "plan", "Plan"),
               ("/posts", "posts", "Posts"),
               ("/calendar", "calendar", "Calendar"), ("/roundup?period=week", "roundup", "Roundup")]
 KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), ("/search", "search", "Search"),
@@ -164,8 +165,7 @@ def page(ctx, what, body, tabs=(), current="", foot=()):
 
 def header(ctx, brand, brand_href, links, current, subtitle="", tools="", stats="", cls=""):
     """The shell's header (the room's icon, wordmark, nav, the Rooms switcher, the settings gear) with the board's stats row."""
-    # the room's one search field (vaultkit v0.6): Konbini searches its cards (/search), then hands off to Shiori
-    tools = shell.search_box(getattr(ctx, "q", ""), action="/search", placeholder="Search Cards") + tools
+    # no search field in the header (vaultkit v0.16.4): Search is in the nav and the tab bar, and /search has its own field
     top = shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""))
     if cls:
         top = top.replace('<header class="top">', '<header class="top %s">' % e(cls), 1)
@@ -626,7 +626,7 @@ def search_page(ctx, cards, q, claims=None):
                    "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"]), show_area=True, show_updated=True) for c in hits)))
     body = shell.search_box(q, action="/search", placeholder="Search Cards") + body + shell.handoff(q.strip())
     return page(ctx, ("%s - Search" % q) if q else "Search",
-                board_header(ctx, counts_of(cards), "Search", "search") + '<main class="now search">%s</main>' % body,
+                board_header(ctx, counts_of(cards), "", "search") + '<main class="now search">%s</main>' % body,
                 KANBAN_TABS, "search")
 
 

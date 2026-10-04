@@ -83,7 +83,7 @@ def shell_urls():
             static_url("Sortable.min.js"), icon_url(".svg"), icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
 
 
-def manifest(theme, headers=None):
+def manifest(theme, headers=None, palette=None):
     """headers: the request's (Sec-CH-Prefers-Color-Scheme picks System's colours: shell.manifest_colors)."""
     return {**{k: v for k, v in {
         "name": NAME, "short_name": NAME, "description": DESCRIPTION,
@@ -101,7 +101,7 @@ def manifest(theme, headers=None):
             {"src": icon_url("-512.png"), "sizes": "512x512", "type": "image/png"},
             {"src": icon_url("-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
-    }.items() if v is not None}, **shell.manifest_colors(theme, headers)}
+    }.items() if v is not None}, **shell.manifest_colors(theme, headers, palette or shell.palettes.DEFAULT)}
 
 
 def service_worker():

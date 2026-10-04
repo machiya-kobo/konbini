@@ -170,6 +170,11 @@ try:
                                                                   "Cookie": "theme=night"})[2])
     assert night["background_color"] == "#1a1b26", night
     assert call(port, "GET", "/")[1]["Accept-CH"] == "Sec-CH-Prefers-Color-Scheme"
+    # a chosen theme (vaultkit 0.15): the page wears it, the manifest uses its colours, Settings offers it
+    cookie = {"Cookie": "palette=catppuccin; theme=day"}
+    assert json.loads(call(port, "GET", "/manifest.webmanifest", cookie)[2])["background_color"] == "#eff1f5"
+    assert 'class="theme-day palette-catppuccin' in call(port, "GET", "/", cookie)[2]
+    assert '<option value="catppuccin" selected>Catppuccin</option>' in call(port, "GET", "/settings", cookie)[2]
 
     # the share target is a GET: the Capture form, prefilled, and nothing written until that form posts
     assert manifest["share_target"] == {"action": "/share", "method": "GET",

@@ -465,6 +465,7 @@ def make_handler(listener):
         def ctx(self):
             p = shell.prefs(self.headers.get("Cookie"))
             c = common.Ctx(p.theme, p.text, p.extra)
+            c.palette = p.palette                                        # the chosen theme (vaultkit 0.15)
             c.status = footer_status()
             c.alert = board_alert()
             c.prefs_url = "/api/prefs" if self.principal() else ""     # machiya.js syncs theme and text size
@@ -716,7 +717,7 @@ def make_handler(listener):
                 return self.prefs()
             ctx = self.ctx()
             if path == "/manifest.webmanifest":
-                self.send(200, json.dumps(modern.manifest(ctx.theme, self.headers), indent=1), "application/manifest+json",
+                self.send(200, json.dumps(modern.manifest(ctx.theme, self.headers, getattr(ctx, "palette", None)), indent=1), "application/manifest+json",
                           headers=[("Cache-Control", "no-cache"), ("Vary", shell.MANIFEST_VARY)])
                 return
             if path == "/sw.js":

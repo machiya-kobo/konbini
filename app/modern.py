@@ -740,7 +740,7 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
         ("Topics", " ".join('<span class="topic">%s</span>' % e(t) for t in card.get("topics") or [])),
         ("Machines", e(" ".join(card.get("machines") or []))),
         ("Family", e(card.get("family"))),
-        ("Repo", '<a href="%s">%s</a>' % (e(card["repo"]), e(card["repo"])) if card.get("repo") else ""),
+        ("Repo", link_or_text(card["repo"]) if card.get("repo") else ""),
         ("Updated", '%s <span class="when">%s</span>' % (e(card.get("updated")), e(ago(card.get("updated"))))
          if card.get("updated") else ""),
         ("Garden", ('<a href="%s/n/%s">%s</a>' % (e(GARDEN_URL), quote(note), "published" if card.get("publish") else "not published (preview, publish)"))
@@ -768,7 +768,29 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
                 KANBAN_TABS, "board")
 
 
+# The card page's edit form: the fields it posts. It also carries each field's value as it was drawn (o_<name>), so the
+# board can tell what you changed from what you only passed through, and a change to a field somebody else changed
+# meanwhile is refused instead of overwriting it (the sweep's KONB-3).
+FORM_FIELDS = ("priority", "next", "blocked_by", "dependsOn", "stream", "goal", "due", "post", "post_url")
+
+
+def form_values(card):
+    return {"priority": str(card.get("priority") or ""), "next": card.get("next") or "", "blocked_by": card.get("blocked_by") or "",
+            "dependsOn": ", ".join(card.get("dependsOn") or []), "stream": card.get("stream") or "", "goal": card.get("goal") or "",
+            "due": card.get("due") or "", "post": card.get("post") or "none", "post_url": card.get("post_url") or ""}
+
+
+def link_or_text(url):
+    """A link for a note's own address (repo:, post_url:), only when it is an http(s) one: a javascript: or data: value from
+    frontmatter is shown as text (the CSP blocks it anyway)."""
+    url = str(url or "")
+    if url.lower().startswith(("http://", "https://")):
+        return '<a href="%s">%s</a>' % (e(url), e(url))
+    return e(url)
+
+
 def edit_form(ctx, card):
+    originals = "".join('<input type="hidden" name="o_%s" value="%s">' % (k, e(v)) for k, v in form_values(card).items())
     pri = "".join('<option value="%s"%s>%s</option>' % (v, " selected" if str(card.get("priority") or "") == v else "", l)
                   for v, l in (("", "-"), ("1", "P1"), ("2", "P2"), ("3", "P3")))
     return (
@@ -783,9 +805,9 @@ def edit_form(ctx, card):
         '<label>Add note <input type="text" name="comment" value="" placeholder="a line for the history"></label>'
         '<label>Post <select name="post">%s</select></label>'
         '<label>Post URL <input type="text" name="post_url" value="%s" placeholder="https://example.com/blog/..."></label>'
-        '<div class="row"><button type="submit">Save</button></div></form>'
+        '%s<div class="row"><button type="submit">Save</button></div></form>'
     ) % (quote(card["slug"]), pri, e(card.get("next")), e(card.get("blocked_by")), e(", ".join(card.get("dependsOn") or [])),
-         e(card.get("stream")), e(card.get("goal")), e(card.get("due")), post_options(card), e(card.get("post_url")))
+         e(card.get("stream")), e(card.get("goal")), e(card.get("due")), post_options(card), e(card.get("post_url")), originals)
 
 
 def tags_form(card, tagmsg="", pending=""):
@@ -1036,7 +1058,7 @@ def post_cell(card):
     state = card.get("post") or "none"
     out = '<span class="chip post-%s">%s</span>' % (state, e(state))
     if card.get("post_url"):
-        out += ' <a href="%s">%s</a>' % (e(card["post_url"]), e(card["post_url"]))
+        out += " " + link_or_text(card["post_url"])
     return out
 
 

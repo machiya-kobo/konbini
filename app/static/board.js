@@ -469,9 +469,15 @@ if (board) {
             setTimeout(() => { dragging = false; }, 50);
             if (ev.from === ev.to && ev.oldIndex === ev.newIndex) return;
             const to = ev.to;
-            const slugs = [...to.querySelectorAll(".card")].map((c) => c.dataset.slug);
+            const cards = [...to.querySelectorAll(".card")];
+            const slugs = cards.map((c) => c.dataset.slug);
+            // where each card was when this page showed it (the moved one came from the other column): the board leaves a
+            // card alone that somebody moved meanwhile, and the page reloads to show what is true
+            const from = {};
+            for (const c of cards) from[c.dataset.slug] = c === ev.item ? ev.from.dataset.board : c.dataset.board;
             try {
-              await send("POST", "/api/order", { board: to.dataset.board, slugs });
+              const r = await send("POST", "/api/order", { board: to.dataset.board, slugs, from });
+              if (r.skipped && r.skipped.length) { location.reload(); return; }
               ev.item.className = ev.item.className.replace(/\bcol-\w+/, "col-" + to.dataset.board);
               ev.item.dataset.board = to.dataset.board;
               const select = ev.item.querySelector("select[name=board]");

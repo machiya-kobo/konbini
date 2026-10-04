@@ -7,7 +7,7 @@ import json, os, socket, subprocess, sys, tempfile, textwrap, time
 
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
 sys.path.insert(0, APP)
-NOTE = "---\ntitle: Kura\ncreated: 2026-09-01\ntags:\n  - type/project\n  - area/projects\nproject: kura\nstatus: wip\n---\n# Kura\n"
+NOTE = "---\ntitle: Kura\ncreated: 2026-09-01\ntags:\n  - type/project\n  - area/projects\nproject: kura\nstatus: wip\nrepo: \"javascript:alert(1)\"\n---\n# Kura\n"
 SERVER = textwrap.dedent('''
     import sys
     sys.path.insert(0, sys.argv[1])
@@ -113,6 +113,61 @@ try:
     status, out = raw(port, "POST", "/share", b"url=https%3A%2F%2Fexample.org&text=a%0A%3D%3D%3D%3D%3D%3D%3D%0Ab&title=Shared",
                       ["Origin: http://127.0.0.1:%d" % port, "Content-Type: application/x-www-form-urlencoded"])
     assert status in (302, 403), status
+
+    # KONB-3 / KONB-4: the card form saves only what you changed, refuses a field somebody else changed meanwhile, and writes
+    # the comment only after the rest was accepted, and only on a card that exists
+    import http.client, urllib.parse
+    def api(method, path, body=None):
+        status, out = raw(port, method, path, body)
+        return status, (json.loads(body_of(out)) if body_of(out).strip().startswith(b"{") else None)
+    def form(path, fields):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("POST", path, body=urllib.parse.urlencode(fields), headers={
+            "Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1:%d" % port})
+        r = c.getresponse(); r.read(); c.close()
+        return r.status
+    page_html = body_of(raw(port, "GET", "/p/kura")[1]).decode()
+    assert 'name="o_next"' in page_html and 'name="o_due"' in page_html
+    drawn = {"priority": "", "next": "", "blocked_by": "", "dependsOn": "", "stream": "", "goal": "", "due": "", "post": "none", "post_url": ""}
+    # an agent changes next and waiting while the owner's page is open
+    assert api("PATCH", "/api/cards/kura", {"next": "agent's step", "waiting": "the review"})[0] == 200
+    # the owner types only a note and presses Save: the page still holds the old (empty) values
+    f = dict(drawn, comment="looks good", **{"o_" + k: v for k, v in drawn.items()})
+    assert form("/p/kura", f) == 302
+    card = api("GET", "/api/cards/kura")[1]
+    assert card["next"] == "agent's step" and card["blocked_by"] == "the review", card                    # nothing reverted
+    events = api("GET", "/api/events?limit=50")[1]["events"]
+    assert any(e.get("body") == "looks good" for e in events)
+    # the owner changes a field somebody else changed: refused, and no note is written
+    f = dict(drawn, next="mine", comment="should not appear", **{"o_" + k: v for k, v in drawn.items()})
+    assert form("/p/kura", f) == 409
+    assert api("GET", "/api/cards/kura")[1]["next"] == "agent's step"
+    assert not any(e.get("body") == "should not appear" for e in api("GET", "/api/events?limit=50")[1]["events"])
+    # a field changed from what the page drew, and nobody else touched it: saved
+    f = dict(drawn, stream="Machiya", **{"o_" + k: v for k, v in drawn.items()})
+    f["next"] = "agent's step"; f["o_next"] = "agent's step"; f["blocked_by"] = "the review"; f["o_blocked_by"] = "the review"
+    assert form("/p/kura", f) == 302 and api("GET", "/api/cards/kura")[1]["stream"] == "Machiya"
+    # a card that doesn't exist gets no orphan note; an invalid save adds no comment
+    assert form("/p/no-such-card", {"comment": "orphan"}) == 404
+    assert not any(e.get("card") == "no-such-card" for e in api("GET", "/api/events?limit=200")[1]["events"])
+    f = dict(drawn, due="not-a-date", comment="duplicate me", **{"o_" + k: v for k, v in drawn.items()})
+    f["next"] = "agent's step"; f["o_next"] = "agent's step"; f["blocked_by"] = "the review"; f["o_blocked_by"] = "the review"
+    assert form("/p/kura", f) == 422
+    assert not any(e.get("body") == "duplicate me" for e in api("GET", "/api/events?limit=200")[1]["events"])
+    # drag and drop: a card somebody moved meanwhile is left alone
+    assert api("POST", "/api/cards", {"title": "Finished", "area": "projects", "board": "done"})[0] == 201
+    status, out = api("POST", "/api/order", {"board": "wip", "slugs": ["finished"], "from": {"finished": "wip"}})   # the page thought it was in wip
+    assert status == 200 and out["skipped"] == ["finished"] and api("GET", "/api/cards/finished")[1]["board"] == "done", out
+    status, out = api("POST", "/api/order", {"board": "wip", "slugs": ["finished"], "from": {"finished": "done"}})
+    assert status == 200 and out["skipped"] == [] and api("GET", "/api/cards/finished")[1]["board"] == "wip", out
+
+    # SVG answers are sandboxed and every answer says nosniff; a javascript: repo from frontmatter is text, not a link
+    status, out = raw(port, "GET", "/static/icons/konbini.svg")
+    head = out.split(b"\r\n\r\n")[0].decode().lower()
+    assert status == 200 and "content-security-policy: default-src 'none'; style-src 'unsafe-inline'; sandbox" in head and "x-content-type-options: nosniff" in head, head
+    assert "x-content-type-options: nosniff" in raw(port, "GET", "/api/cards")[1].split(b"\r\n\r\n")[0].decode().lower()
+    html = body_of(raw(port, "GET", "/p/kura")[1]).decode()
+    assert "javascript:alert(1)" in html and 'href="javascript:' not in html.lower(), "the repo value is shown as text, never as a link"
 finally:
     for p in procs:
         p.terminate()

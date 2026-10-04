@@ -170,6 +170,7 @@ class Writer:
         self.last_verify = time.time()
         self.error = ""
         self.drift = ""
+        self.dropped = []           # [(time, text)]: board edits a replay couldn't merge (shown on the board for a day)
 
     # paths
 
@@ -190,24 +191,26 @@ class Writer:
     # events
 
     def event(self, slug, etype, actor, agent, **data):
-        now = datetime.datetime.now(datetime.timezone.utc)
-        ev = {"ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "card": slug, "type": etype,
-              "actor": actor, "agent": agent}
-        ev.update({k: v for k, v in data.items() if v not in (None, "", [], {})})
-        d = os.path.join(self.repo, ".board", "events")
-        os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, now.strftime("%Y-%m") + ".jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
-        self.store.add_event(ev)
-        return ev
+        with self.lock:             # a line appended while a pull rebases or resets could be thrown away with the tree
+            now = datetime.datetime.now(datetime.timezone.utc)
+            ev = {"ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "card": slug, "type": etype,
+                  "actor": actor, "agent": agent}
+            ev.update({k: v for k, v in data.items() if v not in (None, "", [], {})})
+            d = os.path.join(self.repo, ".board", "events")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, now.strftime("%Y-%m") + ".jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+            self.store.add_event(ev)
+            return ev
 
     def touch(self, slug, summary):
-        now = time.time()
-        if not self.pending:
-            self.first = now
-        self.last = now
-        self.pending.append((slug, summary))
-        self.store.bump()
+        with self.lock:
+            now = time.time()
+            if not self.pending:
+                self.first = now
+            self.last = now
+            self.pending.append((slug, summary))
+            self.store.bump()
 
     # tags
 
@@ -386,18 +389,25 @@ class Writer:
                 out.append(link)
         return out
 
-    def order(self, slugs, column, actor, agent, areas=None):
-        """Set rank 10, 20, ... for cards in display order (drag and drop)."""
+    def order(self, slugs, column, actor, agent, areas=None, origin=None):
+        """Set rank 10, 20, ... for cards in display order (drag and drop). origin: {slug: the column the page showed it in}:
+        a card that is somewhere else now (moved by someone meanwhile) is left alone, so a stale drag can't move a done card
+        back. Returns the slugs it skipped."""
+        skipped = []
         with self.lock:
             for i, slug in enumerate(slugs):
                 card = self.store.card(slug)
                 if not card:
+                    continue
+                if origin and isinstance(origin.get(slug), str) and card["board"] != origin[slug]:
+                    skipped.append(slug)
                     continue
                 fields = {"rank": (i + 1) * 10}
                 if column and card["board"] != column:
                     fields["board"] = column
                 if card.get("rank") != fields["rank"] or "board" in fields:
                     self.update(slug, fields, actor, agent, areas=areas)
+        return skipped
 
     def create(self, fields, actor, agent, areas=None):
         with self.lock:
@@ -620,6 +630,7 @@ class Writer:
             self.git("commit", "-q", "-m", msg + "\n\nReplayed onto upstream after a conflicting edit.")
         for n in notes:
             print("sync: replay: " + n, flush=True)
+            self.dropped = (self.dropped + [(time.time(), n)])[-10:]
         print("sync: rebase conflicted; replayed %d file(s) onto %s" % (len(merged), upstream[:8]), flush=True)
         return True
 

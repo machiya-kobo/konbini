@@ -234,10 +234,6 @@ def V(ctx):
     """The board's pages."""
     return modern
 
-IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-               ".webp": "image/webp", ".svg": "image/svg+xml"}
-
-
 def dep_graph(cards):
     """Dependencies resolved with the vault index (vaultkit's wikilink rules), per request."""
     garden.index()
@@ -605,6 +601,12 @@ def make_handler(listener):
         def send(self, status, body, ctype="text/html", headers=()):
             if ctype == "text/html":
                 headers = page_headers(headers)
+            have = {k.lower() for k, _ in headers}
+            if "x-content-type-options" not in have:           # on every answer, not only pages
+                headers = list(headers) + [("X-Content-Type-Options", "nosniff")]
+            if ctype.startswith("image/svg") and "content-security-policy" not in have:
+                # an SVG can carry script: shown as an image it is inert, opened on its own it runs in a sandbox
+                headers = list(headers) + [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")]
             if isinstance(body, str):
                 data = body.encode("utf-8")
                 ctype += "; charset=utf-8"
@@ -769,8 +771,9 @@ def make_handler(listener):
                     text = str(data.get("body") or "").strip()
                     if not text:
                         raise WriteError(422, "body is required")
-                    ev = writer.event(slug, str(data.get("type") or "comment")[:20], actor, agent, body=text[:2000])
-                    writer.touch(slug, slug + " (note)")
+                    with writer.lock:
+                        ev = writer.event(slug, str(data.get("type") or "comment")[:20], actor, agent, body=text[:2000])
+                        writer.touch(slug, slug + " (note)")
                     self.send_json(201, ev)
                 elif self.command in ("POST", "DELETE") and re.match(r"^/api/cards/[^/]+/claim$", path):
                     slug = path.split("/")[3]
@@ -786,8 +789,9 @@ def make_handler(listener):
                     slugs = data.get("slugs") or []
                     if not isinstance(slugs, list) or not all(isinstance(x, str) for x in slugs) or len(slugs) > 500:
                         raise WriteError(422, "slugs must be a list of card slugs")
-                    writer.order(slugs, data.get("board"), actor, agent, areas=areas)
-                    self.send_json(200, {"ok": True})
+                    origin = data.get("from") if isinstance(data.get("from"), dict) else None
+                    skipped = writer.order(slugs, data.get("board"), actor, agent, areas=areas, origin=origin)
+                    self.send_json(200, {"ok": True, "skipped": skipped})
                 # HTML forms (no JavaScript needed)
                 elif self.command == "POST" and path == "/move":
                     writer.update(data.get("slug", ""), {"board": data.get("board")}, actor, agent, areas=areas)
@@ -809,13 +813,34 @@ def make_handler(listener):
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + slug)])
                 elif self.command == "POST" and path.startswith("/p/"):
                     slug = path[3:]
-                    if data.get("comment", "").strip():
-                        writer.event(slug, "comment", actor, agent, body=data["comment"].strip()[:2000])
-                        writer.touch(slug, slug + " (note)")
-                    fields = {k: data[k] for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due")
-                              if k in data}
+                    card = store.card(slug)
+                    if not card:
+                        raise WriteError(404, "not found")          # no orphan note for a card that doesn't exist
+                    # Only what you changed is saved: the form carries each field as it was drawn (o_<name>), and a field
+                    # you changed that somebody else changed meanwhile is refused (a card page open for an hour must not
+                    # revert what an agent wrote in the meantime).
+                    now = modern.form_values(card)
+                    fields = {}
+                    for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due"):
+                        if k not in data:
+                            continue
+                        value = str(data[k] if data[k] is not None else "")
+                        orig = data.get("o_" + k)
+                        if orig is None:                            # no original (a quick-move form, an old page): only a real change
+                            if k not in now or value != now[k]:
+                                fields[k] = data[k]
+                        elif value != orig:
+                            if now.get(k, orig) != orig:
+                                raise WriteError(409, "%s changed since you opened this page (now: %s); reload and try again"
+                                                 % (k, now[k] or "empty"), code="version_conflict")
+                            fields[k] = data[k]
                     if fields:
                         writer.update(slug, fields, actor, agent, areas=areas)
+                    comment = str(data.get("comment") or "").strip()
+                    if comment:                                     # after the update validated: a failed save adds no duplicate
+                        with writer.lock:
+                            writer.event(slug, "comment", actor, agent, body=comment[:2000])
+                            writer.touch(slug, slug + " (note)")
                     self.back("/p/" + slug)
                 elif self.command == "POST" and path == "/share":
                     url = str(data.get("url") or "").strip()
@@ -1177,6 +1202,9 @@ def board_alert():
         parts.append("%d more" % (len(store.broken) - 3))
     if writer.error:
         parts.append("sync: " + writer.error)
+    recent = [text for at, text in writer.dropped if time.time() - at < 86400]
+    if recent:      # a board edit that a replay couldn't merge is no longer only a log line
+        parts.append("a board edit was not kept after a conflict (%s)" % "; ".join(recent[-2:]))
     parts += livesync_problems()
     n = len(store.phone_conflicts)
     if n:

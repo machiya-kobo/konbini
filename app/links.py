@@ -17,7 +17,9 @@ Public pages read only archive_url; private_url is for the board's own pages."""
 import datetime
 import json
 import os
+import ipaddress
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -48,11 +50,68 @@ def clean_url(u):
     return u.rstrip(".,;:!?…")
 
 
+PRIVATE_SUFFIXES = (".local", ".lan", ".internal", ".localhost", ".home.arpa", ".intranet", ".corp", ".private")
+
+
+class PrivateHost(Exception):
+    """The address isn't a public one: never fetched (a link in a note must not make the board call into the private
+    network: a blind SSRF)."""
+
+
 def is_external(url):
-    host = urllib.parse.urlsplit(url).netloc.lower().split(":")[0]
+    try:
+        host = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
     if not host or "." not in host:  # short names on a private network (e.g. konbini) and localhost
         return False
+    if host.endswith(PRIVATE_SUFFIXES):
+        return False
+    try:
+        if not ipaddress.ip_address(host).is_global:        # an address as the host: only a public one
+            return False
+    except ValueError:
+        pass
     return not any(host == h or host.endswith("." + h) or host.startswith(h) for h in SKIP_HOSTS)
+
+
+def check_public(url):
+    """PrivateHost unless every address `url`'s host resolves to is a public one (IPv4 and IPv6)."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname
+    if parts.scheme not in ("http", "https") or not host:
+        raise PrivateHost("not an http(s) address")
+    try:
+        infos = socket.getaddrinfo(host, parts.port or (443 if parts.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError, ValueError, OSError):
+        raise PrivateHost("the name doesn't resolve")
+    if not infos:
+        raise PrivateHost("the name doesn't resolve")
+    for info in infos:
+        if not ipaddress.ip_address(info[4][0].split("%")[0]).is_global:
+            raise PrivateHost("%s is not a public address" % host)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None             # every hop is followed by hand, and checked
+
+
+def safe_request(url, method="GET", headers=None, timeout=15, hops=5):
+    """(status, final URL) of a request whose every hop (the first address and each redirect) goes to a public address only.
+    HTTPError for a 4xx or 5xx, PrivateHost for a private hop. No proxy is used."""
+    opener = urllib.request.build_opener(_NoRedirect, urllib.request.ProxyHandler({}))
+    for _ in range(hops + 1):
+        check_public(url)
+        try:
+            with opener.open(urllib.request.Request(url, method=method, headers=headers or {}), timeout=timeout) as r:
+                return r.status, url
+        except urllib.error.HTTPError as e:
+            where = e.headers.get("Location") if e.code in (301, 302, 303, 307, 308) else None
+            if not where:
+                raise
+            url = urllib.parse.urljoin(url, where)
+    raise PrivateHost("too many redirects")
 
 
 def extract(text):
@@ -156,9 +215,7 @@ class HisterBackend:
     def final_url(self, url):
         """Where a URL redirects to: Hister stores the page under its final address."""
         try:
-            req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                return r.geturl()
+            return safe_request(url, "HEAD", {"User-Agent": UA})[1]
         except Exception:
             return url
 
@@ -171,6 +228,10 @@ class HisterBackend:
             found = self.lookup(final)
             if found:
                 return found
+        try:
+            check_public(url)       # the hister command fetches it: not into the private network either
+        except PrivateHost:
+            return None
         if not self.h.index(url):
             return None
         for _ in range(4):  # Hister indexes in the background
@@ -221,9 +282,9 @@ class Links:
         """HTTP status of a link, or None when it can't be reached."""
         for method in ("HEAD", "GET"):
             try:
-                req = urllib.request.Request(url, method=method, headers={"User-Agent": UA, "Accept": "*/*"})
-                with urllib.request.urlopen(req, timeout=15) as r:
-                    return r.status
+                return safe_request(url, method, {"User-Agent": UA, "Accept": "*/*"})[0]
+            except PrivateHost:
+                return None         # a private address (or a redirect into one) is never fetched
             except urllib.error.HTTPError as e:
                 if method == "HEAD" and e.code in (405, 403, 501):
                     continue

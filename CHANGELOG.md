@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.11.4
+
+- On a phone the header scrolls with the page instead of staying pinned (vaultkit 0.16.7): the installed app on iOS drew a pinned header soft. The Rooms menu's text meets AA contrast in every theme.
+
 ## 0.11.3
 
 - On a phone the tabs are Board, Now, Search and Roundup (then Rooms): Search is third, as in every room; Review is a button at the top of Now. On a wide screen Search is the third nav link.

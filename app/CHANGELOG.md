@@ -3,6 +3,12 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.12.0
+
+- Settings follow the signed-in person (vaultkit 0.21): with `KANBAN_AUTH=hister` and the helper, Theme, Appearance, Text Size, which apps the Rooms menu shows, and Konbini's own Group By and Done Cards are kept in your account and follow you to every app and device. A fresh browser is drawn in your theme from its first page. `/settings` starts with a Shared section (where they are kept now), then Board, This Device (Use This Device's Size, Offline Copies), Account and About.
+- `/api/prefs` answers `{"v", "rev", "prefs", "updated"}` and accepts only the schema's keys (docs/contracts/prefs.md).
+- OpenBSD starts: vaultkit no longer needs `hashlib.scrypt` at import (only the built-in password sign-in does).
+
 ## 0.11.12
 
 - Hister queries leave out code documents (`-metadata.source:code`, from the coming code search): a repo, README or issue is never shown as a page you read or a saved copy.

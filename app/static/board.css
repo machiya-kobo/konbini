@@ -432,9 +432,6 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 /* ---- phones ------------------------------------------------------------- */
 @media (max-width: 760px) {
   .stats { display: none; }
-  /* the installed app showed the header's mark, title and button soft and dimmed (iPhone, 2026-10-04) while Kura's and Niwa's
-     did not: on phones the header is a plain opaque bar, with no backdrop blur of its own to render its children through */
-  header.top { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
   /* one column at a time, picked with the tabs (all columns stacked without JS) */
   .coltabs { display: flex; gap: 4px; margin: 0 0 12px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .coltabs::-webkit-scrollbar { display: none; }

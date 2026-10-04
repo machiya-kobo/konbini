@@ -159,33 +159,33 @@ try:
 
     # prefs: per principal, same-origin for a cookie, a token exempt
     st, h, body = call(port, "GET", "/api/prefs", OWNER)
-    assert (st, json.loads(body)) == (200, {"prefs": {}}) and h["Cache-Control"] == "no-store", (st, body)
-    put = {"prefs": {"board.group": "family", "theme": "night"}}
+    assert st == 200 and json.loads(body)["prefs"] == {} and h["Cache-Control"] == "no-store", (st, body)
+    put = {"prefs": {"konbini.group": "family", "theme": "night"}}
     assert call(port, "PUT", "/api/prefs", OWNER, put)[0] == 403                      # a cookie and no Origin
     assert call(port, "PUT", "/api/prefs", dict(OWNER, **{"X-Agent": "x"}), put)[0] == 403   # X-Agent doesn't excuse it
     assert call(port, "PUT", "/api/prefs", dict(OWNER, Origin="https://evil.example"), put)[0] == 403
     assert call(port, "PUT", "/api/prefs", dict(OWNER, Referer="https://evil.example/x"), put)[0] == 403
     st, _, body = call(port, "PUT", "/api/prefs", dict(OWNER, Origin=HTTPS), put)
-    assert (st, json.loads(body)) == (200, {"prefs": {"board.group": "family", "theme": "night"}}), (st, body)
+    assert st == 200 and json.loads(body)["prefs"] == {"konbini.group": "family", "theme": "night"}, (st, body)
     st, _, body = call(port, "PUT", "/api/prefs", dict(OWNER, Origin=HTTPS), {"prefs": {"theme": None}})
-    assert json.loads(body) == {"prefs": {"board.group": "family"}}, body                # null removes
+    assert json.loads(body)["prefs"] == {"konbini.group": "family"}, body                # null removes
     assert call(port, "PUT", "/api/prefs", dict(OWNER, Origin=HTTPS), {"prefs": {"Bad Key": "x"}})[0] == 400
     # a token needs neither Origin nor X-Agent (a browser never adds Authorization on its own) and has its own prefs
-    st, _, body = call(port, "PUT", "/api/prefs", MCP, {"prefs": {"agent.note": "mine"}})
-    assert (st, json.loads(body)) == (200, {"prefs": {"agent.note": "mine"}}), (st, body)
-    assert json.loads(call(port, "GET", "/api/prefs", OWNER)[2]) == {"prefs": {"board.group": "family"}}
+    st, _, body = call(port, "PUT", "/api/prefs", MCP, {"prefs": {"machiya.note": "mine"}})
+    assert st == 200 and json.loads(body)["prefs"] == {"machiya.note": "mine"}, (st, body)
+    assert json.loads(call(port, "GET", "/api/prefs", OWNER)[2])["prefs"] == {"konbini.group": "family"}
     # a reader (konbini read only) keeps preferences too; a Tailscale login rides along with a browser: same-origin
     st, h, _ = sign_in(port, HTTPS, name="reader", password=READER_PW)
     READER = session(h["Set-Cookie"])
-    assert json.loads(call(port, "GET", "/api/prefs", READER)[2]) == {"prefs": {}}
+    assert json.loads(call(port, "GET", "/api/prefs", READER)[2])["prefs"] == {}
     TS_READER = {"Tailscale-User-Login": "reader@example"}
-    assert call(port, "PUT", "/api/prefs", TS_READER, {"prefs": {"x": "1"}})[0] == 403
-    assert call(port, "PUT", "/api/prefs", dict(TS_READER, Origin=HTTPS), {"prefs": {"x": "1"}})[0] == 200
-    assert json.loads(call(port, "GET", "/api/prefs", READER)[2]) == {"prefs": {"x": "1"}}   # one principal, any proof
-    assert json.loads(call(port, "GET", "/api/prefs", OWNER)[2]) == {"prefs": {"board.group": "family"}}
+    assert call(port, "PUT", "/api/prefs", TS_READER, {"prefs": {"konbini.x": "1"}})[0] == 403
+    assert call(port, "PUT", "/api/prefs", dict(TS_READER, Origin=HTTPS), {"prefs": {"konbini.x": "1"}})[0] == 200
+    assert json.loads(call(port, "GET", "/api/prefs", READER)[2])["prefs"] == {"konbini.x": "1"}   # one principal, any proof
+    assert json.loads(call(port, "GET", "/api/prefs", OWNER)[2])["prefs"] == {"konbini.group": "family"}
     # after the gate: no proof 401, nobody's grant 403
     assert call(port, "GET", "/api/prefs")[0] == 401
-    assert call(port, "PUT", "/api/prefs", {"Origin": HTTPS}, {"prefs": {"x": "1"}})[0] == 401
+    assert call(port, "PUT", "/api/prefs", {"Origin": HTTPS}, {"prefs": {"konbini.x": "1"}})[0] == 401
     assert call(port, "GET", "/api/prefs", {"Tailscale-User-Login": "nobody@example"})[0] == 403
     assert call(port, "POST", "/api/prefs", dict(OWNER, Origin=HTTPS), {"prefs": {}})[0] == 405
     # the file: next to KANBAN_DB, readable by the board's user only
@@ -200,7 +200,7 @@ try:
     assert h["Cache-Control"] == "no-store" and "Set-Cookie" not in h, dict(h)
     DEVICE = {"Authorization": "Bearer " + out["token"]}
     assert call(port, "GET", "/api/cards", DEVICE)[0] == 200
-    assert json.loads(call(port, "GET", "/api/prefs", DEVICE)[2]) == {"prefs": {"board.group": "family"}}   # the owner's
+    assert json.loads(call(port, "GET", "/api/prefs", DEVICE)[2])["prefs"] == {"konbini.group": "family"}   # the owner's
     assert call(port, "PUT", "/api/prefs", DEVICE, {"prefs": {"shiori.sync": "on"}})[0] == 200          # token: exempt
     assert call(port, "GET", "/api/pair")[0] == 405 and call(port, "GET", "/signout")[0] == 405
 
@@ -222,8 +222,8 @@ try:
     st, h, _ = sign_in(port, ORIGIN)
     assert st == 303 and "Secure" not in h["Set-Cookie"], dict(h)
     OWNER = session(h["Set-Cookie"])
-    assert call(port, "PUT", "/api/prefs", dict(OWNER, Origin=ORIGIN), {"prefs": {"a": "1"}})[0] == 200
-    assert call(port, "PUT", "/api/prefs", dict(OWNER, Origin="http://localhost:%d" % port), {"prefs": {"a": "2"}})[0] == 403
+    assert call(port, "PUT", "/api/prefs", dict(OWNER, Origin=ORIGIN), {"prefs": {"konbini.a": "1"}})[0] == 200
+    assert call(port, "PUT", "/api/prefs", dict(OWNER, Origin="http://localhost:%d" % port), {"prefs": {"konbini.a": "2"}})[0] == 403
     assert call(port, "POST", "/signout", dict(OWNER, Origin=ORIGIN), b"")[0] == 303
 finally:
     proc.kill()
@@ -240,8 +240,8 @@ try:
     assert call(port, "GET", "/static/machiya.css", EVIL)[0] == 403
     assert call(port, "GET", "/signin")[0] == 200
     # open mode's owner rides along with any page: a prefs PUT still needs the same origin
-    assert call(port, "PUT", "/api/prefs", None, {"prefs": {"a": "1"}})[0] == 403
-    assert call(port, "PUT", "/api/prefs", {"Origin": "https://127.0.0.1:%d" % port}, {"prefs": {"a": "1"}})[0] == 200
+    assert call(port, "PUT", "/api/prefs", None, {"prefs": {"konbini.a": "1"}})[0] == 403
+    assert call(port, "PUT", "/api/prefs", {"Origin": "https://127.0.0.1:%d" % port}, {"prefs": {"konbini.a": "1"}})[0] == 200
 finally:
     proc.kill()
     proc.wait()

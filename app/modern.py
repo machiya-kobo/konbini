@@ -638,6 +638,12 @@ BOARD_SETTINGS = [("group", "Group By", [("area", "Area"), ("family", "Family")]
                   ("doneCards", "Done Cards", [("5", "5"), ("10", "10"), ("all", "All")], "all")]
 
 
+# Konbini's own settings follow the signed-in person (docs/contracts/prefs.md): the account keeps them as konbini.group
+# and konbini.done_cards; the cookie is the first-render path (the board reads both when it draws the swimlanes)
+shell.APP_PREFS = {"group": {"type": "choice", "values": ["area", "family"], "cookie": True},
+                   "doneCards": {"type": "choice", "values": ["5", "10", "all"], "cookie": True}}
+
+
 def setting(ctx, key):
     """A Board setting from its cookie (machiya.js writes it from /settings), else its default."""
     for k, _, choices, default in BOARD_SETTINGS:
@@ -662,18 +668,21 @@ def account_section(name, session=False):
             "Signing out ends the session in this browser only, and removes the offline copies kept on it.")
 
 
-def settings(ctx, cards, version, vaultkit, status_text, account="", session=False):
-    """/settings: Appearance, Board, Apps, Account (a signed-in session only), About (docs/ui.md; per device, in
-    Shiori's style)."""
+def settings(ctx, cards, version, vaultkit, status_text, account="", session=False, state="standalone"):
+    """/settings (docs/ui.md, vaultkit 0.21): Shared (Theme, Appearance, Text Size, Apps: they follow the person to every
+    app and device; `state` says where they are kept now), Board (this app's own settings, which follow the person too),
+    This Device (this browser's text size, Offline Copies), Account (a signed-in person only), About."""
     board = ("Board", [shell.select(label, key, choices, setting(ctx, key), cookie=True)
-                       for key, label, choices, _ in BOARD_SETTINGS] + [shell.offline_row()],
+                       for key, label, choices, _ in BOARD_SETTINGS],
              "Group By picks the board's swimlanes: Area (a card's area tag) or Family (its family field). "
              "Done Cards is how many finished cards each lane shows, newest first; All shows every one. "
-             "Offline Copies are the pages this device keeps to show when the board can't be reached; "
-             "Clear Offline Copies removes them.")
-    body = shell.settings_page([shell.appearance_section(ctx, synced=bool(getattr(ctx, "prefs_url", ""))), board,
-                                shell.apps_section(ROOM, shell.rooms(), {}), account_section(account, session),
-                                shell.about_section(ROOM, version, status_text, vaultkit)], ROOM)
+             "Follows you to your other devices when signed in.")
+    device = shell.device_section(ctx, [shell.offline_row()],
+                                  "Offline Copies are the pages this device keeps to show when the board can't be reached; "
+                                  "Clear Offline Copies removes them.")
+    body = shell.settings_page([shell.shared_section(ctx, ROOM, shell.rooms(), state, account), board, device,
+                                account_section(account, session), shell.about_section(ROOM, version, status_text, vaultkit)],
+                               ROOM)
     return page(ctx, "Settings", board_header(ctx, counts_of(cards), "Settings", "") + body,
                 KANBAN_TABS, "")
 

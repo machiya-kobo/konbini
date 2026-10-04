@@ -111,7 +111,7 @@ docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(i
 
 Python 3.11 or newer with `markdown` 3.4+ and `pyyaml` 6+, from packages only, no pip. Install them (as root, or with `doas` or `sudo` set up: a fresh OpenBSD has `doas` but no `/etc/doas.conf`, and a fresh FreeBSD or NetBSD has no `sudo`; `pkg install sudo` or `pkg_add sudo`, or run the line as root without the prefix):
 
-**OpenBSD needs a vaultkit with the scrypt fix:** OpenBSD's Python has no `hashlib.scrypt` (LibreSSL), which the vendored vaultkit used at import before the fix; until a release carries it, Konbini does not start there. FreeBSD and NetBSD are tested.
+**OpenBSD:** its Python is built against LibreSSL, which has no `hashlib.scrypt`. Konbini starts there (vaultkit 0.21 no longer needs it at import); only the password parts of Machiya's identity file (the built-in sign-in `KANBAN_SIGNIN`, pairing codes) are refused, with a message that says why. Tokens, Tailscale, header, `open` and `hister` modes work.
 
 *OpenBSD:*
 

@@ -492,6 +492,10 @@ def make_handler(listener):
                     return self.reply(413, list(signin.JSON_HEADERS) + [("Connection", "close")],
                                       b'{"error": "request body too large"}')
             method = "GET" if self.command == "HEAD" else self.command
+            if HISTERAUTH is not None:      # the account's, from the helper (vaultkit 0.21, docs/contracts/prefs.md)
+                fwd = HISTERAUTH.forward_prefs(self.hres(), method, self.headers, body, self.prefs_origins())
+                if fwd is not None:
+                    return self.reply(*fwd)
             secure = IDENTITY.secure if IDENTITY is not None else PREFS_SECURE
             status, headers, out = signin.handle_prefs(prefs_store(), self.principal(), method, self.headers, body,
                                                        secure, self.prefs_origins())
@@ -525,7 +529,8 @@ def make_handler(listener):
             return modern.GARDEN_URL + rest + ("?" + url.query if url.query else "")
 
         def ctx(self):
-            p = shell.prefs(self.headers.get("Cookie"))
+            # first render: the cookies, else the account's shared settings (a fresh browser has no cookies yet)
+            p = shell.prefs(self.headers.get("Cookie"), account=self.hres().prefs if HISTERAUTH is not None else None)
             c = common.Ctx(p.theme, p.text, p.extra)
             c.palette = p.palette                                        # the chosen theme (vaultkit 0.15)
             c.status = footer_status()
@@ -940,10 +945,16 @@ def make_handler(listener):
                     self.send(200, f.read(), "text/css" if name.endswith(".css") else "text/javascript",
                               headers=[("Cache-Control", cache)])
             elif path == "/settings":
-                p = self.principal() if IDENTITY is not None else None
+                p = self.principal() if IDENTITY is not None or HISTERAUTH is not None else None
+                if HISTERAUTH is not None:      # where the Shared settings are kept now: the account, or (fallback) not reachable
+                    state = HISTERAUTH.prefs_state(self.hres())
+                    # a Hister sign-in (cookie or app id) can sign out here; a token or the tailnet fallback can't
+                    session = bool(p) and p.via in ("hister", "app")
+                else:
+                    state = "room" if IDENTITY is not None else "standalone"
+                    session = bool(p) and p.via == "session"
                 self.send(200, V(ctx).settings(ctx, store.cards(), VERSION, "v" + vaultkit.__version__,
-                                               footer_status()["text"], p.name if p else "",
-                                               bool(p) and p.via == "session"))
+                                               footer_status()["text"], p.name if p else "", session, state))
             elif path in ("/static/board.css", "/static/board.js", "/static/Sortable.min.js", "/static/mermaid.min.js"):
                 name = path.rsplit("/", 1)[1]
                 ctype = "text/css" if name.endswith(".css") else "text/javascript"

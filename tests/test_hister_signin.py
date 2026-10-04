@@ -17,15 +17,19 @@ STRANGER_SID = "mhs_" + "B" * 43
 DEAD_SID = "mhs_" + "C" * 43
 TOKEN = "owner-hister-token-123"
 signouts = []
+ACCOUNT = {"theme": "night", "palette": "nord", "text_size": "large"}      # the account's Shared settings (the helper's)
+prefs_calls = []
 
 
 class Helper(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def send(self, status, obj):
+    def send(self, status, obj, extra=None):
         body = json.dumps(obj).encode()
         self.send_response(status)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -35,8 +39,14 @@ class Helper(http.server.BaseHTTPRequestHandler):
         if self.path == "/healthz":
             return self.send(200, {"ok": True})
         sid, tok = self.headers.get("X-Machiya-Session"), self.headers.get("X-Access-Token")
+        if self.path == "/v1/prefs":
+            prefs_calls.append(("GET", sid, tok, self.headers.get("If-None-Match"), None))
+            if self.headers.get("If-None-Match") == '"3"':
+                self.send_response(304); self.send_header("ETag", '"3"'); self.send_header("Content-Length", "0"); self.end_headers()
+                return
+            return self.send(200, {"v": 1, "rev": 3, "prefs": dict(ACCOUNT, **{"konbini.group": "family"}), "updated": {}}, {"ETag": '"3"'})
         if sid == OWNER_SID or tok == TOKEN:
-            return self.send(200, {"username": "owner", "user_id": 1})
+            return self.send(200, {"username": "owner", "user_id": 1, "prefs": ACCOUNT})
         if sid == STRANGER_SID:
             return self.send(200, {"username": "stranger", "user_id": 2})
         self.send(401, {"error": "signed out"})
@@ -44,6 +54,12 @@ class Helper(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         signouts.append(self.headers.get("X-Machiya-Session"))
         self.send(200, {"ok": True})
+
+    def do_PUT(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(n) or b"{}")
+        prefs_calls.append(("PUT", self.headers.get("X-Machiya-Session"), self.headers.get("X-Access-Token"), None, body))
+        self.send(200, {"v": 1, "rev": 4, "prefs": dict(ACCOUNT, **body.get("prefs", {})), "updated": {}}, {"ETag": '"4"'})
 
 
 helper = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Helper)
@@ -189,12 +205,48 @@ try:
     assert get(port, "/api/cards", SID)[0] == 401                                                  # that session is over, here too
     assert get(port, "/signout", {"X-Access-Token": TOKEN})[0] == 404                              # a GET: nothing to see
 
+    # preferences that follow the person (vaultkit 0.21): /api/prefs forwards to the helper with the caller's own credential;
+    # a PUT carried by the cookie must be same-origin; the first render of a browser with no cookies uses the account's settings
+    port = start()
+    status, r, body = get(port, "/api/prefs", SID)
+    data = json.loads(body)
+    assert status == 200 and data["rev"] == 3 and data["prefs"]["konbini.group"] == "family" and r.getheader("ETag") == '"3"', (status, data)
+    assert prefs_calls[-1][:3] == ("GET", OWNER_SID, None), prefs_calls[-1]                   # the cookie's id, never a user id
+    assert get(port, "/api/prefs", dict(SID, **{"If-None-Match": '"3"'}))[0] == 304
+    status, r, body = get(port, "/api/prefs", {"X-Access-Token": TOKEN})
+    assert status == 200 and prefs_calls[-1][:3] == ("GET", None, TOKEN), prefs_calls[-1]   # a Hister token goes as the token
+    assert get(port, "/api/prefs")[0] == 401                                                  # signed out
+    put = json.dumps({"prefs": {"konbini.done_cards": "10"}})
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request("PUT", "/api/prefs", body=put, headers=dict(SID, **{"Content-Type": "application/json", "Origin": "https://evil.example"}))
+    assert c.getresponse().status == 403 and prefs_calls[-1][0] != "PUT"                       # another site's page: refused
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request("PUT", "/api/prefs", body=put, headers=dict(SID, **{"Content-Type": "application/json", "Origin": BOARD}))
+    r = c.getresponse(); out = json.loads(r.read())
+    assert r.status == 200 and out["rev"] == 4 and prefs_calls[-1][0] == "PUT" and prefs_calls[-1][4] == {"prefs": {"konbini.done_cards": "10"}}, (r.status, out)
+    # first render: no theme cookie at all, yet the page is drawn in the account's theme, palette and size
+    status, r, body = get(port, "/now", dict(HTML, **SID))
+    page_html = body.decode()
+    assert 'class="theme-night palette-nord' in page_html and 'data-text="large"' in page_html, page_html[page_html.index("<body"):][:200]
+    # the own settings that follow the person are declared for machiya.js (account keys konbini.group, konbini.done_cards)
+    assert 'name="machiya-app-prefs"' in page_html and "konbini.done_cards" in page_html and "konbini.group" in page_html
+    # /settings: Shared first (kept in the account), then the board's own, This Device, Account, About
+    status, r, body = get(port, "/settings", dict(HTML, **SID))
+    html = body.decode()
+    order = [html.index(h) for h in ('id="shared"', 'id="board"', 'id="this-device"', 'id="account"', 'id="about"')]
+    assert status == 200 and order == sorted(order), order
+    assert 'data-prefs-state="account"' in html and "Signed in as owner" in html and "Follows you to your other devices when signed in" in html
+    assert "Use This Device" in html and "Offline Copies" in html and 'id="appearance"' not in html and 'id="apps"' not in html
+
     # the helper is unreachable: the owner's tailnet login is admitted with the banner; nobody else is
     port = start(KANBAN_AUTH_URL=DOWN)
     status, r, body = get(port, "/now", dict(HTML, **{"Tailscale-User-Login": "owner@example.com"}))
     assert status == 200 and b"machiya-banner" in body and b"sign-in is unavailable" in body, status
     assert get(port, "/api/cards", {"Tailscale-User-Login": "owner@example.com"})[0] == 200
     assert get(port, "/now", dict(HTML, **{"Tailscale-User-Login": "intruder@example.com"}))[0] == 403
+    assert get(port, "/api/prefs", {"Tailscale-User-Login": "owner@example.com"})[0] == 503   # no account while sign-in is down
+    status, r, body = get(port, "/settings", dict(HTML, **{"Tailscale-User-Login": "owner@example.com"}))
+    assert status == 200 and b'data-prefs-state="unavailable"' in body
     assert get(port, "/now", HTML)[0] == 503                                                    # no login at all
     assert get(port, "/api/health")[0] == 200 and get(port, "/api/changelog")[0] == 200         # the probes still answer
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)                                # a write through the fallback

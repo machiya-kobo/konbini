@@ -247,26 +247,26 @@ try:
     # -- preferences without an identity file (vaultkit 0.12): open mode's owner -------------------------------------
     PREFS_META = '<meta name="machiya-prefs" content="/api/prefs">'
     st, h, body = call(port, "GET", "/api/prefs")
-    assert (st, json.loads(body)) == (200, {"prefs": {}}) and h["Cache-Control"] == "no-store", (st, body)
+    assert st == 200 and json.loads(body) == {"v": 1, "rev": 0, "prefs": {}, "updated": {}} and h["Cache-Control"] == "no-store", (st, body)
     st, _, body = call(port, "GET", "/settings")
-    assert PREFS_META in body and "Saved to your account" in body and 'id="account"' not in body, body[:600]
+    assert PREFS_META in body and "Kept in this browser" in body and 'id="account"' not in body, body[:600]
     assert 'class="iconbtn who"' not in body                        # nobody signed in: no person button
     # open mode over plain http without KANBAN_BOARD_URL: the request's own (allowed) Host is the origin to trust
     same = {"Origin": "http://127.0.0.1:%d" % port, "Content-Type": "application/json"}
     st, _, body = call(port, "PUT", "/api/prefs", same, b'{"prefs": {"theme": "day"}}')
-    assert (st, json.loads(body)) == (200, {"prefs": {"theme": "day"}}), (st, body)
+    assert st == 200 and json.loads(body)["prefs"] == {"theme": "day"}, (st, body)
     for bad in ({"Origin": "http://evil.example"}, {"Origin": "http://127.0.0.1:1"}, {"Origin": "null"}, {}):
         h0 = dict(same); h0.pop("Origin"); h0.update(bad)
         assert call(port, "PUT", "/api/prefs", h0, b'{"prefs": {"theme": "night"}}')[0] == 403, bad
     # a rebinding name never gets that far (the Host rule refuses it first)
     assert call(port, "PUT", "/api/prefs", dict(same, Host="evil.example", Origin="http://evil.example"),
                 b'{"prefs": {}}')[0] == 403
-    assert json.loads(call(port, "GET", "/api/prefs")[2]) == {"prefs": {"theme": "day"}}
+    assert json.loads(call(port, "GET", "/api/prefs")[2])["prefs"] == {"theme": "day"}
     port2 = start(board_url=True)
     origin2 = {"Origin": "http://127.0.0.1:%d" % port2, "Content-Type": "application/json"}
     st, _, body = call(port2, "PUT", "/api/prefs", origin2, b'{"prefs": {"theme": "night"}}')
-    assert (st, json.loads(body)) == (200, {"prefs": {"theme": "night"}}), (st, body)
-    assert json.loads(call(port2, "GET", "/api/prefs")[2]) == {"prefs": {"theme": "night"}}
+    assert st == 200 and json.loads(body)["prefs"] == {"theme": "night"}, (st, body)
+    assert json.loads(call(port2, "GET", "/api/prefs")[2])["prefs"] == {"theme": "night"}
     assert call(port2, "PUT", "/api/prefs", dict(origin2, Origin="http://evil.example"), b'{"prefs": {}}')[0] == 403
 
     # Tailscale without a file: the login the gate let in; nobody else gets past the gate
@@ -286,7 +286,7 @@ try:
     owner = {"Cookie": h["Set-Cookie"].split(";")[0]}
     st, _, body = call(port4, "GET", "/settings", owner)
     assert st == 200 and PREFS_META in body and 'href="/settings#account"' in body, body[:800]
-    assert '<h2 id="account">Account</h2>' in body and 'action="/signout"' in body and "Saved to your account" in body
+    assert '<h2 id="account">Account</h2>' in body and 'action="/signout"' in body and "Saved for you in Konbini" in body
     st, h, body = call(port4, "GET", "/signin")
     assert PREFS_META not in body                                   # nobody known: the page never asks
     csps = h.get_all("Content-Security-Policy")

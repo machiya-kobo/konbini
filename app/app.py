@@ -600,7 +600,11 @@ def make_handler(listener):
             # With an identity file: the principal's name ("local" in open mode). Without: open mode is always
             # "local" (nothing vouches for the header there), else the Tailscale login.
             if HISTERAUTH is not None:
-                return self.hres().principal.name
+                # continuity: the owner signed in through Hister is the same person in the history and the roundups as the
+                # owner on the tailnet, so with exactly one tailnet login in KANBAN_TAILNET_USERS events keep that actor
+                p = self.hres().principal
+                one = sorted(HISTERAUTH.fallback_users)
+                return p.name if p.via == "fallback" or len(one) != 1 else one[0]
             if IDENTITY is not None:
                 return self.who().principal.name
             return OPEN_ACTOR if AUTH == "open" else self.headers.get("Tailscale-User-Login", "")

@@ -178,7 +178,7 @@ try:
     c.request("POST", "/api/cards/kura/events", body=json.dumps({"body": "hello"}), headers=dict(w, **{
         "Authorization": "Bearer " + TOKEN, "X-Agent": "test"}))
     r = c.getresponse(); out = json.loads(r.read())
-    assert r.status == 201 and out["actor"] == "owner", (r.status, out)                              # the Hister user is the actor
+    assert r.status == 201 and out["actor"] == "owner@example.com", (r.status, out)     # continuity: the tailnet login, not "owner"
     # sign-out: same-origin only; the helper ends the session, the cookie is cleared, the cache is cleared, and it goes to /
     before = len(signouts)
     status, r, _ = get(port, "/signout", dict(SID, Origin="https://evil.example"), "POST")
@@ -197,9 +197,22 @@ try:
     assert get(port, "/now", dict(HTML, **{"Tailscale-User-Login": "intruder@example.com"}))[0] == 403
     assert get(port, "/now", HTML)[0] == 503                                                    # no login at all
     assert get(port, "/api/health")[0] == 200 and get(port, "/api/changelog")[0] == 200         # the probes still answer
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)                                # a write through the fallback
+    c.request("POST", "/api/cards/kura/events", body=json.dumps({"body": "hi"}), headers={
+        "Content-Type": "application/json", "X-Agent": "test", "Tailscale-User-Login": "owner@example.com"})
+    r = c.getresponse(); out = json.loads(r.read())
+    assert r.status == 201 and out["actor"] == "owner@example.com", (r.status, out)
     # with no fallback (Kura's setting) an unreachable helper is 503 for everyone
     port = start(KANBAN_AUTH_URL=DOWN, KANBAN_AUTH_FALLBACK="none")
     assert get(port, "/now", dict(HTML, **{"Tailscale-User-Login": "owner@example.com"}))[0] == 503
+
+    # with two tailnet logins there is no single owner to keep: the Hister username is the actor
+    port = start(KANBAN_TAILNET_USERS="owner@example.com,other@example.com")
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request("POST", "/api/cards/kura/events", body=json.dumps({"body": "hi"}), headers={
+        "Content-Type": "application/json", "X-Agent": "test", "X-Access-Token": TOKEN})
+    r = c.getresponse(); out = json.loads(r.read())
+    assert r.status == 201 and out["actor"] == "owner", (r.status, out)
 
     # start-up refusals: no usernames, a *, no board address, an identity file too
     assert "KANBAN_HISTER_USERS" in refused(KANBAN_HISTER_USERS=None)

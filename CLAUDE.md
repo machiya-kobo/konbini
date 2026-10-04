@@ -118,5 +118,6 @@ settings table; `CONTRIBUTING.md` the workflow.
 
 - Modern HTML only; the board page stays under about 100 KB; no front-end build step.
 - A new setting gets a `KANBAN_*` name, a default that is safe for a public install, and a row in the README table.
+- **Never commit personal details, preferences or settings.** This repository ships neutral defaults only. Hostnames, tailnet and network names, people's names, logins and emails, device names and team IDs, vault and folder names, tokens, and anyone's own choices or settings (themes and text size, rooms, `.env` and `local.*` files, the identity file `identity.toml`, `prefs.sqlite3` and other data) stay outside the repository: in settings, gitignored files or the deployment's own repository. Code, tests, fixtures, docs, comments, screenshots and commit messages use `example.com`, `example.ts.net`, "the user" and the sample vault. Check the diff for them before you push: once the repository is public, its history can't take them back.
 - Test against a throwaway clone of a vault repo, never a real one; run the image as uid 1000.
 - Commit messages start with `konbini: `. Run the tests before you push.

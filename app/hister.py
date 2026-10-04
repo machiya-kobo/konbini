@@ -26,6 +26,11 @@ import urllib.parse
 import urllib.request
 
 CACHE_SECONDS = 600
+# The code-import service (docs/contracts/hister.md) stores the owner's repositories, READMEs, issues and releases in
+# Hister as documents with metadata.source "code". Only Shiori's Code area shows them: every query from here leaves them out,
+# and a result that is one anyway (an old Hister, a query that wasn't understood) is dropped, so they are never "pages I've
+# read" or a saved copy.
+NOT_CODE = " -metadata.source:code"
 STOP = {"a", "an", "and", "the", "of", "for", "to", "in", "on", "with", "from", "into", "my", "our", "via",
         "migration", "project", "setup", "stack", "notes", "tuning", "fix", "fixes", "new", "old"}
 
@@ -35,6 +40,11 @@ def ts_date(value):
         return datetime.datetime.fromtimestamp(int(value), datetime.timezone.utc).date().isoformat()
     except (TypeError, ValueError, OverflowError, OSError):
         return ""
+
+
+def is_code(doc):
+    meta = doc.get("metadata") if isinstance(doc, dict) else None
+    return isinstance(meta, dict) and meta.get("source") == "code"
 
 
 def domain_of(url):
@@ -108,10 +118,12 @@ class Hister:
             hit = self.cache.get(q)
             if hit and now - hit[0] < CACHE_SECONDS:
                 return hit[1], hit[2]
-        status, data = self.call("GET", "/search?q=" + urllib.parse.quote(q), timeout=timeout)
+        status, data = self.call("GET", "/search?q=" + urllib.parse.quote(q + NOT_CODE), timeout=timeout)
         if status != 200 or not isinstance(data, dict):
             return [], 0
         docs, total = data.get("documents") or [], data.get("total") or 0
+        kept = [d for d in docs if not is_code(d)]
+        total, docs = max(0, total - (len(docs) - len(kept))) if isinstance(total, int) else total, kept
         with self.lock:
             if len(self.cache) > 500:
                 self.cache.clear()
@@ -122,10 +134,10 @@ class Hister:
         """The document Hister holds for a URL (or its normalised form), or None."""
         from urlnorm import norm
         for u in dict.fromkeys((url, norm(url))):
-            status, data = self.call("GET", "/search?q=" + urllib.parse.quote('url:"%s"' % u.replace('"', "%22")))
+            status, data = self.call("GET", "/search?q=" + urllib.parse.quote('url:"%s"' % u.replace('"', "%22") + NOT_CODE))
             if status == 200 and isinstance(data, dict):
                 for d in data.get("documents") or []:
-                    if d.get("url") in (url, u):
+                    if d.get("url") in (url, u) and not is_code(d):
                         return d
         return None
 
@@ -133,7 +145,7 @@ class Hister:
         return "%s/preview?id=%s" % (self.public, urllib.parse.quote(url, safe=""))
 
     def search_url(self, q):
-        return "%s/?q=%s" % (self.public, urllib.parse.quote(q))
+        return "%s/?q=%s" % (self.public, urllib.parse.quote(q + NOT_CODE))
 
     # -- writes ------------------------------------------------------------------
 
@@ -146,7 +158,7 @@ class Hister:
         return True
 
     def delete(self, url):
-        status, data = self.call("POST", "/api/delete", {"query": 'url:"%s"' % url.replace('"', "%22")}, timeout=30)
+        status, data = self.call("POST", "/api/delete", {"query": 'url:"%s"' % url.replace('"', "%22") + NOT_CODE}, timeout=30)
         return (data or {}).get("deleted", 0) if status == 200 and isinstance(data, dict) else 0
 
     def index(self, url, label="konbini"):

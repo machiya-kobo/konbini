@@ -25,6 +25,7 @@ import time
 
 import yaml
 
+from vaultkit.notes import safe_path
 from store import (note_front, tags_of, COLUMNS, CONFLICT_RE, FRONT_RE, GIT_SCOPE, PRIORITY_NAMES, PRIORITY_WORDS,
                    VAULT, parse_note, slugify)
 
@@ -175,7 +176,12 @@ class Writer:
     # paths
 
     def full(self, rel):
-        return os.path.join(self.repo, VAULT, rel)
+        """The path of a note under the vault folder: relative, no `..`, and no symlink on the way (vaultkit.notes.safe_path),
+        so a write never lands outside the vault or on a file a link points at."""
+        try:
+            return safe_path(os.path.join(self.repo, VAULT), rel)
+        except ValueError:
+            raise WriteError(422, "that note path isn't allowed")
 
     def read(self, rel):
         with open(self.full(rel), encoding="utf-8") as f:

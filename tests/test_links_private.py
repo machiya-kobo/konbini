@@ -15,27 +15,28 @@ for public in ("https://example.org/page", "https://93.184.216.34/x", "http://su
     assert links.is_external(public), public
 assert links.extract("see https://example.org/a and http://172.17.0.5/b and http://db.internal/c .") == ["https://example.org/a"]
 
-# resolution: every address must be public (a name that points inside is refused, IPv6 included)
-real = socket.getaddrinfo
+# resolution (vaultkit.websafe.vet): every address must be public, IPv6 included
+from vaultkit import websafe
+real = websafe.resolve
 table = {}
 def fake(host, port, *a, **k):
     if host in table:
         return [(socket.AF_INET6 if ":" in ip else socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port)) for ip in table[host]]
     return real(host, port, *a, **k)
-socket.getaddrinfo = fake
+websafe.resolve = fake
 table.update({"good.example": ["93.184.216.34"], "inside.example": ["10.0.0.5"], "mixed.example": ["93.184.216.34", "192.168.0.9"],
               "v6.example": ["::1"], "meta.example": ["169.254.169.254"], "v6ok.example": ["2606:2800:220:1:248:1893:25c8:1946"]})
-links.check_public("https://good.example/x"); links.check_public("http://v6ok.example/")
-for bad in ("https://inside.example/", "http://mixed.example/", "http://v6.example/", "http://meta.example/latest", "ftp://good.example/", "http:///x"):
+websafe.vet("good.example", 443); websafe.vet("v6ok.example", 80)
+for bad in ("inside.example", "mixed.example", "v6.example", "meta.example", "nothing-resolves.invalid"):
     try:
-        links.check_public(bad)
-    except links.PrivateHost:
+        websafe.vet(bad, 80)
+    except websafe.Blocked:
         pass
     else:
         raise AssertionError("not refused: " + bad)
-socket.getaddrinfo = real
+websafe.resolve = real
 
-# a fetch: the first address and every redirect are checked; nothing is sent to a refused one
+# a fetch: the address of every connection (and of every redirect) is vetted; nothing is sent to a refused one
 hits = {"a": [], "b": []}
 def server(name, redirect_to=None):
     class H(http.server.BaseHTTPRequestHandler):
@@ -49,26 +50,19 @@ def server(name, redirect_to=None):
                 self.send_response(200); self.send_header("Content-Length", "0"); self.end_headers()
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return "http://127.0.0.1:%d" % srv.server_address[1]
-b_url = server("b")
-a_url = server("a", b_url + "/inside")
-allowed = {a_url.rsplit(":", 1)[1]}                       # pretend only A's port is a public address
-orig = links.check_public
-def pretend(url):
-    if str(urllib_port(url)) not in allowed:
-        raise links.PrivateHost("private")
-def urllib_port(url):
-    import urllib.parse
-    return urllib.parse.urlsplit(url).port
-links.check_public = pretend
+    return srv.server_address[1]
+port_b = server("b")
+port_a = server("a", "http://localhost:%d/inside" % port_b)
+# the checker's own opener: a private first address is refused before anything is sent
+probe = links.Links.probe
+fresh = links.Links.__new__(links.Links)
+assert probe(fresh, "http://127.0.0.1:%d/direct" % port_a) is None and hits == {"a": [], "b": []}, hits
+# an opener that lets 127.0.0.1 through (a deployment's own host) still vets the redirect: localhost is not on its list
+opener = websafe.public_opener(allow=("127.0.0.1",))
 try:
-    links.safe_request(a_url + "/start", "GET")
+    opener.open("http://127.0.0.1:%d/start" % port_a, timeout=5)
     raise AssertionError("a redirect into a private address was followed")
-except links.PrivateHost:
+except websafe.Blocked:
     pass
 assert hits["a"] == ["/start"] and hits["b"] == [], hits                      # A was asked once; B (the private one) never
-assert links.Links.probe(links.Links.__new__(links.Links), b_url + "/direct") is None and hits["b"] == []   # a private first address: no request
-assert links.Links.probe(links.Links.__new__(links.Links), a_url + "/start2") is None                       # a redirect into one: none
-assert hits["b"] == [], hits
-links.check_public = orig
 print("private link tests: all passed")

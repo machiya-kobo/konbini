@@ -164,7 +164,7 @@ try:
     # SVG answers are sandboxed and every answer says nosniff; a javascript: repo from frontmatter is text, not a link
     status, out = raw(port, "GET", "/static/icons/konbini.svg")
     head = out.split(b"\r\n\r\n")[0].decode().lower()
-    assert status == 200 and "content-security-policy: default-src 'none'; style-src 'unsafe-inline'; sandbox" in head and "x-content-type-options: nosniff" in head, head
+    assert status == 200 and "content-security-policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox" in head and "x-content-type-options: nosniff" in head, head
     assert "x-content-type-options: nosniff" in raw(port, "GET", "/api/cards")[1].split(b"\r\n\r\n")[0].decode().lower()
     html = body_of(raw(port, "GET", "/p/kura")[1]).decode()
     assert "javascript:alert(1)" in html and 'href="javascript:' not in html.lower(), "the repo value is shown as text, never as a link"
@@ -192,4 +192,22 @@ tracked = subprocess.run(["git", "-C", g, "ls-files"], capture_output=True, text
 assert "Projects/Good.md" in tracked and "Projects/Bad.md" not in tracked, tracked        # the good card went, the bad one stayed out
 assert "Bad.md" in w.error and "conflict markers" in w.error, w.error
 assert w.pending and "held back" in w.pending[0][1], w.pending
+
+# symlinks (vaultkit 0.22): a linked note isn't a card, and a write never goes through a link
+o = tempfile.mkdtemp()                                   # somewhere outside the vault
+q = tempfile.mkdtemp(); os.makedirs(q + "/real")
+open(q + "/real/Kura.md", "w").write(NOTE)
+os.symlink(q + "/real/Kura.md", q + "/real/Linked.md")  # a link to a note: skipped
+os.symlink(o, q + "/Projects")                           # the notes folder is a link to elsewhere
+subprocess.run(["git", "-C", q, "init", "-q"], check=True)
+st2 = Store(q + "/db/k.db", q)
+w2 = Writer(st2)
+try:
+    w2.create({"title": "Escape", "area": "projects", "board": "backlog"}, "me", "test")
+    raise AssertionError("a write went through a symlinked folder")
+except Exception as exc:
+    assert getattr(exc, "status", None) == 422, exc
+assert os.listdir(o) == [], os.listdir(o)                # nothing landed outside the vault
+os.unlink(q + "/Projects"); os.rename(q + "/real", q + "/Projects")
+assert sorted(c["slug"] for c in st2.scan()) == ["kura"], [c["slug"] for c in st2.scan()]   # Linked.md is not a second card
 print("sweep tests: all passed")

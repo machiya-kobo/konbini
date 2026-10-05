@@ -57,6 +57,7 @@ from vaultkit import changelog
 from vaultkit import histerauth
 from vaultkit import identity
 from vaultkit import signin
+from vaultkit import websafe
 import vaultkit
 import digest
 import review
@@ -317,8 +318,12 @@ def make_handler(listener):
             sys.stderr.write("%s %s %s\n" % (listener, self.log_name(), CONTROL.sub("?", fmt % args)))
 
         def send_header(self, keyword, value):
-            """No header, in any answer, takes a control character (the last line of defence behind guarded())."""
-            if CONTROL.search(str(keyword)) or CONTROL.search(str(value)):
+            """No header, in any answer, takes a control character (the last line of defence behind guarded()):
+            vaultkit.websafe.header_value refuses CR, LF and the rest."""
+            try:
+                websafe.header_value(keyword)
+                websafe.header_value(value)
+            except ValueError:
                 raise HeaderInjection("control character in a response header")
             super().send_header(keyword, value)
 
@@ -582,7 +587,7 @@ def make_handler(listener):
         def to_niwa(self, path):
             """/garden/<rest> (the garden's old home here) -> Niwa."""
             url = urlsplit(self.path)
-            rest = quote(path[len("/garden"):] or "/", safe="/")        # the decoded path, encoded again: nothing raw in a header
+            rest = websafe.location(path[len("/garden"):] or "/")        # the decoded path, encoded again: nothing raw in a header
             return modern.GARDEN_URL + rest + ("?" + url.query if url.query else "")
 
         def ctx(self):
@@ -601,12 +606,8 @@ def make_handler(listener):
         def send(self, status, body, ctype="text/html", headers=()):
             if ctype == "text/html":
                 headers = page_headers(headers)
-            have = {k.lower() for k, _ in headers}
-            if "x-content-type-options" not in have:           # on every answer, not only pages
-                headers = list(headers) + [("X-Content-Type-Options", "nosniff")]
-            if ctype.startswith("image/svg") and "content-security-policy" not in have:
-                # an SVG can carry script: shown as an image it is inert, opened on its own it runs in a sandbox
-                headers = list(headers) + [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")]
+            have = {k.lower() for k, _ in headers}      # vaultkit.websafe: nosniff, framing and referrer rules on every answer
+            headers = list(headers) + [(k, v) for k, v in websafe.base_headers() if k.lower() not in have]
             if isinstance(body, str):
                 data = body.encode("utf-8")
                 ctype += "; charset=utf-8"
@@ -911,7 +912,9 @@ def make_handler(listener):
                 elif name in modern.ICONS:
                     ctype = "image/svg+xml" if name.endswith(".svg") else "image/png"
                     with open(os.path.join(modern.ICON_DIR, name), "rb") as f:
-                        self.send(200, f.read(), ctype, headers=[("Cache-Control", "public, max-age=604800")])
+                        # asset_headers: an SVG icon is sandboxed (it can't run script on the board's origin)
+                        self.send(200, f.read(), ctype, headers=[("Cache-Control", "public, max-age=604800")]
+                                  + [h for h in websafe.asset_headers(name) if h[0] != "Content-Type"])
                 else:
                     self.send(404, "not found\n", "text/plain")
                 return

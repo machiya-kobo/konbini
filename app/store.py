@@ -227,6 +227,8 @@ class Store:
                 if not name.endswith(".md"):
                     continue
                 full = os.path.join(dirpath, name)
+                if os.path.islink(full):        # a link is never a note (vaultkit v0.22: read_notes skips them too)
+                    continue
                 rel = os.path.relpath(full, root)
                 if PHONE_CONFLICT in name:
                     phone.append(rel)

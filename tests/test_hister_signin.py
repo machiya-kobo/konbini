@@ -17,6 +17,12 @@ STRANGER_SID = "mhs_" + "B" * 43
 DEAD_SID = "mhs_" + "C" * 43
 TOKEN = "owner-hister-token-123"
 signouts = []
+ROOM_SID = "mhr_" + "R" * 43              # a room session of this board (vaultkit 0.22: the room's own host-only cookie)
+OTHER_ROOM_SID = "mhr_" + "S" * 43        # one of another room's: refused here
+RTOKEN = "mht_" + "T" * 43                # a room token (headless callers: pm, the MCP)
+CODE = "mhc_" + "C" * 43                  # the one-time code on the way back from the helper
+STATE = "n" * 43
+checks, redeems = [], []                  # what the board asked the helper
 ACCOUNT = {"theme": "night", "palette": "nord", "text_size": "large"}      # the account's Shared settings (the helper's)
 prefs_calls = []
 
@@ -45,6 +51,12 @@ class Helper(http.server.BaseHTTPRequestHandler):
                 self.send_response(304); self.send_header("ETag", '"3"'); self.send_header("Content-Length", "0"); self.end_headers()
                 return
             return self.send(200, {"v": 1, "rev": 3, "prefs": dict(ACCOUNT, **{"konbini.group": "family"}), "updated": {}}, {"ETag": '"3"'})
+        if self.path == "/v1/check":
+            checks.append((sid, tok, self.headers.get("X-Machiya-Room")))
+        if sid in (ROOM_SID, RTOKEN):
+            return self.send(200, {"username": "owner", "user_id": 1, "prefs": ACCOUNT, "room": BOARD})
+        if sid == OTHER_ROOM_SID:
+            return self.send(200, {"username": "owner", "user_id": 1, "prefs": ACCOUNT, "room": "https://kura.example.test"})
         if sid == OWNER_SID or tok == TOKEN:
             return self.send(200, {"username": "owner", "user_id": 1, "prefs": ACCOUNT})
         if sid == STRANGER_SID:
@@ -52,6 +64,11 @@ class Helper(http.server.BaseHTTPRequestHandler):
         self.send(401, {"error": "signed out"})
 
     def do_POST(self):
+        if self.path == "/v1/redeem":
+            redeems.append((self.headers.get("X-Machiya-Code"), self.headers.get("X-Machiya-Room"), self.headers.get("X-Machiya-State")))
+            if self.headers.get("X-Machiya-Code") != CODE or self.headers.get("X-Machiya-State") != STATE:
+                return self.send(401, {"error": "bad code"})
+            return self.send(200, {"session": ROOM_SID, "username": "owner", "user_id": 1, "max_age": 3600, "return": BOARD + "/now"})
         signouts.append(self.headers.get("X-Machiya-Session"))
         self.send(200, {"ok": True})
 
@@ -148,9 +165,9 @@ try:
     loc = r.getheader("Location")
     assert status == 302 and loc.startswith(SIGNIN + "?"), (status, loc)
     assert parse_qs(urlsplit(loc).query)["return"] == [BOARD + "/now?x=1"], loc
-    guard = [c for c in cookies(r) if c.startswith("machiya_sso_try=1")]
+    guard = [c for c in cookies(r) if c.startswith("__Host-machiya_sso_konbini_try=1")]
     assert guard, cookies(r)
-    status, r, body = get(port, "/now", dict(HTML, Cookie="machiya_sso_try=1"))
+    status, r, body = get(port, "/now", dict(HTML, Cookie="__Host-machiya_sso_konbini_try=1"))
     assert status == 401 and b"Sign In" in body and SIGNIN.encode() in body and r.getheader("Location") is None, status
     # an API call (or any fetch) is never redirected: 401 JSON with the sign-in address
     status, r, body = get(port, "/api/cards")
@@ -237,6 +254,36 @@ try:
     assert status == 200 and order == sorted(order), order
     assert 'data-prefs-state="account"' in html and "Signed in as owner" in html and "Follows you to your other devices when signed in" in html
     assert "Use This Device" in html and "Offline Copies" in html and 'id="appearance"' not in html and 'id="apps"' not in html
+
+    # vaultkit 0.22: each room has its own host-only cookie holding a room session; a trip to the helper comes back with a one-time
+    # code that /machiya/callback trades (once, for this room, with this browser's nonce) for it
+    port = start(KANBAN_AUTH_ACCEPT_ORIGINS="https://shiori.example.test")
+    ROOM = {"Cookie": "__Host-machiya_sso_konbini=" + ROOM_SID}
+    status, r, body = get(port, "/now", dict(HTML, **ROOM))
+    assert status == 200 and checks[-1][0] == ROOM_SID, status
+    assert checks[-1][2] == BOARD + ", https://shiori.example.test", checks[-1]       # every check names the room (and the origins it accepts)
+    assert get(port, "/api/cards", {"Cookie": "__Host-machiya_sso_konbini=" + OTHER_ROOM_SID})[0] == 401   # another room's session: refused
+    assert get(port, "/api/cards", {"Authorization": "Bearer " + RTOKEN})[0] == 200                       # a room token: a headless caller
+    assert checks[-1][0] == RTOKEN
+    # a page without any cookie goes to the helper with a state (the nonce's hash), the nonce staying in this room's own cookie
+    status, r, _ = get(port, "/now", HTML)
+    loc = r.getheader("Location")
+    assert status == 302 and "state=" in loc and any(c.startswith("__Host-machiya_sso_konbini_state=") for c in cookies(r)), (loc, cookies(r))
+    assert all("Domain=" not in c for c in cookies(r)), cookies(r)                   # host-only
+    # the way back: the code is traded once, here, with the nonce from the state cookie; the room cookie is set; back to the page
+    status, r, _ = get(port, "/machiya/callback?code=" + CODE, dict(HTML, Cookie="__Host-machiya_sso_konbini_state=" + STATE))
+    assert status == 302 and r.getheader("Location") == BOARD + "/now", (status, r.getheader("Location"))
+    assert redeems[-1] == (CODE, BOARD, STATE), redeems
+    room_cookie = [c for c in cookies(r) if c.startswith("__Host-machiya_sso_konbini=mhr_")]
+    assert room_cookie and "Secure" in room_cookie[0] and "Domain=" not in room_cookie[0] and "HttpOnly" in room_cookie[0], cookies(r)
+    # a wrong code (or one without this browser's nonce) shows the sign-in page, never a loop and never a session
+    status, r, body = get(port, "/machiya/callback?code=" + "mhc_" + "X" * 43, dict(HTML, Cookie="__Host-machiya_sso_konbini_state=" + STATE))
+    assert status == 401 and not any(c.startswith("__Host-machiya_sso_konbini=mhr_") for c in cookies(r)), status
+    status, r, body = get(port, "/machiya/callback?code=" + CODE, HTML)               # no nonce cookie
+    assert status == 401, status
+    # sign-out marks the deliberate sign-out and clears the room's cookies
+    status, r, _ = get(port, "/signout", dict(ROOM, Origin=BOARD), "POST")
+    assert status == 303 and any(c.startswith("__Host-machiya_sso_konbini=;") and "Max-Age=0" in c for c in cookies(r)), cookies(r)
 
     # the helper is unreachable: the owner's tailnet login is admitted with the banner; nobody else is
     port = start(KANBAN_AUTH_URL=DOWN)

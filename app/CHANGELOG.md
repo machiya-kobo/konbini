@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.13.1
+
+- Pull to refresh in the installed app moves the page content with your finger (it springs back when let go early, holds with a spinner while it reloads); the header and tab bar stay put, and dragging a card still just drags the card (vaultkit 0.22.1).
+
 ## 0.13.0
 
 vaultkit 0.22 (the sweep's shared fixes):

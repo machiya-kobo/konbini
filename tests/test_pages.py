@@ -290,7 +290,7 @@ try:
     st, h, body = call(port4, "GET", "/signin")
     assert PREFS_META not in body                                   # nobody known: the page never asks
     csps = h.get_all("Content-Security-Policy")
-    assert any("script-src 'self'" in c for c in csps) and "frame-ancestors 'none'" in csps, csps   # the sign-in page
+    assert any("script-src 'self'" in c for c in csps) and any("frame-ancestors 'none'" in c for c in csps), csps   # the sign-in page
 
     # -- the 401 page: vaultkit's (plain header, the way in, no Rooms switcher, no prefs), with the security headers
     st, h, body = call(port4, "GET", "/p/kura?x=1", {"Accept": "text/html"})

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run the tests. They need python 3 with markdown and pyyaml (plus git, sqlite3 and openssl):
+# Run the tests. They need python 3 with markdown 3.11+ and pyyaml (plus git, sqlite3 and openssl):
 #   tests/run.sh                    use $KONBINI_TEST_PYTHON, else `python3` if it has them, else the app image
 #   KONBINI_TEST_PYTHON=~/venv/bin/python tests/run.sh
 #   tests/run.sh --image [IMAGE]    force the app image (default konbini:latest), as uid 1000
@@ -9,7 +9,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 if [ "$1" = "--image" ]; then image=${2:-konbini:latest}; py=
 else
     py=${KONBINI_TEST_PYTHON:-python3}
-    "$py" -c 'import markdown, yaml' 2>/dev/null || { py=; image=konbini:latest; }
+    # vaultkit 0.22 refuses a Python-Markdown older than 3.11
+    "$py" -c 'import markdown, yaml; assert tuple(int(x) for x in markdown.__version__.split(".")[:2]) >= (3, 11)' 2>/dev/null || { py=; image=konbini:latest; }
 fi
 for t in "$here"/tests/test_*.py; do
     if [ -n "$py" ]; then

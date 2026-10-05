@@ -25,7 +25,7 @@ licence, AGPL-3.0-or-later (see `LICENSE`).
 ## Tests
 
 ```sh
-tests/run.sh                        # every tests/test_*.py; needs python3 with markdown and pyyaml, git, sqlite3
+tests/run.sh                        # every tests/test_*.py; needs python3 with markdown 3.11+ and pyyaml, git, sqlite3
 KONBINI_TEST_PYTHON=~/venv/bin/python tests/run.sh
 tests/run.sh --image IMAGE          # or inside the built image, as uid 1000
 ```

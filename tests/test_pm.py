@@ -91,11 +91,14 @@ open(tok, "w").write("\n"); r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert
 # one is sent, and an address without a scheme is https
 tok2 = os.path.join(tempfile.mkdtemp(), "t"); open(tok2, "w").write("secret-token-9\n")
 r = pm("ls", env={"KANBAN_TOKEN_FILE": tok2, "KANBAN_URL": "http://board.example.test:9"})
-assert r.returncode != 0 and "not sending the Hister token over plain http" in r.stderr and "secret-token-9" not in r.stderr + r.stdout, r
+assert r.returncode != 0 and "not sending the token over plain http" in r.stderr and "secret-token-9" not in r.stderr + r.stdout, r
 other_hits = []
 class Other(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self): other_hits.append(self.headers.get("Authorization")); self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"{}")
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length") or 0)); other_hits.append(("POST", self.path, self.headers.get("Authorization")))
+        self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"{}")
 class Redirect(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
@@ -109,4 +112,10 @@ assert r.returncode != 0 and "redirect" in r.stderr and auths == ["Bearer secret
 assert "secret-token-9" not in r.stderr + r.stdout
 r = pm("ls", env={"KANBAN_URL": "localhost:%d" % srv.server_port})             # no scheme: https, so a plain-http board refuses the handshake
 assert r.returncode != 0 and "https://localhost:" in r.stderr, r.stderr
+# a room token is scoped to Konbini and Niwa: the garden suggestion carries it too (loopback here), and nobody else gets it
+del other_hits[:]
+r = pm("suggest", "Projects/One.md", env={"KANBAN_TOKEN_FILE": tok2, "NIWA_URL": OTHER})
+assert r.returncode == 0 and other_hits == [("POST", "/api/suggest", "Bearer secret-token-9")], (r, other_hits)
+r = pm("suggest", "Projects/One.md", env={"KANBAN_TOKEN_FILE": tok2, "NIWA_URL": "http://garden.example.test:9"})
+assert r.returncode != 0 and "not sending the token over plain http" in r.stderr, r.stderr          # an http Niwa that isn't this machine
 print("pm tests: all passed")

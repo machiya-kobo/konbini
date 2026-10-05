@@ -23,8 +23,10 @@
   pm tag <slug> +topic/x -topic/y
   pm claim <slug>                  mark the card as being worked on (15 min)
 
-The board is at $KANBAN_URL (default http://127.0.0.1:8081). With $KANBAN_TOKEN_FILE (a file holding the owner's Hister
-token, for a board on KANBAN_AUTH=hister) pm also sends it to the board as `Authorization: Bearer`. pm sends X-Agent (default pm@<host>, or $KANBAN_AGENT) so
+The board is at $KANBAN_URL (default http://127.0.0.1:8081; an address without a scheme is https). With $KANBAN_TOKEN_FILE (a file
+holding a room token, mht_..., for a board on KANBAN_AUTH=hister) pm also sends it to the board and to Niwa as
+`Authorization: Bearer`: only over https (or to this machine), never to another host, and no redirect is followed while
+it is sent. pm sends X-Agent (default pm@<host>, or $KANBAN_AGENT) so
 the board's history says which machine or agent made a change; behind `tailscale serve` the proxy identifies the
 caller, and with KANBAN_AUTH=open there is no identity check. The board writes the note's frontmatter, logs an event
 and commits it in batches. If the board answers 405 (an endpoint an older board lacks), pm says so.
@@ -53,8 +55,10 @@ URL = with_scheme(os.environ.get("KANBAN_URL", "http://127.0.0.1:8081")).rstrip(
 NIWA_URL = with_scheme(os.environ.get("NIWA_URL", "")).rstrip("/")
 COLUMNS = ["backlog", "ready", "wip", "blocked", "done", "archived"]
 AGENT = os.environ.get("KANBAN_AGENT") or "pm@%s" % socket.gethostname().split(".")[0].lower()
-# A board that signs people in through Hister (KANBAN_AUTH=hister) wants the owner's Hister token as a Bearer token: a file
-# holding it (from `pass:`; never in an argument or a note). Read at each request, sent only to the board, never printed.
+# A board that signs people in through Hister (KANBAN_AUTH=hister) wants a Bearer token: KANBAN_TOKEN_FILE holds a room token
+# (mht_..., minted for Konbini and Niwa by the hister-login helper; from `pass:`, never in an argument or a note). Read at each
+# request, sent to the board and to Niwa (the garden suggestions) and to nobody else, only over https (or to this machine),
+# never to a host a redirect points at, never printed.
 TOKEN_FILE = os.environ.get("KANBAN_TOKEN_FILE", "").strip()
 
 READ_ONLY_HINT = """\
@@ -95,10 +99,10 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def request(method, path, body=None, base=URL):
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Accept": "application/json", "Content-Type": "application/json", "X-Agent": AGENT}
-    credential = base == URL and bool(TOKEN_FILE)     # the board's token goes to the board only (suggestions go to Niwa)
+    credential = bool(TOKEN_FILE) and base in (URL, NIWA_URL)    # a room token (mht_...) is scoped to Konbini and Niwa: both get it, nobody else
     if credential:
         if urllib.parse.urlsplit(base).scheme != "https" and not loopback(base):
-            sys.exit("pm: not sending the Hister token over plain http to %s: use https (KANBAN_URL=https://...)"
+            sys.exit("pm: not sending the token over plain http to %s: use https (KANBAN_URL=https://...)"
                      % (urllib.parse.urlsplit(base).hostname or base))
         headers["Authorization"] = "Bearer " + token()
     req = urllib.request.Request(base + path, data=data, method=method, headers=headers)

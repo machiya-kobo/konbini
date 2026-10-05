@@ -3,6 +3,16 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.13.0
+
+vaultkit 0.22 (the sweep's shared fixes):
+
+- Sign-in with `KANBAN_AUTH=hister` keeps a cookie of its own for this board: `__Host-machiya_sso_konbini`, host-only, set by the board from a one-time code the helper sends back to `/machiya/callback` (so no other site on the domain can plant or read it, and a session copied to another room is refused). Headless callers (`pm`, scripts) send a room token (`Authorization: Bearer mht_…`) that opens only the rooms it names. `KANBAN_AUTH_ACCEPT_ORIGINS` lists other origins whose room sessions this board also accepts (the hosted Shiori pages).
+- `pm`: `KANBAN_TOKEN_FILE` holds a room token, sent to Konbini and to Niwa's API (never to another host, never over plain http except to this machine, no redirect followed while it is sent).
+- No script from a note can run through the shared code any more (symlinks are skipped and never written through; notes are written only through `safe_path`); every answer carries `nosniff`, framing and referrer rules; the link checker vets the address of each connection when it opens, redirects included.
+- Needs Python-Markdown 3.11 or later (older ones can be driven out of memory by one note). The image pins `markdown==3.11` and `pyyaml==6.0.3`.
+- Menus close on the back button and pull-to-refresh works in the installed app.
+
 ## 0.12.1
 
 Fixes from the stack's security sweep (October 2026):

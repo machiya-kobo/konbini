@@ -109,7 +109,7 @@ docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(i
 
 ### Natively on the BSDs
 
-Python 3.11 or newer with `markdown` 3.11+ (older ones are refused: a single note can exhaust memory) and `pyyaml` 6+, from packages only, no pip (if your system's `markdown` is older, use a virtual environment and pip). Install them (as root, or with `doas` or `sudo` set up: a fresh OpenBSD has `doas` but no `/etc/doas.conf`, and a fresh FreeBSD or NetBSD has no `sudo`; `pkg install sudo` or `pkg_add sudo`, or run the line as root without the prefix):
+Python 3.11 or newer and `pyyaml` 6+ from packages, then `markdown` 3.11 or later in a virtual environment (the BSDs' own `markdown` package is older, and vaultkit refuses anything older than 3.11: a single note can exhaust memory). Install the packages (as root, or with `doas` or `sudo` set up: a fresh OpenBSD has `doas` but no `/etc/doas.conf`, and a fresh FreeBSD or NetBSD has no `sudo`; `pkg install sudo` or `pkg_add sudo`, or run the line as root without the prefix):
 
 **OpenBSD:** its Python is built against LibreSSL, which has no `hashlib.scrypt`. Konbini starts there (vaultkit 0.21 no longer needs it at import); only the password parts of Machiya's identity file (the built-in sign-in `KANBAN_SIGNIN`, pairing codes) are refused, with a message that says why. Tokens, Tailscale, header, `open` and `hister` modes work.
 
@@ -117,14 +117,14 @@ Python 3.11 or newer with `markdown` 3.11+ (older ones are refused: a single not
 
 <!-- quickstart: packages-openbsd -->
 ```bash
-doas pkg_add python%3 py3-markdown py3-yaml git curl
+doas pkg_add python%3 py3-yaml git curl
 ```
 
 *FreeBSD* (the packages install a versioned interpreter, so the second line gives it the name `python3` used below):
 
 <!-- quickstart: packages-freebsd -->
 ```bash
-sudo pkg install -y python312 py312-sqlite3 py312-markdown py312-pyyaml git-lite curl
+sudo pkg install -y python312 py312-sqlite3 py312-pyyaml git-lite curl
 sudo ln -sf /usr/local/bin/python3.12 /usr/local/bin/python3
 ```
 
@@ -133,16 +133,22 @@ sudo ln -sf /usr/local/bin/python3.12 /usr/local/bin/python3
 <!-- quickstart: packages-netbsd -->
 ```bash
 sudo env PKG_PATH="https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/$(uname -p)/$(uname -r | cut -d_ -f1)/All" \
-  pkg_add python313 py313-markdown py313-yaml git-base curl
+  pkg_add python313 py313-yaml git-base curl
 sudo ln -sf /usr/pkg/bin/python3.13 /usr/pkg/bin/python3
 ```
 
-Then start it:
+Then, in the clone, the virtual environment (it keeps the packages' PyYAML and adds `markdown` 3.11 or later), the sample vault
+(steps 2 and 3 of the Quickstart) and the run block:
+
+<!-- quickstart: venv-bsd -->
+```bash
+python3 -m venv --system-site-packages .venv && .venv/bin/pip install -q 'markdown>=3.11'
+```
 
 <!-- quickstart: native-run-bsd background -->
 ```bash
 KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
-  KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal python3 app/app.py
+  KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal .venv/bin/python app/app.py
 ```
 
 ### Check it and drive it with `pm`

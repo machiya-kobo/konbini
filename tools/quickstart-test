@@ -20,7 +20,7 @@ $QUICKSTART_TMP (default /var/tmp/konbini-quickstart), from a fresh `git clone` 
 
     container   [packages-container-debian with --with-packages, when there is no engine], vault, container-podman
                 (or container-docker), check, pm, stop-container
-    native      [packages-<os> with --with-packages], vault, native-install-debian (Linux), native-run-*, check, pm
+    native      [packages-<os> with --with-packages], venv-bsd (the BSDs), vault, native-install-debian (Linux), native-run-*, check, pm
 
 `background` blocks are servers: they are started, waited for, and killed at the end. A scenario that needs something
 this machine lacks (no podman or docker; an operating system the README has no block for) is skipped, and the
@@ -75,7 +75,7 @@ def scenarios(only, with_packages):
         if system == "linux":
             steps = (["packages-debian"] if with_packages else []) + ["vault", "native-install-debian", "native-run-debian", "check", "pm"]
         elif system in ("openbsd", "freebsd", "netbsd"):
-            steps = (["packages-" + system] if with_packages else []) + ["vault", "native-run-bsd", "check", "pm"]
+            steps = (["packages-" + system] if with_packages else []) + ["venv-bsd", "vault", "native-run-bsd", "check", "pm"]
         else:
             steps = None
         out.append(("native", steps) if steps else ("native", None, "no native blocks for %s" % platform.system()))

@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.15.2
+
+- vaultkit 0.24: the footer's status line, the phone tab bar's labels and the Settings groups' text are easier to read (at least 4.5:1 contrast in every theme and mode).
+
 ## 0.15.1
 
 - A note or a new card sent from the offline queue carries its own id (`client_id`), and the board keeps it with the event: a retry after an answer that got lost (the change reached the board, the phone never heard back) no longer adds the note or the card twice. The card form, `POST /api/cards` and `POST /api/cards/<slug>/events` accept the optional `client_id`; the event it makes carries it.

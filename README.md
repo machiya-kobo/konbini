@@ -1,6 +1,6 @@
 # Konbini
 
-Machiya is a set of small self-hosted apps for finding what you've read: your pages (Hister), the web (SearXNG), your notes (an Obsidian vault in git) and your code.
+[Machiya](https://github.com/machiya-kobo/machiya) is a set of small self-hosted apps for finding what you've read: your pages (Hister), the web (SearXNG), your notes (an Obsidian vault in git) and your code.
 
 Konbini (コンビニ, the corner shop that's open all hours) manages your projects: a fully featured kanban board made of
 your Obsidian notes, and a writing kit that lays out a finished project for its blog post.

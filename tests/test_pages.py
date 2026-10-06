@@ -136,7 +136,7 @@ try:
 
     # -- the precached /offline: shell.offline, no status line, no search box --------------------------------------
     st, h, body = call(port, "GET", "/offline")
-    assert st == 200 and "be reached right now" in body and 'class="tabbar"' in body
+    assert st == 200 and "be reached. Pages you&#x27;ve opened before still work" in body and 'class="tabbar"' in body
     assert 'class="status' not in body and 'type="search"' not in body and "Tailscale" not in body, body[-800:]
 
     # -- icons are named after the room key; the old kanban-* names answer 301 --------------------------------------

@@ -247,13 +247,15 @@ try:
     assert 'class="theme-night palette-nord' in page_html and 'data-text="large"' in page_html, page_html[page_html.index("<body"):][:200]
     # the own settings that follow the person are declared for machiya.js (account keys konbini.group, konbini.done_cards)
     assert 'name="machiya-app-prefs"' in page_html and "konbini.done_cards" in page_html and "konbini.group" in page_html
-    # /settings: Shared first (kept in the account), then the board's own, This Device, Account, About
+    # /settings (vaultkit 0.23's order): Appearance (kept in the account), the board's own (with Offline Copies, this
+    # device's only row), Account, About; no This Device section
     status, r, body = get(port, "/settings", dict(HTML, **SID))
     html = body.decode()
-    order = [html.index(h) for h in ('id="shared"', 'id="board"', 'id="this-device"', 'id="account"', 'id="about"')]
+    order = [html.index(h) for h in ('id="appearance"', 'id="board"', "data-clear-offline", 'id="account"', 'id="about"')]
     assert status == 200 and order == sorted(order), order
-    assert 'data-prefs-state="account"' in html and "Signed in as owner" in html and "Follows you to your other devices when signed in" in html
-    assert "Use This Device" in html and "Offline Copies" in html and 'id="appearance"' not in html and 'id="apps"' not in html
+    assert 'data-prefs-state="account"' in html and "Saved to your account." in html and ">owner<" in html
+    assert "follow you to your other devices when signed in" in html and "Offline Copies stay on this device" in html
+    assert "Use This Device" in html and 'id="this-device"' not in html and 'id="shared"' not in html and 'id="apps"' not in html
 
     # vaultkit 0.22: each room has its own host-only cookie holding a room session; a trip to the helper comes back with a one-time
     # code that /machiya/callback trades (once, for this room, with this browser's nonce) for it

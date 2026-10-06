@@ -668,16 +668,15 @@ def account_section(name, session=False):
 
 
 def settings(ctx, cards, version, vaultkit, status_text, account="", session=False, state="standalone"):
-    """/settings (docs/ui.md, vaultkit 0.21): Shared (Theme, Appearance, Text Size, Apps: they follow the person to every
-    app and device; `state` says where they are kept now), Board (this app's own settings, which follow the person too),
-    This Device (this browser's text size, Offline Copies), Account (a signed-in person only), About."""
+    """/settings (docs/ui.md, vaultkit 0.23; settings_page sorts the sections): Appearance (Theme, Mode, Text Size: they
+    follow the person to every app and device; `state` says where they are kept now), Board (this app's own settings,
+    which follow the person too, and Offline Copies, this device's only row), Rooms, Account (a signed-in person only),
+    About."""
     board = ("Board", [shell.select(label, key, choices, setting(ctx, key), cookie=True)
-                       for key, label, choices, _ in BOARD_SETTINGS],
-             "Group By picks the swimlanes; Done Cards caps the finished cards per lane. "
-             "Follows you to your other devices when signed in.")
-    device = shell.device_section(ctx, [shell.offline_row()],
-                                  "Pages kept for when the board can't be reached.")
-    body = shell.settings_page([shell.shared_section(ctx, ROOM, shell.rooms(), state, account), board, device,
+                       for key, label, choices, _ in BOARD_SETTINGS] + [shell.offline_row()],
+             "Group By and Done Cards follow you to your other devices when signed in. "
+             "Offline Copies stay on this device.")
+    body = shell.settings_page([shell.shared_section(ctx, ROOM, shell.rooms(), state, account), board,
                                 account_section(account, session), shell.about_section(ROOM, version, status_text, vaultkit)],
                                ROOM)
     return page(ctx, "Settings", board_header(ctx, counts_of(cards), "Settings", "") + body,

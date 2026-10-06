@@ -3,6 +3,14 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.14.0
+
+Settings in the same order as every Machiya app (vaultkit 0.23):
+- Appearance first (Theme, Mode, Text Size, with Use This Device's Size right under it), then Board, Rooms, Account, About.
+- Offline Copies moved into Board (it was the only row left in This Device, which is gone); it stays on this device. Group By and Done Cards are unchanged.
+- No setting, key or cookie changed; only placement and names (Shared is now Appearance, Appearance is now Mode).
+- vaultkit 0.23 also shortens the shared Settings, offline and About copy.
+
 ## 0.13.2
 
 - Shorter page copy: the Settings notes (Board, This Device, Account), the Posts, Capture, Archived and Dependencies intros, the Streams and Goals empty states, and a few tooltips say only what you need. No change in behaviour. The `/share?url=…&title=…` link for an iOS Shortcut is in the README now.

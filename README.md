@@ -9,13 +9,15 @@ your Obsidian notes, and a writing kit that lays out a finished project for its 
 <a href="https://machiya-kobo.github.io/machiya/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="#who-can-use-it">Who can use it</a> · <a href="#more-ways-to-run-it">More ways to run it</a> · <a href="#in-a-container">Containers</a> · <a href="#natively-on-the-bsds">BSDs</a> · <a href="#settings">Settings</a> · <a href="#vault-layout">Vault layout</a> · <a href="#the-pm-command-line">pm</a> · <a href="#license">License</a>
 </p>
 
-<p><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a></p>
-<p>
-  <a href="docs/screenshots/konbini-card-light.png"><img src="docs/screenshots/konbini-card-light.png" alt="A card's page in the light theme: column buttons, its stream, goal, due date and the card it unblocks" width="32%"></a>
-  <a href="docs/screenshots/konbini-review-dark.png"><img src="docs/screenshots/konbini-review-dark.png" alt="The weekly review in the dark theme: WIP by area, cards blocked a week or more, and stale cards" width="32%"></a>
-  <a href="docs/screenshots/konbini-kit-light.png"><img src="docs/screenshots/konbini-kit-light.png" alt="The writing kit for a finished sample project in the light theme: dates, facts and the post's front matter" width="32%"></a>
-</p>
-<p align="center"><a href="docs/screenshots/konbini-board-phone-light.png"><img src="docs/screenshots/konbini-board-phone-light.png" alt="The board on a phone in the light theme, one column at a time with a tab bar" width="24%"></a></p>
+<p align="center"><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a><br>Manage your projects</p>
+<table>
+  <tr>
+    <td align="center" width="33%"><a href="docs/screenshots/konbini-card-light.png"><img src="docs/screenshots/konbini-card-light.png" alt="A card's page in the light theme: column buttons, its stream, goal, due date and the card it unblocks" width="100%"></a><br>Open a card</td>
+    <td align="center" width="33%"><a href="docs/screenshots/konbini-review-dark.png"><img src="docs/screenshots/konbini-review-dark.png" alt="The weekly review in the dark theme: WIP by area, cards blocked a week or more, and stale cards" width="100%"></a><br>Review your week</td>
+    <td align="center" width="33%"><a href="docs/screenshots/konbini-kit-light.png"><img src="docs/screenshots/konbini-kit-light.png" alt="The writing kit for a finished sample project in the light theme: dates, facts and the post's front matter" width="100%"></a><br>Write up a finished project</td>
+  </tr>
+</table>
+<p align="center"><a href="docs/screenshots/konbini-board-phone-light.png"><img src="docs/screenshots/konbini-board-phone-light.png" alt="The board on a phone in the light theme, one column at a time with a tab bar" width="24%"></a><br>Take the board with you</p>
 
 Every screenshot uses the sample vault: a paper-lantern workshop and a trip to Kyoto.
 

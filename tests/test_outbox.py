@@ -124,6 +124,28 @@ try:
     assert re.search(r'data-slug="bravo"[^>]*data-next="old step"[^>]*data-priority=""', body), body[:300]
     st, _, body = call(port, "GET", "/p/alpha")
     assert 'class="moves" method="post" action="/move" data-board="ready"' in body
+    # -- a retry after a lost answer is not saved twice: a note or a new card carries its own client id ---------------
+    api = {"Content-Type": "application/json", "Origin": "http://127.0.0.1:%d" % port}
+    new = json.dumps({"title": "Twice", "area": "projects", "client_id": "c0ffee00-0000-4000-8000-000000000001"}).encode()
+    st1, _, b1 = call(port, "POST", "/api/cards", api, new)
+    st2, _, b2 = call(port, "POST", "/api/cards", api, new)
+    assert st1 == 201 and st2 == 201 and json.loads(b1)["slug"] == json.loads(b2)["slug"] == "twice", (st1, st2, b2[:200])
+    tags = card(port, "twice")["tags"]
+    assert tags.count("area/projects") == 1, tags                    # a "projects" card has its area tag once
+    other = json.dumps({"title": "Twice", "area": "projects", "client_id": "c0ffee00-0000-4000-8000-000000000002"}).encode()
+    st, _, body = call(port, "POST", "/api/cards", api, other)
+    assert st == 409 and json.loads(body)["code"] == "exists", (st, body)   # somebody else's card of that name
+    note_ = json.dumps({"type": "comment", "body": "once", "client_id": "c0ffee00-0000-4000-8000-000000000003"}).encode()
+    assert call(port, "POST", "/api/cards/alpha/events", api, note_)[0] == 201
+    assert call(port, "POST", "/api/cards/alpha/events", api, note_)[0] == 201
+    form = urlencode({"comment": "from the form", "client_id": "c0ffee00-0000-4000-8000-000000000004"}).encode()
+    assert call(port, "POST", "/p/alpha", same, form)[0] == 302 and call(port, "POST", "/p/alpha", same, form)[0] == 302
+    bad = urlencode({"comment": "no usable id", "client_id": "x"}).encode()    # an id that isn't one is ignored
+    call(port, "POST", "/p/alpha", same, bad); call(port, "POST", "/p/alpha", same, bad)
+    evs = json.loads(call(port, "GET", "/api/cards/alpha/events")[2])
+    evs = evs if isinstance(evs, list) else evs.get("events", [])
+    bodies = [e.get("body") for e in evs if e.get("type") == "comment"]
+    assert bodies.count("once") == 1 and bodies.count("from the form") == 1 and bodies.count("no usable id") == 2, bodies
     print("outbox server tests: all passed")
 
     try:
@@ -132,6 +154,9 @@ try:
         print("outbox browser tests: skipped (no Playwright for Python)")
         raise SystemExit(0)
 
+    # the writes above are committed first: Playwright's offline mode leaves an open event stream alone, so a commit
+    # landing mid-test would reload the page (a phone in airplane mode loses the stream)
+    until("the commit", lambda: json.loads(call(port, "GET", "/api/status")[2])["sync"]["pending"] == 0, 30)
     BASE = "http://127.0.0.1:%d" % port
     with sync_playwright() as p:
         try:
@@ -140,9 +165,30 @@ try:
             print("outbox browser tests: skipped (%s)" % str(exc).splitlines()[0][:120])
             raise SystemExit(0)
         ctx = br.new_context(viewport={"width": 1280, "height": 900}, service_workers="allow")
+        # airplane mode ends the board's event stream too; Playwright's offline mode leaves an open one alone, and a
+        # revision arriving on it mid-test would reload the page. Without EventSource the board polls, which fails
+        # offline. (A route would do, but in Chromium a context route holds the service worker's own requests.)
+        ctx.add_init_script("delete window.EventSource")
         page = ctx.new_page()
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
+        # on a timeout: the page's last navigations and console lines, and what waits in its outbox
+        T0 = time.time()
+        trace = []
+        page.on("framenavigated", lambda f: trace.append("%.1f nav %s" % (time.time() - T0, f.url)) if f == page.main_frame else None)
+        page.on("console", lambda m: trace.append("%.1f console %s" % (time.time() - T0, m.text)))
+        _until = until
+
+        def until(what, check, timeout=20):
+            try:
+                return _until(what, check, timeout)
+            except AssertionError:
+                print("trace:", trace[-12:], errors)
+                try:
+                    print("outbox:", page.evaluate("KonbiniOutbox.all().then(o => o.map(x => [x.kind, x.slug, x.state]))"))
+                except Exception as exc:
+                    print("outbox: unreadable (%s)" % exc)
+                raise
         # the installed app, as a home-screen app reports itself (Chromium can't emulate display-mode: standalone)
         ctx.add_init_script("Object.defineProperty(Navigator.prototype, 'standalone', {get: () => true})")
         page.goto(BASE + "/")
@@ -173,6 +219,7 @@ try:
         def sheet_move(slug, to):
             page.click('.card[data-slug="%s"] .more' % slug)
             page.click('dialog.sheet [data-move="%s"]' % to)
+            page.wait_for_selector("dialog.sheet[open]", state="detached")   # closed once the change is kept
 
         # -- airplane mode: changes wait on the device, applied and marked --------------------------------------------
         ctx.set_offline(True)
@@ -210,6 +257,7 @@ try:
 
         # -- back online: sent in order; what changed meanwhile waits for the person ----------------------------------
         ctx.set_offline(False)
+        page.evaluate("window.dispatchEvent(new Event('online'))")   # the OS's event (Playwright skips it after an offline reload)
         until("alpha sent", lambda: card(port, "alpha")["board"] == "wip")
         made = until("the new card, moved", lambda: [c for c in json.loads(call(port, "GET", "/api/cards")[2])["cards"]
                                                      if c["title"] == "Offline idea" and c["board"] == "ready"])
@@ -246,11 +294,28 @@ try:
         page.click('form.moves button[value="wip"]')                  # the column buttons, too
         until("three waiting", lambda: badge() == "3 waiting")
         ctx.set_offline(False)
-        page.evaluate("window.dispatchEvent(new Event('online'))")
+        page.evaluate("window.dispatchEvent(new Event('online'))")   # the OS's event (Playwright skips it after an offline reload)
         until("echo sent", lambda: card(port, "echo")["next"] == "second" and card(port, "echo")["board"] == "wip")
         events = json.loads(call(port, "GET", "/api/cards/echo/events")[2])
         assert any(e.get("body") == "written on a plane" for e in (events if isinstance(events, list) else events.get("events", []))), events
         until("echo's outbox empty", lambda: page.evaluate("KonbiniOutbox.all().then(o => o.length)") == 0)
+
+        # -- a lost answer: the note reached the board but the phone never heard back, so the same entry is sent again;
+        # it carries its own id, and the board doesn't add it twice (the server half tests the board's side)
+        ctx.set_offline(True)
+        page.fill(".editform input[name=comment]", "said once")
+        page.click(".editform button[type=submit]")
+        until("the note waiting", lambda: badge() == "1 waiting")
+        entry = page.evaluate("KonbiniOutbox.all().then(o => o[0])")
+        assert re.match(r"^[0-9a-f-]{32,36}$", entry["body"].get("client_id", "")), entry
+        ctx.set_offline(False)
+        page.evaluate("window.dispatchEvent(new Event('online'))")   # the OS's event (Playwright skips it after an offline reload)
+        until("the note sent", lambda: page.evaluate("KonbiniOutbox.all().then(o => o.length)") == 0)
+        page.evaluate("e => { delete e.id; e.state = 'waiting'; return KonbiniOutbox.add(e).then(() => KonbiniOutbox.flush()); }", entry)
+        until("the repeat sent", lambda: page.evaluate("KonbiniOutbox.all().then(o => o.length)") == 0)
+        evs = json.loads(call(port, "GET", "/api/cards/echo/events")[2])
+        evs = evs if isinstance(evs, list) else evs.get("events", [])
+        assert [e.get("body") for e in evs].count("said once") == 1, evs
 
         # -- online, nothing waiting: a change goes straight to the board as before ------------------------------------
         go(BASE + "/")
@@ -277,7 +342,7 @@ try:
         cookies = ctx.cookies()
         ctx.clear_cookies()                                          # the session ended meanwhile
         ctx.set_offline(False)
-        page.evaluate("window.dispatchEvent(new Event('online'))")
+        page.evaluate("window.dispatchEvent(new Event('online'))")   # the OS's event (Playwright skips it after an offline reload)
         until("asked to sign in", lambda: "Sign in to send" in (page.inner_text("body")))
         assert page.evaluate("KonbiniOutbox.all().then(o => o.map(x => x.state))") == ["waiting"]   # held, not dropped
         ctx.add_cookies(cookies)                                     # signed in again

@@ -798,7 +798,11 @@ if (board) {
   }
   setInterval(async () => {
     if (streaming) return;
-    try { maybeReload((await (await fetch("/api/rev")).json()).rev); } catch (e) { /* offline */ }
+    try {
+      const next = (await (await fetch("/api/rev")).json()).rev;
+      if (outbox.some((o) => o.state === "waiting")) await flushNow();   // the board answers: send what waits first
+      maybeReload(next);
+    } catch (e) { /* offline */ }
   }, 30000);
   document.addEventListener("visibilitychange", async () => {
     if (!document.hidden) {

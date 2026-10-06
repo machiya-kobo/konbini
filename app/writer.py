@@ -43,6 +43,15 @@ TAG_RE = re.compile(r"^[a-z]+/[A-Za-z0-9][A-Za-z0-9._-]*$")
 LISTS = ("dependsOn",)          # list fields the board writes (a block list of quoted links)
 
 
+CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+
+
+def client_id(value):
+    """A change's own id from a client that may send it twice (the outbox, retrying after a lost answer), or ""."""
+    value = str(value or "").strip()
+    return value if CLIENT_ID_RE.match(value) else ""
+
+
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
@@ -416,7 +425,12 @@ class Writer:
         return skipped
 
     def create(self, fields, actor, agent, areas=None):
+        cid = client_id(fields.get("client_id"))
         with self.lock:
+            if cid:                     # a retry of a create whose answer was lost (an outbox): the card it made
+                done = self.store.event_by_client(cid)
+                if done and done.get("type") == "create" and self.store.card(done["card"]):
+                    return self.store.card(done["card"])
             # Text that ends up in a note is one line of plain text: a newline in a summary could write a bare "=======" (a
             # Markdown heading underline, and a git conflict marker to the export, which then refused every batch).
             for key in ("title", "summary", "area", "project"):
@@ -445,8 +459,8 @@ class Writer:
             if os.path.exists(self.full(rel)):
                 raise WriteError(409, "note %s already exists" % rel, code="exists")
 
-            tags = ["type/" + ("project" if fields.get("type") == "project" else "idea"),
-                    "area/projects", "area/" + area]
+            tags = list(dict.fromkeys(["type/" + ("project" if fields.get("type") == "project" else "idea"),
+                                       "area/projects", "area/" + area]))      # a "projects" card: the tag once
             tags += ["topic/" + t.replace("topic/", "") for t in fields.get("topics") or []]
             tags += ["machine/" + m.replace("machine/", "") for m in fields.get("machines") or []]
             if fields.get("effort") in ("s", "m", "l"):
@@ -474,7 +488,7 @@ class Writer:
             os.makedirs(os.path.dirname(self.full(rel)), exist_ok=True)
             self.write_file(rel, "\n".join(lines))
             card = self.reindex(rel, slug)
-            self.event(slug, "create", actor, agent, path=rel, board=col)
+            self.event(slug, "create", actor, agent, path=rel, board=col, client_id=cid)
             self.touch(slug, slug + " (new)")
             return card
 

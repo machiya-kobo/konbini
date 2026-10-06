@@ -71,7 +71,7 @@ import common
 from garden import Garden
 from store import Store
 from timeline import Timeline, today
-from writer import WriteError, Writer
+from writer import WriteError, Writer, client_id
 
 TAILNET_PORT = int(os.environ.get("KANBAN_TAILNET_PORT", "8081"))
 TAILNET_USERS = set(filter(None, os.environ.get("KANBAN_TAILNET_USERS", "").split(",")))
@@ -772,9 +772,13 @@ def make_handler(listener):
                     text = str(data.get("body") or "").strip()
                     if not text:
                         raise WriteError(422, "body is required")
+                    cid = client_id(data.get("client_id"))
                     with writer.lock:
-                        ev = writer.event(slug, str(data.get("type") or "comment")[:20], actor, agent, body=text[:2000])
-                        writer.touch(slug, slug + " (note)")
+                        ev = writer.store.event_by_client(cid) if cid else None    # a retry: already written
+                        if not ev:
+                            ev = writer.event(slug, str(data.get("type") or "comment")[:20], actor, agent, body=text[:2000],
+                                              client_id=cid)
+                            writer.touch(slug, slug + " (note)")
                     self.send_json(201, ev)
                 elif self.command in ("POST", "DELETE") and re.match(r"^/api/cards/[^/]+/claim$", path):
                     slug = path.split("/")[3]
@@ -838,10 +842,12 @@ def make_handler(listener):
                     if fields:
                         writer.update(slug, fields, actor, agent, areas=areas)
                     comment = str(data.get("comment") or "").strip()
+                    cid = client_id(data.get("client_id"))
                     if comment:                                     # after the update validated: a failed save adds no duplicate
                         with writer.lock:
-                            writer.event(slug, "comment", actor, agent, body=comment[:2000])
-                            writer.touch(slug, slug + " (note)")
+                            if not (cid and writer.store.event_by_client(cid)):     # nor does a retry of one that was saved
+                                writer.event(slug, "comment", actor, agent, body=comment[:2000], client_id=cid)
+                                writer.touch(slug, slug + " (note)")
                     self.back("/p/" + slug)
                 elif self.command == "POST" and path == "/share":
                     url = str(data.get("url") or "").strip()

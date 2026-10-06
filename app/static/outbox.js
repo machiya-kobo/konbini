@@ -41,8 +41,17 @@
   const all = () => tx("readonly", (s) => s.getAll()).then((ops) => (ops || []).sort((a, b) => a.id - b.id));
   const put = (op) => tx("readwrite", (s) => s.put(op));
   const remove = (id) => tx("readwrite", (s) => s.delete(id));
+  // A note or a new card carries its own id, so a retry after a lost answer isn't saved twice (the board keeps the id
+  // with the event and answers a repeat with what it already did)
+  function uid() {
+    if (self.crypto && crypto.randomUUID) return crypto.randomUUID();       // secure contexts only
+    const a = new Uint8Array(16);
+    crypto.getRandomValues(a);
+    return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
   async function add(op) {
     op = Object.assign({ at: new Date().toISOString(), state: "waiting" }, op);
+    if (op.kind === "create" || (op.body && op.body.comment)) op.body = Object.assign({ client_id: uid() }, op.body);
     op.id = await tx("readwrite", (s) => s.add(op));
     changed();
     return op;
@@ -65,18 +74,21 @@
       .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&") : "";
     return text || "HTTP " + status;
   }
+  // A request that never finishes (a bad connection) gives up after 20 s: it counts as unreachable, and the lock that
+  // keeps the tabs and the worker from sending at once is let go
+  const limit = () => (self.AbortSignal && AbortSignal.timeout ? { signal: AbortSignal.timeout(20000) } : {});
   function request(op) {
     if (op.kind === "form") {
-      return fetch("/p/" + encodeURIComponent(op.slug), {
+      return fetch("/p/" + encodeURIComponent(op.slug), Object.assign({
         method: "POST", body: new URLSearchParams(op.body), credentials: "same-origin", redirect: "manual",
-      });
+      }, limit()));
     }
     const url = op.kind === "order" ? "/api/order" : "/api/cards";
-    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(op.body),
-                        credentials: "same-origin" });
+    return fetch(url, Object.assign({ method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify(op.body), credentials: "same-origin" }, limit()));
   }
   async function card(slug) {
-    const r = await fetch("/api/cards/" + encodeURIComponent(slug), { credentials: "same-origin" });
+    const r = await fetch("/api/cards/" + encodeURIComponent(slug), Object.assign({ credentials: "same-origin" }, limit()));
     if (r.status === 404) return null;
     if (!r.ok) throw Object.assign(new Error("HTTP " + r.status), { status: r.status });
     return r.json();
@@ -102,11 +114,6 @@
     const text = await r.text().catch(() => "");
     let data = {};
     try { data = JSON.parse(text); } catch (e) { /* the form's HTML answer */ }
-    if (op.kind === "create" && r.status === 409 && data.code === "exists" && data.slug) {
-      // a send that reached the board but whose answer was lost: the card is there already
-      const now = await card(data.slug);
-      if (now && now.title === op.body.title) { op.created = data.slug; return "sent"; }
-    }
     if (op.kind === "form" && (r.status === 409 || r.status === 404)) {
       const now = await card(op.slug);
       if (!now) { op.note = { gone: true }; return "conflict"; }

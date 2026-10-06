@@ -117,7 +117,9 @@ settings table; `CONTRIBUTING.md` the workflow.
   waits in IndexedDB and shows on the page marked "waiting"; it is sent in order with what it was based on (the card
   form's `o_<name>`, `o_board` included; `/api/order`'s `from`), so the board's 409 rule applies. A conflict or a
   refusal waits for the person (Keep Mine / Use the Board's / Dismiss); 401 holds the queue; no credentials are
-  stored. New cards carry a `tmp-` slug until the board answers. Tag changes aren't queued. `tests/test_outbox.py`.
+  stored. New cards carry a `tmp-` slug until the board answers; a note or new card carries a `client_id` (kept on
+  its event, `store.event_by_client`) so a retry after a lost answer isn't saved twice. Tag changes aren't queued.
+  `tests/test_outbox.py`.
 
 ## Rules
 

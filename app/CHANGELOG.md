@@ -3,6 +3,14 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.15.1
+
+- A note or a new card sent from the offline queue carries its own id (`client_id`), and the board keeps it with the event: a retry after an answer that got lost (the change reached the board, the phone never heard back) no longer adds the note or the card twice. The card form, `POST /api/cards` and `POST /api/cards/<slug>/events` accept the optional `client_id`; the event it makes carries it.
+- A name clash on a new card made offline is shown instead of being taken for your own card.
+- A send from the queue that never finishes gives up after 20 seconds and is tried again later, instead of holding up the rest.
+- The queue also sends as soon as the board answers its regular check, in case the browser misses going online.
+- A new card in the projects area no longer gets its `area/projects` tag twice.
+
 ## 0.15.0
 
 Changes made offline wait on the device and are sent when the board can be reached again, in the installed app and the browser:

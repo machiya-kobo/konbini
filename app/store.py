@@ -375,6 +375,13 @@ class Store:
             self.db.execute("INSERT INTO events (ts, card, type, actor, data) VALUES (?, ?, ?, ?, ?)",
                             (ev["ts"], ev["card"], ev["type"], ev.get("actor", ""), json.dumps(ev)))
 
+    def event_by_client(self, cid):
+        """The event a client's own id (client_id) was recorded with, or None: a retry is not done twice."""
+        with self.lock:
+            row = self.db.execute("SELECT data FROM events WHERE json_extract(data, '$.client_id') = ? LIMIT 1",
+                                  (cid,)).fetchone()
+        return json.loads(row[0]) if row else None
+
     def events(self, card=None, limit=50, since=None, until=None, etype=None):
         sql, args = "SELECT data FROM events WHERE 1=1", []
         if card:

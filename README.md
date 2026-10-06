@@ -2,28 +2,35 @@
 
 Machiya is a set of small self-hosted apps for finding what you've read: your pages (Hister), the web (SearXNG), your notes (an Obsidian vault in git) and your code.
 
-Konbini (コンビニ, the corner shop that's open all hours) manages your projects. It turns the notes in your vault
-into a project board that you can install on your phone, and you, your scripts and your AI agents move the cards over a
-small HTTP API.
+Konbini (コンビニ, the corner shop that's open all hours) manages your projects: a fully featured kanban board made of
+your Obsidian notes, and a writing kit that lays out a finished project for its blog post.
 
-- **A board from your notes.** A note whose `status:` is a board column (backlog, ready, wip, blocked, done,
-  archived) is a card. Your notes hold the board: Konbini's database is only a cache, and git keeps the history.
-- **A writing kit for every card.** When a project is done, Konbini gathers its facts and lays them out for the blog
-  post.
-- **Changes that work offline.** Move or edit a card with no connection and the change waits on your device until the
-  board is back. If someone changed that card in the meantime, Konbini asks you before it overwrites anything.
-- **Capture a link.** `/share` (Capture a Link) saves a link as a Backlog card: share to Konbini from Chrome or
-  Android, or open `/share?url=…&title=…` from an iOS Shortcut.
+<p><a href="docs/screenshots/konbini-board-light.png"><img src="docs/screenshots/konbini-board-light.png" alt="The board in the light theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a></p>
+<p>
+  <a href="docs/screenshots/konbini-card-dark.png"><img src="docs/screenshots/konbini-card-dark.png" alt="A card's page in the dark theme: column buttons, its stream, goal, due date and the card it unblocks" width="28%"></a>
+  <a href="docs/screenshots/konbini-review-light.png"><img src="docs/screenshots/konbini-review-light.png" alt="The weekly review in the light theme: WIP by area, cards blocked a week or more, and stale cards" width="28%"></a>
+  <a href="docs/screenshots/konbini-kit-light.png"><img src="docs/screenshots/konbini-kit-light.png" alt="The writing kit for a finished sample project in the light theme: dates, facts and the post's front matter" width="28%"></a>
+  <a href="docs/screenshots/konbini-board-phone-dark.png"><img src="docs/screenshots/konbini-board-phone-dark.png" alt="The board on a phone in the dark theme, one column at a time with a tab bar" width="8%"></a>
+</p>
 
-Konbini runs on its own, and the other [Machiya](https://github.com/machiya-kobo/machiya) apps are optional. With them,
-a card links to its note in Kura (the note reader) and Niwa (the garden), Shiori, the search app, reads your cards, and
+- **Your notes are the board.** A note whose `status:` is a column (backlog, ready, wip, blocked, done, archived) is
+  a card.
+- **Git keeps the history.** Konbini commits its edits to your vault. Its database is only a cache.
+- **Installs on your phone** from the browser's menu, like an app.
+- **Offline support.** Changes wait on your device and go out when you're back on The Internet. If someone changed the
+  card meanwhile, you pick which version stays.
+- **Capture a link** from the Android or Chrome share sheet, or an iOS Shortcut that opens `/share?url=…&title=…`.
+- **Scripts and AI agents welcome**, over a small HTTP API or `pm`, the command line.
+
+Konbini runs on its own; the other [Machiya](https://github.com/machiya-kobo/machiya) apps are optional. With them, a
+card links to its note in Kura (the note reader) and Niwa (the garden), and Shiori, the search app, reads your cards.
 Niwa takes its column badges and the board half of its stream from `/api/cards` and `/api/digest`.
 
 ## Quickstart
 
-Konbini alone on your own machine, with the sample vault (a paper-lantern workshop and a trip to Kyoto: ten cards, three
-streams, two goals): no account, no Tailscale, no identity file. You need Python 3.11 or newer, `git` and `curl`; these
-are the commands for Debian or Ubuntu, and other systems and containers are under "More ways to run it":
+Konbini on your own machine with the sample vault: a paper-lantern workshop and a trip to Kyoto, in ten cards, three
+streams and two goals. No account, no Tailscale. You need Python 3.11 or newer, `git` and `curl`. These are the
+commands for Debian or Ubuntu; other systems and containers are under [More ways to run it](#more-ways-to-run-it).
 
 <!-- quickstart: packages-debian -->
 ```bash
@@ -45,8 +52,8 @@ python3 -m venv .venv
 .venv/bin/pip install markdown pyyaml
 ```
 
-**3. Make the sample vault a git repository.** Konbini commits its edits to the vault, so the demo copy has to be one;
-its notes are in `personal/`:
+**3. Make the sample vault a git repository.** Konbini commits its edits, so the copy has to be one. Its notes are in
+`personal/`.
 
 <!-- quickstart: vault -->
 ```bash
@@ -54,7 +61,7 @@ tools/demo-vault demo-vault
 mkdir -p demo-data
 ```
 
-**4. Start it** on `127.0.0.1:8081` with the identity check off (`KANBAN_AUTH=open`, for your own machine only):
+**4. Start it** on `127.0.0.1:8081` with no login (`KANBAN_AUTH=open`: for your own machine only):
 
 <!-- quickstart: native-run-debian background -->
 ```bash
@@ -62,34 +69,36 @@ KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
   KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 KANBAN_REPO_SUBDIR=personal .venv/bin/python app/app.py
 ```
 
-**5. Open <http://127.0.0.1:8081/>**: ten cards across the board's columns, and the header leads to Board, Now,
-Review, Plan, Posts, Calendar and Roundup, with a search field for the cards. Ctrl-C stops it; `rm -rf demo-vault demo-data .venv` cleans up.
+**5. Open <http://127.0.0.1:8081/>.** Ten cards, and the header leads to Board, Now, Review, Plan, Posts, Calendar and
+Roundup. Ctrl-C stops it; `rm -rf demo-vault demo-data .venv` cleans up.
 
-`tools/quickstart-test` runs these steps (and the checks, `pm` and the other systems below) from a fresh clone and checks
-the output.
+`tools/quickstart-test` runs every block in this README from a fresh clone and checks the output.
 
 ## Who can use it
 
-- **You, on localhost:** `KANBAN_AUTH=open` with `KANBAN_BIND=127.0.0.1`, as in the Quickstart: no login, and Konbini
+- **You, on localhost:** `KANBAN_AUTH=open` and `KANBAN_BIND=127.0.0.1`, as in the Quickstart. No login. Konbini
   answers only to an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in `KANBAN_ALLOWED_HOSTS`.
 - **People on your tailnet:** bind `127.0.0.1`, put `tailscale serve` in front, and list their Tailscale logins in
-  `KANBAN_TAILNET_USERS` (`KANBAN_AUTH=tailscale`, the default; unset = nobody).
-- **People, agents, sign-in or Shiori devices:** turn on Machiya's identity file with `cd app && python3 -m vaultkit.identity setup` (the command is the vendored
-  vaultkit, standard library only), which prints the settings for each room. It's off unless you set it; see [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
-- **People signed in to Hister:** `KANBAN_AUTH=hister` with Machiya's hister-login helper (`KANBAN_AUTH_SIGNIN_URL`, `KANBAN_AUTH_URL`,
-  `KANBAN_HISTER_USERS`, `KANBAN_BOARD_URL`; see [Machiya's Hister sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#hister-sign-in-authhister)).
+  `KANBAN_TAILNET_USERS` (`KANBAN_AUTH=tailscale`, the default; unset means nobody).
+- **People, agents, sign-in or Shiori devices:** Machiya's identity file, off unless you set it.
+  `cd app && python3 -m vaultkit.identity setup` (standard library only) prints each app's settings. See
+  [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
+- **People signed in to Hister:** `KANBAN_AUTH=hister` with Machiya's hister-login helper (`KANBAN_AUTH_SIGNIN_URL`,
+  `KANBAN_AUTH_URL`, `KANBAN_HISTER_USERS`, `KANBAN_BOARD_URL`; see
+  [Machiya's Hister sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#hister-sign-in-authhister)).
   Not with an identity file.
-- Konbini's identity settings: `MACHIYA_IDENTITY_FILE`, `KANBAN_SIGNIN`, `KANBAN_AUTH_HEADER`,
-  `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS` and `KANBAN_BOARD_URL` (under Settings).
+- The identity settings are `MACHIYA_IDENTITY_FILE`, `KANBAN_SIGNIN`, `KANBAN_AUTH_HEADER`,
+  `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS` and `KANBAN_BOARD_URL`, under [Settings](#settings).
 
 ## More ways to run it
 
-Install the packages each one names first, then do steps 1 and 3 of the Quickstart (clone Konbini, make the sample vault a repository), then start it. Port 8081 must be free.
+Install the packages listed for your system, do steps 1 and 3 of the Quickstart (clone, sample vault), then start it.
+Port 8081 must be free.
 
 ### In a container
 
-You need `git`, `curl` and one of `podman` (4 or newer) or `docker` (24 or newer; install it with your system's own
-instructions). On Debian or Ubuntu, podman:
+You need `git`, `curl` and either `podman` (4 or newer) or `docker` (24 or newer, from your system's own
+instructions). Podman on Debian or Ubuntu:
 
 <!-- quickstart: packages-container-debian -->
 ```bash
@@ -97,7 +106,8 @@ sudo apt update
 sudo apt install -y podman git curl
 ```
 
-*Container with podman* (`--cgroup-manager=cgroupfs` keeps podman from needing a systemd user session, which a freshly set-up or ssh-only machine may not have yet):
+*Podman.* `--cgroup-manager=cgroupfs` means podman needs no systemd user session, which a fresh or ssh-only machine
+may lack:
 
 <!-- quickstart: container-podman -->
 ```bash
@@ -106,7 +116,7 @@ podman --cgroup-manager=cgroupfs run -d --init --name konbini-demo -p 127.0.0.1:
   -v "$PWD/demo-vault":/repo -v "$PWD/demo-data":/data -e KANBAN_AUTH=open -e KANBAN_REPO_SUBDIR=personal konbini
 ```
 
-*Container with docker* (it runs as your own user, so the mounted folders stay yours):
+*Docker.* It runs as your own user, so the mounted folders stay yours:
 
 <!-- quickstart: container-docker -->
 ```bash
@@ -117,9 +127,13 @@ docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(i
 
 ### Natively on the BSDs
 
-Python 3.11 or newer and `pyyaml` 6+ from packages, then `markdown` 3.11 or later in a virtual environment (the BSDs' own `markdown` package is older, and vaultkit refuses anything older than 3.11: a single note can exhaust memory). Install the packages (as root, or with `doas` or `sudo` set up: a fresh OpenBSD has `doas` but no `/etc/doas.conf`, and a fresh FreeBSD or NetBSD has no `sudo`; `pkg install sudo` or `pkg_add sudo`, or run the line as root without the prefix):
+Python 3.11+ and `pyyaml` 6+ from packages; `markdown` 3.11+ in a virtual environment (the packaged one is older, and
+vaultkit refuses it: one note could exhaust memory). Run the package lines as root or with `doas`/`sudo`. A fresh
+OpenBSD has `doas` but no `/etc/doas.conf`; a fresh FreeBSD or NetBSD has no `sudo` (`pkg install sudo`,
+`pkg_add sudo`).
 
-**OpenBSD:** its Python is built against LibreSSL, which has no `hashlib.scrypt`. Konbini starts there (vaultkit 0.21 no longer needs it at import); only the password parts of Machiya's identity file (the built-in sign-in `KANBAN_SIGNIN`, pairing codes) are refused, with a message that says why. Tokens, Tailscale, header, `open` and `hister` modes work.
+OpenBSD's Python uses LibreSSL, which lacks `hashlib.scrypt`. Konbini runs there, but refuses Machiya's identity-file
+passwords (`KANBAN_SIGNIN`, pairing codes) with a message saying why. Tokens, Tailscale, header, `open` and `hister` modes work.
 
 *OpenBSD:*
 
@@ -128,7 +142,7 @@ Python 3.11 or newer and `pyyaml` 6+ from packages, then `markdown` 3.11 or late
 doas pkg_add python%3 py3-yaml git curl
 ```
 
-*FreeBSD* (the packages install a versioned interpreter, so the second line gives it the name `python3` used below):
+*FreeBSD.* The packages install a versioned interpreter, so the second line names it `python3`:
 
 <!-- quickstart: packages-freebsd -->
 ```bash
@@ -136,7 +150,7 @@ sudo pkg install -y python312 py312-sqlite3 py312-pyyaml git-lite curl
 sudo ln -sf /usr/local/bin/python3.12 /usr/local/bin/python3
 ```
 
-*NetBSD* (same; a fresh NetBSD has no `pkgin`, so this uses `pkg_add` with the release's package repository):
+*NetBSD.* Same again. A fresh NetBSD has no `pkgin`, so this uses `pkg_add` with the release's package repository:
 
 <!-- quickstart: packages-netbsd -->
 ```bash
@@ -145,8 +159,8 @@ sudo env PKG_PATH="https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/$(uname -p)
 sudo ln -sf /usr/pkg/bin/python3.13 /usr/pkg/bin/python3
 ```
 
-Then, in the clone, the virtual environment (it keeps the packages' PyYAML and adds `markdown` 3.11 or later), the sample vault
-(steps 2 and 3 of the Quickstart) and the run block:
+Then, in the clone, the virtual environment (it keeps the packages' PyYAML and adds `markdown` 3.11 or later), the
+sample vault (steps 2 and 3 of the Quickstart) and the run block:
 
 <!-- quickstart: venv-bsd -->
 ```bash
@@ -161,7 +175,7 @@ KANBAN_REPO="$PWD/demo-vault" KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
 
 ### Check it and drive it with `pm`
 
-Whichever way it runs, this waits up to 30 seconds for the first start (the board indexes the vault) and checks it:
+However it runs, this waits up to 30 seconds for the first start (the board indexes the vault) and checks it:
 
 <!-- quickstart: check -->
 ```bash
@@ -190,8 +204,8 @@ python3 tools/pm next led-insert "print the cap holder and test the fit"
 git -C demo-vault diff --stat
 ```
 
-You should see the two cards in progress, then the edit the board made to one note's frontmatter (it commits such edits
-to your repository a couple of minutes after the last change):
+You should see the two cards in progress, then the edit the board made to one note's frontmatter. It commits such
+edits to your repository a couple of minutes after the last change.
 
 <!-- quickstart-expect: pm -->
 ```text
@@ -213,45 +227,29 @@ A native run stops with Ctrl-C.
 ### As part of the Machiya stack
 
 [Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, Kura (the note reader) and Niwa (the garden) around one
-vault, with Hister and SearXNG as optional search engines. What changes compared with the Quickstart:
+vault, with Hister and SearXNG as optional search engines. Compared with the Quickstart:
 
-- **Start from the reference compose** in the Machiya repository (`compose/compose.yml`, profile `konbini`, plus
-  `compose/mirror.yml` for a shared vault copy) instead of the commands above. With the sample vault, run its
-  `compose/demo-init` (it writes a `.env` and makes Konbini's clone of a bare copy of the vault); with your own vault,
-  copy `compose/.env.example` to `.env`, edit it, and clone your vault into `KONBINI_REPO` first (Konbini needs its own
-  read-write clone, and its origin must be reachable so the board can push). The compose builds the image from this
-  repository's `app/` (it expects this clone next to the Machiya clone, `../../konbini` from `compose/`, or set `KONBINI_SRC`).
-- **Who may use it:** as in "Who can use it" above (`KONBINI_AUTH` and `KONBINI_USERS` in the compose). The reference
-  compose defaults to `KANBAN_AUTH=open` for the localhost demo and sets `KANBAN_ALLOWED_HOSTS=konbini` (the name the other rooms call Konbini by); keep that if you run it your own way. With the identity file behind the Tailscale sidecar, also set
+- **Start from Machiya's compose:** `compose/compose.yml`, profile `konbini` (plus `compose/mirror.yml` for a shared
+  vault copy). For the sample vault, `compose/demo-init` writes a `.env` and clones a bare copy. For your own, copy
+  `compose/.env.example` to `.env` and clone your vault into `KONBINI_REPO`: Konbini needs its own read-write clone
+  with a reachable origin. The image builds from this repository's `app/`, expected at `../../konbini` from
+  `compose/` (or set `KONBINI_SRC`).
+- **Who may use it:** as in [Who can use it](#who-can-use-it) (`KONBINI_AUTH`, `KONBINI_USERS`). The compose
+  defaults to `KANBAN_AUTH=open` for the localhost demo and sets `KANBAN_ALLOWED_HOSTS=konbini`, the name the other
+  apps use; keep it if you run Konbini your own way. With the identity file behind the Tailscale sidecar, also set
   `KANBAN_BIND_BEHIND_PROXY=1`.
-- **Notes folder.** If the vault keeps its notes in a folder, set `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose);
-  the default is the repository root.
-- **One vault copy.** `compose/mirror.yml` (or `demo-init --mirror`) keeps a single shared copy of the vault: it sets
-  `KANBAN_REPO_REFERENCE` to the mirror's checkout (mounted at the same path in the container) so Konbini borrows its
-  git objects, and `KANBAN_REPO_SPARSE` to `<notes folder>,.board` so it checks out only what it reads and writes (see
-  "Stack mode" in `CLAUDE.md`).
-- **The other rooms.** Set `KANBAN_KURA_URL` and `KANBAN_NIWA_URL` to their addresses to get "View in Kura" and the
-  garden links, `KANBAN_BOARD_URL` to this board's own address, and `MACHIYA_ROOMS` (the same value in every room) for
-  the Rooms switcher; the compose passes all of them from its `.env`. `MACHIYA_COOKIE_DOMAIN` (for example `example.net`) shares the theme and text-size cookies across
-  the rooms.
-- **Source link.** Set `MACHIYA_SOURCE_URL` to where this room's source is published to add a "Source code" link to the
-  footer and the About page (the AGPL asks for it when people use a service over a network).
-- **Settings from a file.** `KANBAN_ENV_FILE` (or `--env-file PATH`) reads `KEY=VALUE` lines first, for a native
-  service (the rc.d scripts are in the Machiya repository's [contrib/rc.d/](https://github.com/machiya-kobo/machiya/tree/main/contrib/rc.d) and the guide in [docs/install/bsd.md](https://github.com/machiya-kobo/machiya/blob/main/docs/install/bsd.md)).
-
-## Screenshots
-
-All taken from the sample vault (`tools/screenshots` makes them again).
-
-| | Light | Dark |
-|---|---|---|
-| The board | ![Board, light](docs/screenshots/konbini-board-light.png) | ![Board, dark](docs/screenshots/konbini-board-dark.png) |
-| A card | ![A card, light](docs/screenshots/konbini-card-light.png) | ![A card, dark](docs/screenshots/konbini-card-dark.png) |
-| The weekly review | ![Review, light](docs/screenshots/konbini-review-light.png) | ![Review, dark](docs/screenshots/konbini-review-dark.png) |
-
-On a phone, the board and a card:
-
-![Board on a phone](docs/screenshots/konbini-board-phone-light.png) ![A card on a phone](docs/screenshots/konbini-card-phone-light.png)
+- **Notes folder:** `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose); the default is the repository root.
+- **One vault copy:** `compose/mirror.yml` (or `demo-init --mirror`) points `KANBAN_REPO_REFERENCE` at the mirror's
+  checkout (same path in the container) to borrow its git objects, and sets `KANBAN_REPO_SPARSE` to
+  `<notes folder>,.board` to check out only what Konbini uses ("Stack mode" in `CLAUDE.md`).
+- **The other apps:** `KANBAN_KURA_URL` and `KANBAN_NIWA_URL` turn on their links, `KANBAN_BOARD_URL` is this board's
+  address, and `MACHIYA_ROOMS` (one value for every app) fills the Rooms menu; the compose passes them from `.env`.
+  `MACHIYA_COOKIE_DOMAIN` (e.g. `example.net`) shares the theme and text-size cookies.
+- **Source link:** `MACHIYA_SOURCE_URL` adds "Source code" to the footer and About, as the AGPL asks of a network
+  service.
+- **Settings from a file:** `KANBAN_ENV_FILE` (or `--env-file PATH`) reads `KEY=VALUE` lines first, for a native
+  service. See Machiya's [contrib/rc.d/](https://github.com/machiya-kobo/machiya/tree/main/contrib/rc.d) and
+  [docs/install/bsd.md](https://github.com/machiya-kobo/machiya/blob/main/docs/install/bsd.md).
 
 ## Settings
 
@@ -303,9 +301,9 @@ Every setting is in this table: the `KANBAN_*` ones, `TZ` and the `MACHIYA_*` on
 
 ### Sign-in, pairing and preferences
 
-Sign-in and pairing exist only with `MACHIYA_IDENTITY_FILE` (vaultkit's `signin`); without the file they answer
-404. Preferences are served in every mode: without the file they are the person the old gate let in (the Tailscale
-login, or open mode's owner), so theme and text size follow them to another device.
+Sign-in and pairing exist only with `MACHIYA_IDENTITY_FILE` (vaultkit's `signin`); without the file they answer 404.
+Preferences work in every mode. Without the file they belong to whoever the gate let in (the Tailscale login, or open
+mode's owner), so theme and text size follow that person to another device.
 
 | Route | Gate | What it does |
 |---|---|---|
@@ -314,23 +312,42 @@ login, or open mode's owner), so theme and text size follow them to another devi
 | `POST /api/pair` | before | Shiori's device pairing: `{"code", "device"}` (a code from `python3 -m vaultkit.identity pair <name>`, run in `app/`) gives `{"token", "principal"}`, a device token for `Authorization: Bearer`. Works with or without `KANBAN_SIGNIN` |
 | `GET /api/prefs`, `PUT /api/prefs` | after (`konbini` `read`, or the old gate) | the caller's own preferences, `{"prefs": {key: value}}`; a PUT merges (`null` removes) |
 
-`KANBAN_AUTH=open`'s `Host` rule comes first for all of them. They follow vaultkit's rules, not the board's `/api`
-write rule: pairing carries no cookie (the code is the proof), so it needs neither `X-Agent` nor an `Origin`; a
-`PUT /api/prefs` made with a token needs neither either, and one made with a session cookie, a Tailscale or proxy
-login or in open mode must come from the board's own page (`Origin`, else `Referer`; `X-Agent` doesn't excuse it):
-`KANBAN_BOARD_URL`'s origin, else an https page naming the request's own `Host`, or in open mode without an identity
-file the request's own `Host` over http too (it already passed the `Host` rule).
-Preferences are kept per principal in `prefs.sqlite3` next to `KANBAN_DB` (mode 0600; not the board's cache, so a
-`rebuild` keeps them). With an identity file the header shows who is signed in, and Settings has an Account
-section (with Sign Out for a sign-in session).
+Open mode's `Host` rule comes first. After that, vaultkit's rules apply, not the board's `/api` write rule: pairing
+(the code is the proof) and a `PUT /api/prefs` with a token need no `X-Agent` or `Origin`. Any other `PUT /api/prefs`
+must come from the board's own page (`Origin`, else `Referer`): `KANBAN_BOARD_URL`'s origin, else an https page
+naming the request's `Host`, or in open mode without an identity file that `Host` over http too.
+
+Preferences live per principal in `prefs.sqlite3` next to `KANBAN_DB` (mode 0600), so a cache `rebuild` keeps them.
+With an identity file the header shows who is signed in, and Settings has an Account section (Sign Out for a sign-in
+session).
 
 ## Vault layout
 
-Konbini expects a git repository of Markdown notes (the repository root, or one folder of it: set `KANBAN_REPO_SUBDIR`). A card is a note whose `status:` is a board column. New cards are written to `Projects/<Title>.md` with the tags `type/idea` and `area/projects` plus one `area/<lane>` tag: the lane is the first area tag other than `area/projects`. The calendar, roundups and writing kits also read, from any note, dated rows of a table (`| 2026-01-15 | milestone | Shipped | details |`: a date, a category, a change, then anything); a card's `## Log` table gives its milestones, and tables in `Systems/<host>.md` notes give machine changes (without those notes the pages just have fewer rows). A card's note may contain a generated block between `<!-- project-sync:start -->` and `<!-- project-sync:end -->` whose bullets `- YYYY-MM-DD: commit subject` the kit uses as the repository's recent commits when it cannot fetch them. Writing kits can map a card's topics and area onto your blog's tags and categories through an optional `.board/kit.json` in the repository (`tag_synonyms`, `area_category`, `default_category`, `ignore_tags`, `ignore_categories`); without it the blog's own tags and categories drive the kit. Frontmatter fields are described in `docs/frontmatter.md` of the [Machiya repository](https://github.com/machiya-kobo/machiya).
+Konbini expects a git repository of Markdown notes, at its root or in one folder (`KANBAN_REPO_SUBDIR`).
+
+- **Cards.** A card is a note whose `status:` is a board column. New cards go to `Projects/<Title>.md`, tagged
+  `type/idea`, `area/projects` and one `area/<lane>`. The lane is the first area tag other than `area/projects`.
+- **Dated rows.** The calendar, roundups and writing kits read dated table rows from any note:
+  `| 2026-01-15 | milestone | Shipped | details |` (a date, a category, a change, then anything). A card's `## Log`
+  table gives its milestones; tables in `Systems/<host>.md` notes give machine changes. Without those notes the pages
+  just have fewer rows.
+- **Commits.** A card's note may hold a generated block between `<!-- project-sync:start -->` and
+  `<!-- project-sync:end -->`. Its `- YYYY-MM-DD: commit subject` bullets stand in for the repository's recent commits
+  when the kit can't fetch them.
+- **Blog tags.** An optional `.board/kit.json` maps a card's topics and area onto your blog's tags and categories
+  (`tag_synonyms`, `area_category`, `default_category`, `ignore_tags`, `ignore_categories`). Without it, the blog's own
+  tags and categories drive the kit.
+- The frontmatter fields are in `docs/frontmatter.md` of the [Machiya repository](https://github.com/machiya-kobo/machiya).
 
 ## The pm command line
 
-`tools/pm` is a one-file command line for a board (Python 3, standard library only; copy it onto your `PATH` or run it in place). It talks to Konbini's HTTP API at `KANBAN_URL` (default `http://127.0.0.1:8081`) and sends `X-Agent` (`pm@<host>`, or `KANBAN_AGENT`) so a card's history says who changed it. For a board on `KANBAN_AUTH=hister`, `KANBAN_TOKEN_FILE` names a file holding the owner's Hister token (get it from your password store; never put it in an argument or a note); pm sends it to the board and to Niwa (the garden suggestions) only, as `Authorization: Bearer`, over https (plain http only to this machine), and follows no redirect while it does. A room token (`mht_…`, minted for Konbini and Niwa by the hister-login helper) is what it should hold; an address without a scheme is https.
+`tools/pm` is one file of Python 3, standard library only: put it on your `PATH` or run it in place. It talks to
+`KANBAN_URL` (default `http://127.0.0.1:8081`) and signs its changes with `X-Agent` (`pm@<host>`, or `KANBAN_AGENT`).
+
+On a `KANBAN_AUTH=hister` board, `KANBAN_TOKEN_FILE` names a file with a room token (`mht_…`, minted for Konbini and
+Niwa by the hister-login helper; the owner's Hister token also works). Keep it in your password store, never in an
+argument or a note. pm sends it only to the board and Niwa, as `Authorization: Bearer`, over https (http only to this
+machine), and follows no redirects meanwhile. An address without a scheme is https.
 
 ```sh
 pm ls --area tools            # cards (also --board, --machine, --topic, --tag, --json)
@@ -351,9 +368,13 @@ pm post <slug> drafting <url>            # track the blog post (none, idea, outl
 pm health                                # the board's /api/health
 ```
 
-The area in `pm new` must already exist: the board refuses new `area/*` tags from the command line, so create a first lane in the web form. `pm tag` takes existing tags only. `pm suggest <note>` asks Niwa to consider a note for the garden; it needs `NIWA_URL` (Niwa's address) and is off without it. If the board answers 405 (an endpoint an older board lacks), `pm` says so. The `X-Agent` label (and with it your host name) is recorded in the card's history in the repository's `.board/events`. The settings that start with `KANBAN_` keep the prefix from Konbini's earlier name.
+`pm new` and `pm tag` take existing areas and tags only; make a first lane in the web form. `pm suggest <note>` asks
+Niwa to consider a note for the garden (needs `NIWA_URL`). If the board is too old for a command (a 405), `pm` says so. The `X-Agent`
+label, your host name with it, lands in the card's history in `.board/events`. The `KANBAN_` prefix is from Konbini's
+earlier name.
 
-Layout and rules for working on the code: see `CLAUDE.md`; changes by release: [`app/CHANGELOG.md`](app/CHANGELOG.md).
+Working on the code: `CLAUDE.md` has the layout and the rules, [`app/CHANGELOG.md`](app/CHANGELOG.md) the changes by
+release, and `tools/screenshots` remakes the pictures above from the sample vault.
 
 ## Licence
 

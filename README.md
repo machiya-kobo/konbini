@@ -2,7 +2,7 @@
 
 Machiya is a set of small self-hosted apps for finding what you've read: your pages (Hister), the web (SearXNG), your notes (an Obsidian vault in git) and your code.
 
-Konbini (コンビニ 店, the corner shop that's open all hours) manages your projects. It turns the notes in your vault
+Konbini (コンビニ, the corner shop that's open all hours) manages your projects. It turns the notes in your vault
 into a project board that you can install on your phone, and you, your scripts and your AI agents move the cards over a
 small HTTP API.
 

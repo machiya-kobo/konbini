@@ -16,8 +16,6 @@ PAGES = ["/", "/now", "/review", "/p/lantern", "/p/lantern-festival-kit", "/p/wa
 PHONE_PAGES = ["/", "/p/lantern", "/calendar"]
 WHICH = os.environ.get("KONBINI_CONTRAST_PALETTES", "")
 PALETTES = list(palettes.PALETTES) if WHICH == "all" else (WHICH.split(",") if WHICH else ["tokyo-night", "solarized"])
-# vaultkit's own components, measured and fixed there (machiya's tests): the search page's field
-SHARED = ("div.field > input",)
 AUDIT = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "contrast.js")).read()
 
 try:
@@ -62,8 +60,7 @@ try:
                         page.goto(BASE + path)
                         page.wait_for_timeout(150)
                         for what, got, need in page.evaluate(AUDIT):
-                            if not what.startswith(SHARED):
-                                failures.append("%s %s %s %s: %s %.2f < %g" % (palette, theme, viewport["width"], path, what, got, need))
+                            failures.append("%s %s %s %s: %s %.2f < %g" % (palette, theme, viewport["width"], path, what, got, need))
                         if path == "/" and viewport["width"] == 1280:          # the action sheet and the outbox badge
                             page.click('.card[data-slug="lantern"] .more')
                             for what, got, need in page.evaluate(AUDIT):

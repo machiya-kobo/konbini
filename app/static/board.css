@@ -335,7 +335,6 @@ li.skiprow .skipform { margin-left: auto; }
 .kitbody h3 { margin: 18px 0 6px; font-size: 15px; }
 .kitbody h1 { display: none; }
 .kitbody pre { font-size: 13px; }
-.nbody code, .nbody pre { color: var(--fg); }     /* resolved here, where --fg is the panel's (code inherits a colour otherwise) */
 .kitbody table { font-size: 13px; }
 .formmsg { margin: 6px 0 0; font-size: 13px; color: var(--orange); }
 .toast { position: fixed; left: 50%; bottom: calc(80px + var(--sab)); transform: translateX(-50%); background: var(--hl); color: var(--fg); padding: 8px 14px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13px; z-index: 30; }

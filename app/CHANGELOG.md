@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.15.4
+
+- vaultkit 0.25.2: code in a writing kit and the search page's field use the readable text colour for raised backgrounds, from the shared stylesheet (Konbini's own override is gone).
+
 ## 0.15.3
 
 - Readable in every theme: all text on the board's pages now has at least 4.5:1 contrast in all ten palettes, light and dark (vaultkit 0.25's panel shades on lanes, chips, forms, the action sheet and the calendar). The Backlog column, P3 and "stale" use the muted text colour; stream, goal and dependency chips keep their colour in the text and border; finished cards' titles and out-of-month calendar days are no longer faded.

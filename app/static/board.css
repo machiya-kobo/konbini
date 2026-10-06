@@ -7,13 +7,26 @@
 .none > b:first-child { display: block; color: var(--fg); font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 main.msg { max-width: 640px; }
 
+/* Konbini's own raised surfaces (vaultkit 0.25, docs/ui.md "Colours on raised panels"): on --dark or --hl an accent
+   uses its panel shade and muted text the menu's, so both stay 4.5:1. machiya.css does this for .card and the shared
+   panels; tests/test_contrast.py measures every page in Chromium. */
+.lane, .card, .chip, .topic, .checks, .claim, .when, .stage, .col-badge, .colchip, .lanecount, .colcount,
+.coltabs button, .moves .mv, table.detail, .editform, .newform, .postform, .tagsec, table.cal td.day, .daylist li,
+.gtrack, .revjump a, .lim, .subnav a, .monthnav a, .typechips a, .fchip, dialog.sheet, .outboxbadge, .toast, .banner,
+main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar input, button.quiet, .btn.quiet {
+  --blue: var(--blue-panel); --orange: var(--orange-panel); --red: var(--red-panel); --yellow: var(--yellow-panel);
+  --green: var(--green-panel); --teal: var(--teal-panel); --magenta: var(--magenta-panel); --cyan: var(--cyan-panel);
+  --slate: var(--slate-panel); --house: var(--blue-panel); --room: var(--room-panel); --room2: var(--room2-panel);
+  --muted: var(--menu-muted); --fg: var(--menu-fg); --fg2: var(--menu-fg);
+}
+
 /* column colors, wherever a column is named */
-.colhead.col-backlog, .colchip.col-backlog, .col-badge.col-backlog, .stat.col-backlog, .mv.col-backlog:disabled, td.col-backlog { color: var(--comment); }
+.colhead.col-backlog, .colchip.col-backlog, .col-badge.col-backlog, .stat.col-backlog, .mv.col-backlog:disabled, td.col-backlog { color: var(--muted); }
 .colhead.col-ready, .colchip.col-ready, .col-badge.col-ready, .stat.col-ready, .mv.col-ready:disabled, td.col-ready { color: var(--blue); }
 .colhead.col-wip, .colchip.col-wip, .col-badge.col-wip, .stat.col-wip, .mv.col-wip:disabled, td.col-wip { color: var(--orange); }
 .colhead.col-blocked, .colchip.col-blocked, .col-badge.col-blocked, .stat.col-blocked, .mv.col-blocked:disabled, td.col-blocked { color: var(--red); }
 .colhead.col-done, .colchip.col-done, .col-badge.col-done, .stat.col-done, .mv.col-done:disabled, td.col-done { color: var(--green); }
-.colhead.col-archived, .colchip.col-archived, .col-badge.col-archived { color: var(--comment); }
+.colhead.col-archived, .colchip.col-archived, .col-badge.col-archived { color: var(--muted); }
 
 /* ---- the header's stats row and alert (the header itself is vaultkit.shell) ------------------------------------------------------------ */
 .stats { display: flex; flex-wrap: wrap; gap: 14px; padding: 0 0 10px; font-size: 12px; color: var(--muted); }
@@ -64,9 +77,8 @@ section.lane ~ section.lane .colhead { display: none; }
 .card .title { display: block; color: var(--fg); font-weight: 600; font-size: 14px; line-height: 1.3; }
 /* cards wear Konbini's magenta wherever they appear (machiya.css: .is-card sets --thing) */
 .card.is-card .title { color: var(--thing); }
-.card.is-card.col-done .title { opacity: .75; }
 .card .summary {
-  margin: 4px 0 0; font-size: 12.5px; color: var(--fg2); opacity: .9;
+  margin: 4px 0 0; font-size: 12.5px; color: var(--fg2);
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card .next, .card .blocked { margin: 6px 0 0; font-size: 12px; line-height: 1.35; }
@@ -80,7 +92,7 @@ section.lane ~ section.lane .colhead { display: none; }
 }
 .chip.p1 { color: var(--red); font-weight: 600; }
 .chip.p2 { color: var(--yellow); font-weight: 600; }
-.chip.p3 { color: var(--comment); }
+.chip.p3 { color: var(--muted); }
 .chip.garden { color: var(--green); }
 .chip.area { color: var(--magenta); }
 .chip.colchip { font-weight: 600; }
@@ -156,8 +168,8 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
 .subnav b.here { color: var(--bg); background: var(--magenta); font-weight: 600; }
 
 /* ---- streams: the chip, the roll-up ------------------------------------ */
-a.chip.stream { color: var(--magenta); background: color-mix(in srgb, var(--magenta) 15%, transparent); text-decoration: none; }
-a.chip.stream:hover { background: color-mix(in srgb, var(--magenta) 28%, transparent); }
+a.chip.stream { color: var(--magenta); border: 1px solid color-mix(in srgb, var(--magenta) 45%, transparent); text-decoration: none; }
+a.chip.stream:hover { border-color: var(--magenta); }
 main.streams { max-width: 900px; }
 .rollup { margin: 0 0 var(--sp-5); }
 .rollname { margin: 0 0 6px; font-size: var(--fs-l); color: var(--magenta); }
@@ -168,7 +180,7 @@ main.streams { max-width: 900px; }
 main.stream .rollup { margin-bottom: var(--sp-4); }
 
 /* ---- goals, due dates, the timeline --------------------------------------- */
-a.chip.goal { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 14%, transparent); text-decoration: none; }
+a.chip.goal { color: var(--cyan); border: 1px solid color-mix(in srgb, var(--cyan) 45%, transparent); text-decoration: none; }
 .chip.due { color: var(--muted); }
 .chip.due.due-soon { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); }
 .chip.due.due-overdue { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); font-weight: 600; }
@@ -193,7 +205,7 @@ main.timeline .gtrack { background: var(--dark); }        /* months, not the cal
 @media (max-width: 760px) { .tlhead { display: none; } .gmile { top: 4px; } .gdue { top: 2px; } }
 
 /* ---- dependencies ------------------------------------------------------- */
-.chip.dep { display: inline-flex; align-items: center; gap: 3px; color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.chip.dep { display: inline-flex; align-items: center; gap: 3px; color: var(--red); border: 1px solid color-mix(in srgb, var(--red) 45%, transparent); }
 .chip.dep svg { width: 12px; height: 12px; }
 .deplink { font-weight: 600; }
 ul.deplist li { padding: 6px 0; }
@@ -230,7 +242,8 @@ ul.history li { padding: 5px 0; border-bottom: 1px solid var(--line); color: var
 table.cal { table-layout: fixed; border-spacing: 6px; margin: 0 -6px; width: calc(100% + 12px); }
 table.cal th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: left; padding: 0 6px 2px; font-weight: 600; }
 table.cal td.day { background: var(--dark); border-radius: 10px; height: 96px; padding: 6px 8px; vertical-align: top; font-size: 11.5px; line-height: 1.45; overflow: hidden; }
-table.cal td.day.out { background: transparent; opacity: .4; }
+table.cal td.day.out { background: transparent; }
+table.cal td.day.out .daynum { color: var(--muted); font-weight: 400; }
 table.cal td.day.today { box-shadow: inset 0 0 0 2px var(--orange); }
 .daynum { display: block; color: var(--fg); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .ev { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -309,7 +322,7 @@ li.postrow { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0;
 .btn:hover, .postacts a:hover { text-decoration: none; filter: brightness(1.08); }
 .markform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .chip.post-idea { color: var(--yellow); } .chip.post-outlined { color: var(--cyan); } .chip.post-drafting { color: var(--orange); }
-.chip.post-published { color: var(--green); } .chip.post-none { color: var(--comment); } .chip.post-skipped { color: var(--comment); }
+.chip.post-published { color: var(--green); } .chip.post-none { color: var(--muted); } .chip.post-skipped { color: var(--muted); }
 .skipform { margin: 0; display: inline; }
 li.skiprow { display: flex; gap: 10px; align-items: center; }
 li.skiprow .skipform { margin-left: auto; }
@@ -322,6 +335,7 @@ li.skiprow .skipform { margin-left: auto; }
 .kitbody h3 { margin: 18px 0 6px; font-size: 15px; }
 .kitbody h1 { display: none; }
 .kitbody pre { font-size: 13px; }
+.nbody code, .nbody pre { color: var(--fg); }     /* resolved here, where --fg is the panel's (code inherits a colour otherwise) */
 .kitbody table { font-size: 13px; }
 .formmsg { margin: 6px 0 0; font-size: 13px; color: var(--orange); }
 .toast { position: fixed; left: 50%; bottom: calc(80px + var(--sab)); transform: translateX(-50%); background: var(--hl); color: var(--fg); padding: 8px 14px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13px; z-index: 30; }
@@ -351,11 +365,11 @@ ul.garden-list .summary { margin: 3px 0 0; color: var(--muted); font-size: 13px;
 ul.readlist li { margin: 6px 0; }
 ul.readlist .when { color: var(--muted); font-size: 12px; margin-left: 4px; }
 ul.readlist .topic { font-size: 11px; }
-.hint { color: var(--comment); }
+.hint { color: var(--muted); }
 .typechips { margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .typechips a { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--dark); color: var(--muted); font-size: 12.5px; border: 1px solid transparent; }
 .typechips a.here { background: var(--hl); color: var(--fg); border-color: var(--line); }
-.typechips a .n { color: var(--comment); margin-left: 3px; }
+.typechips a .n { color: var(--muted); margin-left: 3px; }
 
 /* ---- board filters, stale, selection ------------------------------------ */
 .filterbtn { display: none; margin: 0 0 10px; }
@@ -365,9 +379,9 @@ ul.readlist .topic { font-size: 11px; }
 .activefilters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 12px; font-size: 12.5px; color: var(--muted); }
 .fchip { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--hl); color: var(--fg); }
 .fchip:hover { text-decoration: none; color: var(--red); }
-.chip.stale { color: var(--comment); border: 1px dashed var(--line2); background: transparent; }
+.chip.stale { color: var(--muted); border: 1px dashed var(--line2); background: transparent; }
 .card.selected { outline: 2px solid var(--blue); outline-offset: 2px; }
-.keys { color: var(--comment); }
+.keys { color: var(--muted); }
 .sheet .prio { display: flex; gap: 6px; margin: 0 0 10px; }
 .sheet .prio button { flex: 1; }
 .tagrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

@@ -1,19 +1,23 @@
-# konbini
+# Konbini
 
-A kanban board (Konbini) built from an Obsidian vault's frontmatter, driven by people and scripts (including AI
-agents) over a small HTTP API, installable on a phone. It is part of
-[Machiya](https://github.com/machiya-kobo/machiya), a small stack of services around a vault of notes; the garden (Niwa) and
-the note reader (Kura) are its sister services, and Shiori is its search app. All of them are optional: Konbini runs
-alone.
+Machiya is a set of small self-hosted apps for finding what you've read: your pages (Hister), the web (SearXNG), your notes (an Obsidian vault in git) and your code.
 
-- The notes are the source of truth; SQLite is a cache; git is the backup.
-- Cards are notes whose `status:` is a board column (backlog, ready, wip, blocked, done, archived).
-- Every card gets a writing kit: the facts of a finished project, laid out for a blog post.
-- `/api/cards` and `/api/digest` feed Niwa's column badges and the board half of its stream.
-- Offline, card changes wait on the device and are sent when the board is back; a change to a card somebody
-  changed meanwhile asks before it overwrites.
-- `/share` (Capture a Link) saves a link as a Backlog card: share to Konbini from Chrome or Android, or open
-  `/share?url=…&title=…` from an iOS Shortcut.
+Konbini (コンビニ 店, the corner shop that's open all hours) manages your projects. It turns the notes in your vault
+into a project board that you can install on your phone, and you, your scripts and your AI agents move the cards over a
+small HTTP API.
+
+- **A board from your notes.** A note whose `status:` is a board column (backlog, ready, wip, blocked, done,
+  archived) is a card. Your notes hold the board: Konbini's database is only a cache, and git keeps the history.
+- **A writing kit for every card.** When a project is done, Konbini gathers its facts and lays them out for the blog
+  post.
+- **Changes that work offline.** Move or edit a card with no connection and the change waits on your device until the
+  board is back. If someone changed that card in the meantime, Konbini asks you before it overwrites anything.
+- **Capture a link.** `/share` (Capture a Link) saves a link as a Backlog card: share to Konbini from Chrome or
+  Android, or open `/share?url=…&title=…` from an iOS Shortcut.
+
+Konbini runs on its own, and the other [Machiya](https://github.com/machiya-kobo/machiya) apps are optional. With them,
+a card links to its note in Kura (the note reader) and Niwa (the garden), Shiori, the search app, reads your cards, and
+Niwa takes its column badges and the board half of its stream from `/api/cards` and `/api/digest`.
 
 ## Quickstart
 

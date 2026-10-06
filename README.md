@@ -2,8 +2,7 @@
 
 [Machiya](https://github.com/machiya-kobo/machiya) is a set of small self-hosted apps for finding what you've read: your pages ([Hister](https://github.com/asciimoo/hister)), the web ([SearXNG](https://github.com/searxng/searxng)), your notes (an [Obsidian](https://obsidian.md) vault in git) and your code.
 
-Konbini (コンビニ, the corner shop that's open all hours) manages your projects: a fully featured kanban board made of
-your Obsidian notes, and a writing kit that lays out a finished project for its blog post.
+Konbini (コンビニ, "convenience store") is the project board for Machiya and turns your Obsidian notes into a fully featured kanban board. It's also a writing kit that lays out a finished project for its blog post.
 
 <p align="center">
 <a href="https://machiya-kobo.github.io/machiya/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="#who-can-use-it">Who can use it</a> · <a href="#more-ways-to-run-it">More ways to run it</a> · <a href="#in-a-container">Containers</a> · <a href="#natively-on-the-bsds">BSDs</a> · <a href="#settings">Settings</a> · <a href="#vault-layout">Vault layout</a> · <a href="#the-pm-command-line">pm</a> · <a href="#license">License</a>

@@ -6,7 +6,7 @@ Konbini (コンビニ, the corner shop that's open all hours) manages your proje
 your Obsidian notes, and a writing kit that lays out a finished project for its blog post.
 
 <p align="center">
-<a href="https://machiya-kobo.github.io/machiya/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="#who-can-use-it">Who can use it</a> · <a href="#more-ways-to-run-it">More ways to run it</a> · <a href="#in-a-container">Containers</a> · <a href="#natively-on-the-bsds">BSDs</a> · <a href="#settings">Settings</a> · <a href="#vault-layout">Vault layout</a> · <a href="#the-pm-command-line">pm</a> · <a href="#licence">Licence</a>
+<a href="https://machiya-kobo.github.io/machiya/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="#who-can-use-it">Who can use it</a> · <a href="#more-ways-to-run-it">More ways to run it</a> · <a href="#in-a-container">Containers</a> · <a href="#natively-on-the-bsds">BSDs</a> · <a href="#settings">Settings</a> · <a href="#vault-layout">Vault layout</a> · <a href="#the-pm-command-line">pm</a> · <a href="#license">License</a>
 </p>
 
 <p><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a></p>
@@ -382,11 +382,11 @@ earlier name.
 Working on the code: `CLAUDE.md` has the layout and the rules, [`app/CHANGELOG.md`](app/CHANGELOG.md) the changes by
 release, and `tools/screenshots` remakes the pictures above from the sample vault.
 
-## Licence
+## License
 
 Konbini is free software: GNU Affero General Public License, version 3 or (at your option) any later version.
 See `LICENSE`. Third-party software it ships (SortableJS, Mermaid, the Hister CLI in the image) is listed with
-its licences in `THIRD_PARTY_NOTICES`.
-`app/urlnorm.py` (the URL normalisation rule, identical to the copy in Niwa) is the project's own code, under the same licence.
+its licenses in `THIRD_PARTY_NOTICES`.
+`app/urlnorm.py` (the URL normalization rule, identical to the copy in Niwa) is the project's own code, under the same license.
 
 Copyright (C) 2026 Micheal Waltz and Machiya contributors.

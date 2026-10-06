@@ -10,6 +10,8 @@ alone.
 - Cards are notes whose `status:` is a board column (backlog, ready, wip, blocked, done, archived).
 - Every card gets a writing kit: the facts of a finished project, laid out for a blog post.
 - `/api/cards` and `/api/digest` feed Niwa's column badges and the board half of its stream.
+- `/share` (Capture a Link) saves a link as a Backlog card: share to Konbini from Chrome or Android, or open
+  `/share?url=…&title=…` from an iOS Shortcut.
 
 ## Quickstart
 

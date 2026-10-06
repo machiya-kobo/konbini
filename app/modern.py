@@ -279,7 +279,7 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
         meta.append('<span class="checks">%d/%d</span>' % (card["checks_done"], card["checks_total"]))
     meta += ['<span class="topic">%s</span>' % e(t) for t in card.get("topics", [])[:3]]
     if card.get("_stale"):
-        meta.append('<span class="chip stale" title="no board change or event for %d days">stale %dd</span>' % (card["_stale"], card["_stale"]))
+        meta.append('<span class="chip stale" title="untouched for %d days">stale %dd</span>' % (card["_stale"], card["_stale"]))
     if show_updated and card.get("updated"):
         meta.append('<span class="when">%s</span>' % e(ago(card["updated"])))
     meta += ['<span class="chip why">%s</span>' % e(w) for w in why]
@@ -377,7 +377,7 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
     if not shown:
         parts.append('<p class="none"><b>No Matching Cards</b> <a href="/">Clear the filters</a> to see the whole board.</p>')
     if unsorted and not lane_filter:
-        parts.append('<p class="unsorted"><b>Unsorted</b> (type/project, no status:): %s</p>' % ", ".join(
+        parts.append('<p class="unsorted"><b>Unsorted</b> (no status): %s</p>' % ", ".join(
             '<a href="/p/%s">%s</a>' % (quote(c["slug"]), e(c["title"])) for c in unsorted))
     archived_n = sum(1 for c in cards if c["board"] == "archived")
     parts.append('<p class="keys">Imported %s &middot; keys: j/k select, 1-5 move, / search, n new</p>' % e(imported))
@@ -420,8 +420,8 @@ def deps_page(ctx, cards, graph, chart):
         rows.append('<li><a class="ntl" href="/p/%s">%s</a> <span class="chip col-%s colchip">%s</span> waits for %s</li>'
                     % (quote(c["slug"]), e(c["title"]), e(c.get("board") or "none"), e(SHORT.get(c.get("board"), "Unsorted")),
                        dep_links(g["waits_for"])))
-    body = ('<main class="posts deps"><p class="none">Set a card&rsquo;s dependencies on its page (Depends on). A card waits '
-            'while any dependency isn&rsquo;t done, and counts as blocked.</p>%s%s</main>'
+    body = ('<main class="posts deps"><p class="none">A card counts as blocked until its dependencies are done. '
+            'Set them on its page.</p>%s%s</main>'
             % (('<pre><code class="language-mermaid">%s</code></pre>' % e(chart)) if chart else "",
                ('<ul class="garden-list plain deplist">%s</ul>' % "".join(rows)) if rows
                else '<p class="none"><b>No Dependencies</b> No card has a <code>dependsOn</code> yet.</p>'))
@@ -495,7 +495,7 @@ def streams_page(ctx, cards, what="Plan"):
                   key=lambda t: (-(t[1]["total"] - t[1]["done"]), t[0].lower()))
     loose = sum(1 for c in cards if c.get("board") and c["board"] != "archived" and not c.get("stream"))
     body = "".join(rollup_html(n, r) for n, r in rows) or \
-        '<p class="none"><b>No Streams Yet</b> Give a card a stream on its page, and cards with the same stream group here.</p>'
+        '<p class="none"><b>No Streams Yet</b> Give a card a stream on its page.</p>'
     body += ('<p class="none">%d card%s without a stream &middot; <a href="/?group=stream">the board by stream</a></p>'
              % (loose, "" if loose == 1 else "s")) if loose else ""
     return page(ctx, what, board_header(ctx, counts_of(cards), "Streams", "plan") +
@@ -545,8 +545,7 @@ def goals_page(ctx, cards, goals, soon):
                      '<p class="rollmeta"><span>%d of %d done</span></p><ul class="garden-list plain">%s</ul></section>'
                      % (slugify(g["name"]), e(g["name"]), target, pct, pct, g["done"], g["total"], rows))
     if not parts:
-        parts.append('<p class="none"><b>No Goals Yet</b> Give cards a goal (and due dates) on their pages; '
-                     'cards with the same goal add up here.</p>')
+        parts.append('<p class="none"><b>No Goals Yet</b> Give cards a goal and due dates on their pages.</p>')
     if soon:
         parts.append('<section class="goal"><h2 class="sechead">Due Soon or Overdue</h2><ul class="garden-list plain">%s</ul></section>'
                      % "".join('<li><a class="ntl" href="/p/%s">%s</a> <span class="chip due due-%s">%s %s</span></li>'
@@ -661,11 +660,11 @@ def account_section(name, session=False):
         return None
     if not session:
         return ("Account", [shell.row("Signed In As", e(name))],
-                "Konbini knows you from how you reached it, so there's nothing to sign out of here.")
+                "Konbini knows you from how you reached it, so there's nothing to sign out of.")
     return ("Account", [shell.row("Signed In As", e(name)),
                         '<form class="item" method="post" action="/signout"><span>This Browser</span>'
                         '<button type="submit">Sign Out</button></form>'],
-            "Signing out ends the session in this browser only, and removes the offline copies kept on it.")
+            "Signs out of this browser only and removes its offline copies.")
 
 
 def settings(ctx, cards, version, vaultkit, status_text, account="", session=False, state="standalone"):
@@ -674,12 +673,10 @@ def settings(ctx, cards, version, vaultkit, status_text, account="", session=Fal
     This Device (this browser's text size, Offline Copies), Account (a signed-in person only), About."""
     board = ("Board", [shell.select(label, key, choices, setting(ctx, key), cookie=True)
                        for key, label, choices, _ in BOARD_SETTINGS],
-             "Group By picks the board's swimlanes: Area (a card's area tag) or Family (its family field). "
-             "Done Cards is how many finished cards each lane shows, newest first; All shows every one. "
+             "Group By picks the swimlanes; Done Cards caps the finished cards per lane. "
              "Follows you to your other devices when signed in.")
     device = shell.device_section(ctx, [shell.offline_row()],
-                                  "Offline Copies are the pages this device keeps to show when the board can't be reached; "
-                                  "Clear Offline Copies removes them.")
+                                  "Pages kept for when the board can't be reached.")
     body = shell.settings_page([shell.shared_section(ctx, ROOM, shell.rooms(), state, account), board, device,
                                 account_section(account, session), shell.about_section(ROOM, version, status_text, vaultkit)],
                                ROOM)
@@ -732,7 +729,7 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
          if card.get("due") else ""),
         ("Blocked by", e(card.get("blocked_by"))),
         ("Waits for", (dep_links((dep or {}).get("waits_for", []))
-                       + "".join(' <span class="chip why" title="no card or note by this name">%s?</span>' % e(u)
+                       + "".join(' <span class="chip why" title="No such card or note">%s?</span>' % e(u)
                                  for u in (dep or {}).get("unresolved", [])))
          + (' <a class="nlink" href="/deps">graph</a>' if (dep or {}).get("waits_for") else "")),
         ("Unblocks", dep_links((dep or {}).get("unblocks", []))),
@@ -845,7 +842,7 @@ def archived(ctx, cards, activity=None):
                    '<div class="meta"><span class="chip area">%s</span><a class="btn quiet" href="/p/%s/kit">kit</a></div></li>'
                    % (quote(c["slug"]), e(c["title"]), e(ago(c.get("updated"))), e(c.get("summary") or ""), e(c.get("area") or ""), quote(c["slug"]))
                    for c in items) or '<li class="none"><b>Nothing Archived</b></li>'
-    body = ('<main class="posts"><p class="none">Archived cards keep their notes and kits; move one back from its card page to revive it.</p>'
+    body = ('<main class="posts"><p class="none">Archived cards keep their notes. Move one back from its page.</p>'
             '<section><h2 class="sechead">Archived <span class="colcount">%d</span></h2><ul class="postlist plainlist">%s</ul></section></main>'
             % (len(items), rows))
     return page(ctx, "Archived", board_header(ctx, counts_of(cards), "Archived", "") + body, KANBAN_TABS, "board")
@@ -854,8 +851,7 @@ def archived(ctx, cards, activity=None):
 def share(ctx, cards, title="", url="", text="", lanes=()):
     opts = "".join('<option value="%s"%s>%s</option>' % (e(l), " selected" if l == "projects" else "", e(l)) for l in lanes)
     body = ('<main class="detail share"><h1 class="ntitle">Capture</h1>'
-            '<p class="none">Saves a link as a backlog idea card with a stub note. Share to Konbini from Chrome or Android, '
-            'or open <code>/share?url=…&amp;title=…</code> from an iOS Shortcut.</p>'
+            '<p class="none">Saves a link as a Backlog card. Share to Konbini from your phone or browser.</p>'
             '<form class="editform" method="post" action="/share">'
             '<label>Title <input type="text" name="title" value="%s" required></label>'
             '<label>URL <input type="text" name="url" value="%s"></label>'
@@ -1116,7 +1112,7 @@ def posts(ctx, data, cards, show="ready"):
                      '<input type="hidden" name="post_url" value="%s"><button type="submit" class="quiet">Mark published</button></form>'
                      % (slug, e(ex["url"]), e(ex["title"]), e(ex["date"]), e(ex["url"])))
         skip = ('<form class="skipform" method="post" action="/p/%s"><input type="hidden" name="post" value="skipped">'
-                '<button type="submit" class="quiet" title="not writing about this one (reversible)">Skip</button></form>' % slug)
+                '<button type="submit" class="quiet" title="Skip this post (reversible)">Skip</button></form>' % slug)
         return ('<li class="postrow"><div class="postmain"><a class="ntl" href="/p/%s/kit">%s</a> %s%s'
                 '<p class="summary">%s</p><div class="meta">%s<span class="chip area">%s</span></div>%s</div>'
                 '<div class="postacts"><a class="btn" href="/p/%s/kit">Kit</a><a class="btn quiet" href="/p/%s">Card</a>%s</div></li>'
@@ -1126,8 +1122,7 @@ def posts(ctx, data, cards, show="ready"):
     chips = "".join('<a href="/posts?show=%s"%s>%s <span class="n">%d</span></a>' % (k, ' class="here"' if k == show else "", label, len(data.get(k) or []))
                     for k, label in tabs if data.get(k) or k in ("ready", show))
     parts = ['<main class="posts">',
-             '<p class="none">Finished projects without a blog post, newest first. Each kit gathers the outline and the facts; '
-             'you write the post, then set the card to <b>published</b> with its URL. Skip parks one; it can be reconsidered.</p>',
+             '<p class="none">Finished projects without a blog post. Write from the kit, then mark the card <b>published</b>.</p>',
              '<p class="typechips">%s</p>' % chips]
     if show == "ready":
         parts.append('<ul class="postlist">%s</ul>' % ("".join(row(x) for x in data["ready"]) or '<li class="none"><b>All Written Up</b> Every finished project has a post, or was skipped.</li>'))
@@ -1139,7 +1134,7 @@ def posts(ctx, data, cards, show="ready"):
             % (quote(x["card"]["slug"]), e(x["card"]["title"]), e(x["url"]), e(x["url"] or "no URL")) for x in data["published"])
             or '<li class="none"><b>Nothing Published Yet</b></li>'))
     else:
-        parts.append('<p class="none">Not writing about these, for now. Reconsider puts one back; the kit stays available.</p>'
+        parts.append('<p class="none">Not writing about these for now. Reconsider puts one back.</p>'
                      '<ul class="garden-list plain">%s</ul>' % ("".join(
                          '<li class="skiprow"><a href="/p/%s">%s</a> <a class="nlink" href="/p/%s/kit">kit</a>'
                          '<form class="skipform" method="post" action="/p/%s"><input type="hidden" name="post" value="none">'

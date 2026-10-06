@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.13.2
+
+- Shorter page copy: the Settings notes (Board, This Device, Account), the Posts, Capture, Archived and Dependencies intros, the Streams and Goals empty states, and a few tooltips say only what you need. No change in behaviour. The `/share?url=…&title=…` link for an iOS Shortcut is in the README now.
+
 ## 0.13.1
 
 - Pull to refresh in the installed app moves the page content with your finger (it springs back when let go early, holds with a spinner while it reloads); the header and tab bar stay put, and dragging a card still just drags the card (vaultkit 0.22.1).

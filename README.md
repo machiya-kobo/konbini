@@ -5,13 +5,19 @@ Machiya is a set of small self-hosted apps for finding what you've read: your pa
 Konbini (コンビニ, the corner shop that's open all hours) manages your projects: a fully featured kanban board made of
 your Obsidian notes, and a writing kit that lays out a finished project for its blog post.
 
-<p><a href="docs/screenshots/konbini-board-light.png"><img src="docs/screenshots/konbini-board-light.png" alt="The board in the light theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a></p>
-<p>
-  <a href="docs/screenshots/konbini-card-dark.png"><img src="docs/screenshots/konbini-card-dark.png" alt="A card's page in the dark theme: column buttons, its stream, goal, due date and the card it unblocks" width="28%"></a>
-  <a href="docs/screenshots/konbini-review-light.png"><img src="docs/screenshots/konbini-review-light.png" alt="The weekly review in the light theme: WIP by area, cards blocked a week or more, and stale cards" width="28%"></a>
-  <a href="docs/screenshots/konbini-kit-light.png"><img src="docs/screenshots/konbini-kit-light.png" alt="The writing kit for a finished sample project in the light theme: dates, facts and the post's front matter" width="28%"></a>
-  <a href="docs/screenshots/konbini-board-phone-dark.png"><img src="docs/screenshots/konbini-board-phone-dark.png" alt="The board on a phone in the dark theme, one column at a time with a tab bar" width="8%"></a>
+<p align="center">
+<a href="https://machiya-kobo.github.io/machiya/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="#who-can-use-it">Who can use it</a> · <a href="#more-ways-to-run-it">More ways to run it</a> · <a href="#in-a-container">Containers</a> · <a href="#natively-on-the-bsds">BSDs</a> · <a href="#settings">Settings</a> · <a href="#vault-layout">Vault layout</a> · <a href="#the-pm-command-line">pm</a> · <a href="#licence">Licence</a>
 </p>
+
+<p><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a></p>
+<p>
+  <a href="docs/screenshots/konbini-card-light.png"><img src="docs/screenshots/konbini-card-light.png" alt="A card's page in the light theme: column buttons, its stream, goal, due date and the card it unblocks" width="32%"></a>
+  <a href="docs/screenshots/konbini-review-dark.png"><img src="docs/screenshots/konbini-review-dark.png" alt="The weekly review in the dark theme: WIP by area, cards blocked a week or more, and stale cards" width="32%"></a>
+  <a href="docs/screenshots/konbini-kit-light.png"><img src="docs/screenshots/konbini-kit-light.png" alt="The writing kit for a finished sample project in the light theme: dates, facts and the post's front matter" width="32%"></a>
+</p>
+<p align="center"><a href="docs/screenshots/konbini-board-phone-light.png"><img src="docs/screenshots/konbini-board-phone-light.png" alt="The board on a phone in the light theme, one column at a time with a tab bar" width="24%"></a></p>
+
+Every screenshot uses the sample vault: a paper-lantern workshop and a trip to Kyoto.
 
 - **Your notes are the board.** A note whose `status:` is a column (backlog, ready, wip, blocked, done, archived) is
   a card.
@@ -25,14 +31,6 @@ your Obsidian notes, and a writing kit that lays out a finished project for its 
 Konbini runs on its own; the other [Machiya](https://github.com/machiya-kobo/machiya) apps are optional. With them, a
 card links to its note in Kura (the note reader) and Niwa (the garden), and Shiori, the search app, reads your cards.
 Niwa takes its column badges and the board half of its stream from `/api/cards` and `/api/digest`.
-
-**Contents**
-
-- [Quickstart](#quickstart)
-- [Who can use it](#who-can-use-it)
-- [More ways to run it](#more-ways-to-run-it): [in a container](#in-a-container), [natively on the BSDs](#natively-on-the-bsds), [check it and drive it with pm](#check-it-and-drive-it-with-pm), [as part of the Machiya stack](#as-part-of-the-machiya-stack)
-- [Settings](#settings): [sign-in, pairing and preferences](#sign-in-pairing-and-preferences)
-- [Vault layout](#vault-layout) · [The pm command line](#the-pm-command-line) · [Licence](#licence)
 
 ## Quickstart
 

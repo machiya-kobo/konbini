@@ -26,6 +26,14 @@ Konbini runs on its own; the other [Machiya](https://github.com/machiya-kobo/mac
 card links to its note in Kura (the note reader) and Niwa (the garden), and Shiori, the search app, reads your cards.
 Niwa takes its column badges and the board half of its stream from `/api/cards` and `/api/digest`.
 
+**Contents**
+
+- [Quickstart](#quickstart)
+- [Who can use it](#who-can-use-it)
+- [More ways to run it](#more-ways-to-run-it): [in a container](#in-a-container), [natively on the BSDs](#natively-on-the-bsds), [check it and drive it with pm](#check-it-and-drive-it-with-pm), [as part of the Machiya stack](#as-part-of-the-machiya-stack)
+- [Settings](#settings): [sign-in, pairing and preferences](#sign-in-pairing-and-preferences)
+- [Vault layout](#vault-layout) · [The pm command line](#the-pm-command-line) · [Licence](#licence)
+
 ## Quickstart
 
 Konbini on your own machine with the sample vault: a paper-lantern workshop and a trip to Kyoto, in ten cards, three

@@ -3,6 +3,16 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.15.0
+
+Changes made offline wait on the device and are sent when the board can be reached again, in the installed app and the browser:
+- Moves (the sheet, the keys, drag and drop, the column buttons), field edits, notes and new cards that can't reach the board are kept on this device (IndexedDB), shown on the page at once and marked "waiting"; a badge says how many wait.
+- They are sent in order on the next load, when the browser goes online, when the tab comes back, and from the service worker where Background Sync exists. A new card shows as a stand-in until the board has it; changes to it follow under its real name.
+- Each carries what it was based on, so a card somebody changed meanwhile isn't overwritten: the badge's sheet shows yours and the board's, with Keep Mine or Use the Board's. A deleted card or a refused change is shown until dismissed. A signed-out browser keeps them until you sign in again. Nothing about your sign-in is stored with them.
+- Tag changes still need the board (a new tag asks first).
+- The card form now refuses a column move based on a column the card has left (`o_board`), like its other fields.
+- Fix: pressing Enter in a card's inline Next field saved it twice.
+
 ## 0.14.0
 
 Settings in the same order as every Machiya app (vaultkit 0.23):

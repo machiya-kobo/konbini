@@ -419,6 +419,24 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .sheet .close { position: absolute; top: 10px; right: 12px; background: transparent; color: var(--muted); font-size: 18px; padding: 4px 8px; }
 @media (min-width: 761px) { dialog.sheet { inset: 0; margin: auto; border-radius: 16px; max-width: 440px; padding-bottom: 16px; } }
 
+/* ---- outbox: changes waiting on this device (board.js, outbox.js) ------- */
+.card.queued { outline: 1px dashed var(--yellow); outline-offset: -1px; }
+.chip.waiting { color: var(--yellow); }
+.chip.waiting.attention { color: var(--red); }
+.outboxbadge {
+  position: fixed; left: calc(12px + var(--sal)); bottom: calc(80px + var(--sab)); z-index: 25; border: 0; cursor: pointer;
+  padding: 7px 12px; border-radius: var(--r-pill); background: var(--hl); color: var(--yellow); box-shadow: var(--shadow);
+  font: 600 13px system-ui, sans-serif;
+}
+.outboxbadge.attention { color: var(--red); }
+@media (min-width: 761px) { .outboxbadge { bottom: calc(16px + var(--sab)); } }
+.outlist { list-style: none; margin: 0 0 10px; padding: 0; max-height: 55vh; overflow: auto; }
+.outlist li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.outlist .why, .outbox p.why { display: block; color: var(--muted); margin: 2px 0 0; }
+.outlist li.conflict .why, .outlist li.refused .why { color: var(--red); }
+.outbox .row { display: flex; gap: 6px; margin: 6px 0 0; }
+.waitmsg { color: var(--yellow); font-size: 13px; margin: -4px 0 10px; }
+
 /* ---- banners ------------------------------------------------------------ */
 .banner { padding: 9px 12px; border-radius: 10px; margin: 0 0 12px; font-size: 13px; display: flex; gap: 10px; align-items: center; }
 .banner.offline { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange); }

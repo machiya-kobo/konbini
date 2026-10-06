@@ -820,7 +820,7 @@ def make_handler(listener):
                     # Only what you changed is saved: the form carries each field as it was drawn (o_<name>), and a field
                     # you changed that somebody else changed meanwhile is refused (a card page open for an hour must not
                     # revert what an agent wrote in the meantime).
-                    now = modern.form_values(card)
+                    now = dict(modern.form_values(card), board=card.get("board") or "")   # o_board: a move made offline
                     fields = {}
                     for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due"):
                         if k not in data:
@@ -1055,7 +1055,8 @@ def make_handler(listener):
                     session = bool(p) and p.via == "session"
                 self.send(200, V(ctx).settings(ctx, store.cards(), VERSION, "v" + vaultkit.__version__,
                                                footer_status()["text"], p.name if p else "", session, state))
-            elif path in ("/static/board.css", "/static/board.js", "/static/Sortable.min.js", "/static/mermaid.min.js"):
+            elif path in ("/static/board.css", "/static/board.js", "/static/outbox.js", "/static/Sortable.min.js",
+                          "/static/mermaid.min.js"):
                 name = path.rsplit("/", 1)[1]
                 ctype = "text/css" if name.endswith(".css") else "text/javascript"
                 # Versioned URLs (?v=<hash>, see modern.static_url) never change, so they cache for a year.

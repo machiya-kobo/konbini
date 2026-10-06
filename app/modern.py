@@ -49,7 +49,7 @@ def _hash(name):
         return "0"
 
 
-STATIC_V = {n: _hash(n) for n in ("board.css", "board.js", "Sortable.min.js")}
+STATIC_V = {n: _hash(n) for n in ("board.css", "board.js", "outbox.js", "Sortable.min.js")}
 # The service worker's version (its cache names): the board's own static files plus vaultkit's shared UI
 # (shell.UI_VERSION), so an installed Konbini picks up a new machiya.css/js too.
 VERSION = hashlib.sha1("".join(sorted(STATIC_V.values()) + sorted(shell.UI_VERSION.values())).encode()).hexdigest()[:10]
@@ -80,7 +80,7 @@ def shell_urls():
     """What the service worker precaches: the shared UI, the board's own files, the icons every page and the
     installed app ask for (shell.page's <room>.svg and <room>-apple-180.png, the manifest's 192) and /offline."""
     return [shell.ui_url("machiya.css"), shell.ui_url("machiya.js"), static_url("board.css"), static_url("board.js"),
-            static_url("Sortable.min.js"), icon_url(".svg"), icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
+            static_url("outbox.js"), static_url("Sortable.min.js"), icon_url(".svg"), icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
 
 
 def manifest(theme, headers=None, palette=None):
@@ -108,8 +108,13 @@ def service_worker():
     """/sw.js: the shared worker core (vaultkit v0.7, machiya-sw.js). Pages, card pages (/p/...) included, are
     network-first for 2.5 s and kept (the 120 most recent) for offline use; card pages aren't notes (Kura keeps
     those). The APIs are never touched, and search, settings, the capture form and the sign-in page are never stored."""
-    return shell.service_worker(VERSION, shell_urls(), bypass=["^/api/"],
+    core = shell.service_worker(VERSION, shell_urls(), bypass=["^/api/"],
                                 network=["^/search$", "^/settings$", "^/share$", "^/theme$", "^/signin$"], pages=120)
+    # Background Sync (Chromium): send the outbox (outbox.js) when the connection is back, even with no page open. A
+    # failed send rejects, so the browser tries again later; conflicts wait in the outbox for a page to show them.
+    return core + ("importScripts(%s);\nself.addEventListener(\"sync\", (e) => {\n"
+                   "  if (e.tag === KonbiniOutbox.SYNC) e.waitUntil(KonbiniOutbox.flush().then((r) => {\n"
+                   "    if (r.offline) throw new Error(\"offline\");\n  }));\n});\n" % json.dumps(static_url("outbox.js")))
 
 
 # -- shell -------------------------------------------------------------------
@@ -161,7 +166,7 @@ def page(ctx, what, body, tabs=(), current="", foot=()):
     status = getattr(ctx, "status", None)
     head = (('<meta name="obsidian-vault" content="%s">\n' % e(OBSIDIAN_VAULT)) if OBSIDIAN_VAULT else "") + SIGNIN_META
     return shell.page(ctx, ROOM, shell.title(ROOM, what), body + shell.footer(ROOM, status, list(foot)), tabs, current,
-                      head=head, stylesheets=[static_url("board.css")], scripts=[static_url("board.js")], icons=ICON,
+                      head=head, stylesheets=[static_url("board.css")], scripts=[static_url("outbox.js"), static_url("board.js")], icons=ICON,
                       prefs_url=getattr(ctx, "prefs_url", ""), who=getattr(ctx, "who", ""))
 
 
@@ -287,11 +292,13 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
         lines.append('<div class="meta">%s</div>' % "".join(meta))
     # the sheet's links to the sister rooms, only where the card page has them: Niwa for a published note, Kura
     links = "".join(' data-%s="%s"' % (k, e(v)) for k, v in (("garden", garden_url(card, note)), ("kura", kura_url(note))) if v)
+    # data-board, -next and -priority: what the page showed, which a change made offline is based on (board.js, outbox.js)
     return ('<article class="card is-card col-%s" id="c-%s" data-slug="%s" data-board="%s" data-title="%s" data-next="%s" '
-            'data-note="%s"%s>%s'
+            'data-priority="%s" data-note="%s"%s>%s'
             '<button class="more" type="button" aria-label="Actions for %s">&#8943;</button>%s</article>'
             % (e(card["board"] or ""), e(card["slug"]), e(card["slug"]), e(card["board"] or ""), e(card["title"]),
-               e(card.get("next") or ""), e(note), links, "\n".join(lines), e(card["title"]), move_form(card)))
+               e(card.get("next") or ""), e(card.get("priority") or ""), e(note), links, "\n".join(lines), e(card["title"]),
+               move_form(card)))
 
 
 def lane_html(ctx, lane, cards, claims=None):
@@ -713,8 +720,8 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
     badges += chips(card, show_area=True)
     if claim:
         badges.append(claim_badge(claim))
-    moves = ('<form class="moves" method="post" action="/move"><input type="hidden" name="slug" value="%s">%s</form>'
-             % (e(card["slug"]), "".join(
+    moves = ('<form class="moves" method="post" action="/move" data-board="%s"><input type="hidden" name="slug" value="%s">%s</form>'
+             % (e(col), e(card["slug"]), "".join(
                  '<button type="submit" name="board" value="%s" class="mv col-%s"%s>%s</button>'
                  % (c, c, " disabled" if c == col else "", e(SHORT[c])) for c in SHOWN)))
     rows = [
@@ -878,7 +885,7 @@ def offline(ctx):
     that would be stale when it's shown."""
     body = (shell.header(ROOM, KANBAN_NAV, "", shell.rooms()) + shell.offline(ROOM) + shell.footer(ROOM))
     return shell.page(ctx, ROOM, shell.title(ROOM, "Offline"), body, KANBAN_TABS, "",
-                      stylesheets=[static_url("board.css")], scripts=[static_url("board.js")], icons=ICON)
+                      stylesheets=[static_url("board.css")], scripts=[static_url("outbox.js"), static_url("board.js")], icons=ICON)
 
 
 # -- calendar and roundups -------------------------------------------------------

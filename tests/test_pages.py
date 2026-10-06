@@ -230,8 +230,12 @@ try:
     assert dates == ["Sep 02", "Sep 03 &rarr; Sep 09"], dates
 
     # -- the service worker never stores the sign-in page (nor search, settings, capture) ---------------------------
-    st, h, sw = call(port, "GET", "/sw.js")
-    sw = json.loads(re.search(r"machiyaSW\((.*)\);", sw, re.S).group(1))
+    st, h, sw_js = call(port, "GET", "/sw.js")
+    sw = json.loads(re.search(r"machiyaSW\((.*?)\);\n", sw_js, re.S).group(1))
+    # the outbox (outbox.js) is precached, and the worker sends it on Background Sync; the APIs stay untouched
+    outbox = [u for u in sw["precache"] if u.startswith("/static/outbox.js?v=")]
+    assert outbox and "importScripts(%s)" % json.dumps(outbox[0]) in sw_js and "KonbiniOutbox.SYNC" in sw_js, sw_js[-400:]
+    assert sw["bypass"] == ["^/api/"], sw["bypass"]
     network = sw["network"]
     assert {"^/signin$", "^/search$", "^/settings$", "^/share$"} <= set(network), network
     # it precaches the icons pages and the installed app really ask for, and every one of them answers

@@ -112,7 +112,12 @@ settings table; `CONTRIBUTING.md` the workflow.
   inline `<script>` and no `on…=` attribute in the board's markup; behaviour goes in `board.js`.
 - Titles are `shell.title(ROOM, what)` with the nav's page names; a 404 is `shell.not_found` inside the header and
   tabs; `/offline` is `shell.offline`. `tests/test_pages.py` covers these, the headers, icons, manifest and prefs.
-- `board.js` posts the board's forms with `fetch`: offline, the page stays and says nothing was saved (no queue).
+- `board.js` posts the board's forms with `fetch`. **The outbox** (`static/outbox.js`, shared with the service worker's
+  Background Sync): a move, field edit, note or new card that can't reach the board (offline, a TypeError, a 502-504)
+  waits in IndexedDB and shows on the page marked "waiting"; it is sent in order with what it was based on (the card
+  form's `o_<name>`, `o_board` included; `/api/order`'s `from`), so the board's 409 rule applies. A conflict or a
+  refusal waits for the person (Keep Mine / Use the Board's / Dismiss); 401 holds the queue; no credentials are
+  stored. New cards carry a `tmp-` slug until the board answers. Tag changes aren't queued. `tests/test_outbox.py`.
 
 ## Rules
 

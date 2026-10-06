@@ -45,12 +45,13 @@ function load(src) {
 }
 async function send(method, url, body) {
   const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.status >= 502 && r.status <= 504) throw new TypeError("unreachable");     // the proxy, with the board down
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
   return data;
 }
-// A write that didn't go through: "offline" when the request never reached the board (fetch throws a TypeError),
-// else the board's reason. Nothing is queued: the change is simply not made.
+// A write that didn't go through: "offline" when the request never reached the board (fetch throws a TypeError) and
+// the outbox couldn't keep it either (a tag change, or no IndexedDB), else the board's reason.
 function notSavedText(e) {
   return e instanceof TypeError ? "You're offline, so this wasn't saved." : "Not saved: " + (e && e.message || e);
 }
@@ -99,16 +100,69 @@ document.addEventListener("submit", async (ev) => {
     }
     msg.textContent = text;
   };
+  // a move, a card's fields and note, a new card: kept in the outbox when the board can't be reached
+  const op = formOp(form, action, data);
+  const kept = async () => {
+    if (!op || !(await queue(op, true))) return false;
+    say("Saved on this device. It sends when you're online.");
+    if (op.kind === "create") form.reset();
+    for (const [k, v] of Object.entries(op.mine || {})) {         // the next change is based on this one
+      const o = form.querySelector('[name="o_' + k + '"]');
+      if (o) o.value = v;
+    }
+    const note = form.querySelector("[name=comment]");
+    if (note) note.value = "";
+    if (form.matches("form.moves") && op.mine) {                  // the card page's column buttons
+      form.dataset.board = op.mine.board;
+      for (const btn of $$("button[name=board]", form)) btn.disabled = btn.value === op.mine.board;
+    }
+    controls.forEach((c) => { c.disabled = form.matches("form.moves") && op.mine && c.value === op.mine.board; });
+    return true;
+  };
   try {
+    if (op && OB && (navigator.onLine === false || await busy()) && await kept()) return;
     const r = await fetch(action, { method: "POST", body: new URLSearchParams(data), credentials: "same-origin" });
     if (r.ok) { location.assign(r.url); return; }              // the redirect fetch followed: the page to show
+    if (r.status >= 502 && r.status <= 504 && await kept()) return;
     const page = new DOMParser().parseFromString(await r.text(), "text/html");
     say(notSavedText(new Error((page.querySelector("main.msg p") || {}).textContent || "HTTP " + r.status)));
   } catch (e) {
+    if (e instanceof TypeError && await kept()) return;
     say(notSavedText(e));
   }
   controls.forEach((c) => { c.disabled = false; });
 });
+// The outbox entry for a form, or null for one that isn't kept offline (tags, settings, sign-in)
+function formOp(form, action, data) {
+  if (!OB) return null;
+  const path = action.pathname, get = (k) => String(data.get(k) ?? "").trim();
+  if (path === "/move") {
+    const el = form.closest(".card");
+    const d = el ? el.dataset : { slug: get("slug"), title: ($("h1.ntitle") || {}).textContent, board: form.dataset.board };
+    return get("board") && get("board") !== d.board ? cardOp(d, { board: get("board") }) : null;
+  }
+  const m = /^\/p\/([^/]+)$/.exec(path);
+  if (m) {                                                     // the card page's form: it carries its own o_<name>
+    const body = {}, mine = {};
+    for (const [k, v] of data.entries()) body[k] = String(v);
+    for (const k of OB.FIELDS) if (k in body && "o_" + k in body && body[k] !== body["o_" + k]) mine[k] = body[k];
+    const comment = (body.comment || "").trim();
+    if (!Object.keys(mine).length && !comment) return null;
+    const slug = decodeURIComponent(m[1]);
+    return { kind: "form", slug, title: ($("h1.ntitle") || {}).textContent || slug, label: labelOf(mine, comment), body, mine };
+  }
+  if (path === "/new" || path === "/share") {
+    const url = get("url"), text = get("text");
+    const title = (get("title") || url || text.slice(0, 80)).slice(0, 120);
+    if (!title) return null;
+    const tmp = "tmp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    return { kind: "create", slug: tmp, tmp, title, label: "New card",
+             body: { title, area: get("area") || "projects", board: "backlog",
+                     summary: path === "/share" ? [text, url].filter(Boolean).join(" ").slice(0, 300) : "",
+                     confirm_new_tags: ["1", "true"].includes(get("confirm_new_tags")) } };
+  }
+  return null;
+}
 
 // -- PWA: service worker, offline copy, install hint ----------------------
 if ("serviceWorker" in navigator) {
@@ -122,7 +176,7 @@ if (document.body.dataset.offline !== undefined) {
     when = mins < 60 ? mins + " min ago" : mins < 1440 ? Math.round(mins / 60) + " h ago" : Math.round(mins / 1440) + " d ago";
   }
   banner("offline", "<span><b>Offline.</b> Showing a copy saved " + (when || "earlier")
-    + ". Changes can't be saved until Konbini can be reached again.</span>");
+    + ". Your changes wait on this device until you're back online.</span>");
 }
 const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
 const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
@@ -171,11 +225,11 @@ function recount() {
     if (t) t.textContent = n;
   }
 }
-function moveCard(card, to) {
+function moveCard(card, to, quiet) {
   const lane = card.closest(".lane");
   const col = lane ? lane.querySelector(".col.col-" + to) : null;
-  if (!col) { location.reload(); return; }
-  col.append(card);
+  if (!col && !quiet) { location.reload(); return; }
+  if (col) col.append(card);
   card.className = card.className.replace(/\bcol-\w+/, "col-" + to);
   card.dataset.board = to;
   const select = card.querySelector("select[name=board]");
@@ -199,28 +253,32 @@ function openSheet(card) {
       '<button type="button" class="quiet" data-prio="' + v + '">' + l + '</button>').join("") + '</div>'
     + '<div class="acts"><button type="button" data-act="next">Edit next…</button>'
     + '<button type="button" data-act="note">Add a note…</button>'
-    + '<a href="/p/' + encodeURIComponent(d.slug) + '">Open card</a>'
-    + '<a href="/p/' + encodeURIComponent(d.slug) + '/kit">Writing kit</a>'
+    + (/^tmp-/.test(d.slug) ? "" : '<a href="/p/' + encodeURIComponent(d.slug) + '">Open card</a>'
+      + '<a href="/p/' + encodeURIComponent(d.slug) + '/kit">Writing kit</a>')
     + (d.garden ? '<a href="' + esc(d.garden) + '">Read in the Garden</a>' : "")
     + (d.kura ? '<a href="' + esc(d.kura) + '">View in Kura</a>' : "")
     + (vault ? '<a href="obsidian://open?vault=' + encodeURIComponent(vault) + '&file=' + encodeURIComponent(d.note) + '">Open in Obsidian</a>' : "") + '</div>';
   $(".close", sheet).onclick = () => sheet.close();
   for (const b of $$("[data-move]", sheet)) {
     b.onclick = async () => {
+      const to = b.dataset.move;
       try {
-        await send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { board: b.dataset.move });
+        const how = await attempt(cardOp(d, { board: to }),
+                                  () => send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { board: to }));
         sheet.close();
-        moveCard(card, b.dataset.move);
-        await refreshRev();
+        moveCard(card, to, how === "queued");
+        if (how === "queued") markCard(card, "waiting"); else await refreshRev();
       } catch (e) { notSaved(e); }
     };
   }
   for (const b of $$("[data-prio]", sheet)) {
     b.onclick = async () => {
+      const v = b.dataset.prio;
       try {
-        await send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { priority: b.dataset.prio ? Number(b.dataset.prio) : null });
+        const how = await attempt(cardOp(d, { priority: v }),
+                                  () => send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { priority: v ? Number(v) : null }));
         sheet.close();
-        location.reload();
+        if (how === "queued") { setPriority(card, v); markCard(card, "waiting"); } else location.reload();
       } catch (e) { notSaved(e); }
     };
   }
@@ -228,19 +286,23 @@ function openSheet(card) {
     const v = prompt("A line for the card's history");
     if (v === null || !v.trim()) return;
     try {
-      await send("POST", "/api/cards/" + encodeURIComponent(d.slug) + "/events", { type: "comment", body: v.trim() });
+      const how = await attempt(cardOp(d, {}, v.trim()),
+                                () => send("POST", "/api/cards/" + encodeURIComponent(d.slug) + "/events", { type: "comment", body: v.trim() }));
       sheet.close();
-      toast("Note added");
+      if (how === "queued") markCard(card, "waiting"); else toast("Note added");
     } catch (e) { notSaved(e); }
   };
-  $("[data-act=next]", sheet).onclick = () => {
+  $("[data-act=next]", sheet).onclick = async () => {
     sheet.close();
     const el = card.querySelector(".next");
     if (el) { el.click(); return; }
     const v = prompt("Next step", d.next || "");
     if (v === null) return;
-    send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { next: v.trim() })
-      .then(() => location.reload()).catch(notSaved);
+    try {
+      const how = await attempt(cardOp(d, { next: v.trim() }),
+                                () => send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), { next: v.trim() }));
+      if (how === "queued") { setNext(card, v.trim()); markCard(card, "waiting"); } else location.reload();
+    } catch (e) { notSaved(e); }
   };
   sheetOpen = true;
   sheet.showModal();
@@ -258,6 +320,219 @@ function toast(text, ms = 1800) {
   el.textContent = text;
   document.body.append(el);
   setTimeout(() => el.remove(), ms);
+}
+
+// -- the outbox: card changes made while the board can't be reached wait on this device (outbox.js) -----------------
+// Moves, field edits, notes and new cards go in when a request never reached the board (or others already wait), show
+// on the page at once with a "waiting" mark, and are sent in order on the next load, when the browser goes online,
+// when the tab comes back, every 30 s while any wait, and from the worker (Background Sync). A conflict or a refusal
+// stays until the person picks; nothing is dropped unseen. Tag changes aren't queued (a new tag needs a confirmation).
+const OB = self.KonbiniOutbox || null;
+const COLNAME = Object.fromEntries(COLS.concat([["archived", "Archived"]]));
+let outbox = [];
+let flushing = false, signinNeeded = false, outDlg = null;
+
+function labelOf(mine, comment) {
+  const parts = Object.entries(mine).map(([k, v]) => k === "board" ? "Move to " + (COLNAME[v] || v)
+    : k === "priority" ? (v ? "P" + v : "No priority") : k === "next" ? "Next: " + v : "Edit " + k.replace("_", " "));
+  if (comment) parts.push("Note: " + comment);
+  return parts.join(" · ");
+}
+// A change to a card, with what the page showed for each field (o_<name>: the board refuses it if that changed since)
+function cardOp(d, fields, comment) {
+  const body = {}, mine = {};
+  for (const [k, v] of Object.entries(fields)) { body[k] = String(v ?? ""); body["o_" + k] = String(d[k] ?? ""); mine[k] = body[k]; }
+  if (comment) body.comment = comment;
+  return { kind: "form", slug: d.slug, title: d.title || d.slug, label: labelOf(mine, comment), body, mine };
+}
+async function busy() {
+  try { return !!OB && (await OB.all()).some((o) => o.state !== "refused"); } catch (e) { return false; }
+}
+async function queue(op, quiet) {
+  if (!OB) return false;
+  try { await OB.add(op); } catch (e) { return false; }      // private mode without IndexedDB: not saved, as before
+  OB.sync();
+  await showOutbox();
+  if (!quiet) toast("Saved on this device. It sends when you're online.", 3000);
+  return true;
+}
+// Today's request, or the outbox when offline (or when changes already wait, so they keep their order).
+// -> "sent" | "queued"; a refusal from the board is thrown as before.
+async function attempt(op, online) {
+  if (OB && (navigator.onLine === false || await busy())) {
+    if (await queue(op)) return "queued";
+    throw new TypeError("offline");
+  }
+  try { await online(); return "sent"; } catch (e) {
+    if (e instanceof TypeError && await queue(op)) return "queued";
+    throw e;
+  }
+}
+function setNext(el, v) {
+  el.dataset.next = v;
+  const p = el.querySelector(".next");
+  if (p) p.textContent = "next: " + v;
+}
+function setPriority(el, v) {
+  el.dataset.priority = v;
+  for (const c of el.querySelectorAll(".meta .chip.p1, .meta .chip.p2, .meta .chip.p3")) c.remove();
+  if (v) {
+    const chip = document.createElement("span");
+    chip.className = "chip p" + v;
+    chip.textContent = "P" + v;
+    metaOf(el).prepend(chip);
+  }
+}
+function metaOf(el) {
+  let meta = el.querySelector(".meta");
+  if (!meta) {
+    meta = document.createElement("div");
+    meta.className = "meta";
+    el.insertBefore(meta, el.querySelector(".more"));
+  }
+  return meta;
+}
+function markCard(el, state) {
+  el.classList.add("queued");
+  let chip = el.querySelector(".chip.waiting");
+  if (!chip) { chip = document.createElement("span"); chip.className = "chip waiting"; metaOf(el).prepend(chip); }
+  chip.classList.toggle("attention", state !== "waiting");
+  chip.textContent = state === "conflict" ? "check" : state === "refused" ? "not saved" : "waiting";
+}
+// A new card made offline: a stand-in at the top of its lane's Backlog until the board has it
+function stubCard(op) {
+  let el = $$(".card").find((c) => c.dataset.slug === op.tmp);
+  if (!el) {
+    const lane = $$("section.lane").find((l) => l.dataset.lane === op.body.area);
+    const col = lane && lane.querySelector(".col.col-backlog");
+    if (!col) return;
+    el = document.createElement("article");
+    el.className = "card is-card col-backlog";
+    Object.assign(el.dataset, { slug: op.tmp, board: "backlog", title: op.title, next: "", priority: "" });
+    el.innerHTML = '<span class="title">' + esc(op.title) + '</span><button class="more" type="button" aria-label="Actions for '
+      + esc(op.title) + '">&#8943;</button>';
+    col.prepend(el);
+    recount();
+  }
+  markCard(el, op.state);
+}
+// What a waiting change looks like on this page: applied (it hasn't reached the board yet) and marked; a conflict or a
+// refusal only marked, since the page shows the board's own state again after the reload that found it
+function applyOp(op) {
+  if (op.kind === "create") { stubCard(op); return; }
+  for (const el of $$(".card").filter((c) => c.dataset.slug === op.slug)) {
+    if (op.state === "waiting") {
+      const to = op.body.board;
+      if (to && el.dataset.board !== to) moveCard(el, to, true);
+      if (op.mine && "next" in op.mine) setNext(el, op.mine.next);
+      if (op.mine && "priority" in op.mine) setPriority(el, op.mine.priority);
+    }
+    markCard(el, op.state);
+  }
+}
+async function showOutbox() {
+  if (!OB) return;
+  try { outbox = await OB.all(); } catch (e) { outbox = []; }
+  for (const el of $$(".card.queued")) {
+    if (!outbox.some((o) => o.slug === el.dataset.slug)) { el.classList.remove("queued"); el.querySelector(".chip.waiting")?.remove(); }
+  }
+  for (const op of outbox) applyOp(op);
+  const waiting = outbox.filter((o) => o.state === "waiting").length, check = outbox.length - waiting;
+  let b = $(".outboxbadge");
+  if (!outbox.length) b?.remove();
+  else {
+    if (!b) {
+      b = document.createElement("button");
+      b.type = "button";
+      b.className = "outboxbadge";
+      b.addEventListener("click", openOutbox);
+      document.body.append(b);
+    }
+    b.classList.toggle("attention", check > 0);
+    b.textContent = [waiting ? waiting + " waiting" : "", check ? check + " to check" : ""].filter(Boolean).join(" · ");
+    b.title = "Changes not on the board yet";
+  }
+  // a card's own page says what of it is waiting
+  const m = /^\/p\/([^/]+)$/.exec(location.pathname), h = $("main.detail h1.ntitle");
+  if (m && h) {
+    const mine = outbox.filter((o) => o.slug === decodeURIComponent(m[1]));
+    let p = $(".waitmsg");
+    if (!mine.length) p?.remove();
+    else {
+      if (!p) { p = document.createElement("p"); p.className = "waitmsg"; p.setAttribute("role", "status"); h.after(p); }
+      p.textContent = "Not on the board yet: " + mine.map((o) => o.label).join("; ");
+    }
+  }
+  if (outDlg && outDlg.open) drawOutbox();
+}
+function nowText(op) {
+  const n = op.note || {};
+  if (n.gone) return "This card is gone from the board.";
+  if (n.why) return "Not saved: " + n.why;
+  return "The board now has " + Object.entries(n).map(([k, v]) => k === "board" ? (COLNAME[v] || v)
+    : k === "priority" ? (v ? "P" + v : "no priority") : k.replace("_", " ") + " " + (v ? "“" + v + "”" : "empty")).join(", ") + ".";
+}
+function drawOutbox() {
+  const rows = outbox.map((op) => {
+    const acts = op.state === "refused" || (op.note && op.note.gone) ? '<button type="button" class="quiet" data-drop>Dismiss</button>'
+      : op.state === "conflict" ? '<button type="button" data-keep>Keep Mine</button><button type="button" class="quiet" data-drop>Use the Board’s</button>' : "";
+    return '<li data-id="' + op.id + '" class="' + op.state + '"><b>' + esc(op.title) + "</b> " + esc(op.label)
+      + '<span class="why">' + esc(op.state === "waiting" ? "Waiting" : nowText(op)) + "</span>"
+      + (acts ? '<span class="row">' + acts + "</span>" : "") + "</li>";
+  }).join("");
+  outDlg.innerHTML = '<div class="grip"></div><button class="close" type="button" aria-label="Close">&times;</button><h4>Waiting to Send</h4>'
+    + (signinNeeded ? '<p class="why"><a href="/signin">Sign in</a> to send these.</p>' : "")
+    + (rows ? '<ul class="outlist">' + rows + "</ul>" : '<p class="why">Everything is on the board.</p>')
+    + (outbox.some((o) => o.state === "waiting") ? '<p class="row"><button type="button" data-send>Send Now</button></p>' : "");
+  $(".close", outDlg).onclick = () => outDlg.close();
+  for (const li of $$("li[data-id]", outDlg)) {
+    const id = Number(li.dataset.id);
+    const keep = $("[data-keep]", li), drop = $("[data-drop]", li);
+    if (keep) keep.onclick = async () => { await OB.keep(id); await showOutbox(); flushNow(); };
+    if (drop) drop.onclick = async () => { await OB.drop(id); await showOutbox(); };
+  }
+  const go = $("[data-send]", outDlg);
+  if (go) go.onclick = () => flushNow();
+}
+function openOutbox() {
+  if (!outDlg) {
+    outDlg = document.createElement("dialog");
+    outDlg.className = "sheet outbox";
+    document.body.append(outDlg);
+    outDlg.addEventListener("click", (e) => { if (e.target === outDlg) outDlg.close(); });
+    outDlg.addEventListener("close", () => { sheetOpen = false; });
+  }
+  drawOutbox();
+  sheetOpen = true;
+  outDlg.showModal();
+}
+async function flushNow() {
+  if (!OB || flushing) return;
+  let before;
+  try { before = (await OB.all()).filter((o) => o.state === "waiting").length; } catch (e) { return; }
+  if (!before) { await showOutbox(); return; }
+  flushing = true;
+  let r = null;
+  try { r = await OB.flush(); } catch (e) { /* the next try */ }
+  flushing = false;
+  if (!r) return;
+  signinNeeded = r.signin;
+  await showOutbox();
+  const fresh = before - r.sent - r.waiting;                   // changes that now need a look
+  const say = [];
+  if (r.sent) say.push(r.sent === 1 ? "Sent 1 change." : "Sent " + r.sent + " changes.");
+  if (fresh > 0) say.push(fresh === 1 ? "A change needs a look." : fresh + " changes need a look.");
+  if (r.signin) say.push("Sign in to send your changes.");
+  if (say.length) toast(say.join(" "), 3500);
+  const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if ((r.sent || fresh > 0) && !editing && !dragging && !sheetOpen && !typing) setTimeout(() => location.reload(), 1500);
+}
+if (OB) {
+  showOutbox().then(() => { if (navigator.onLine !== false) flushNow(); });
+  addEventListener("online", flushNow);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) flushNow(); });
+  setInterval(() => { if (outbox.some((o) => o.state === "waiting")) flushNow(); }, 30000);
+  if (OB.channel) OB.channel.addEventListener("message", () => { if (!flushing) showOutbox(); });
 }
 for (const b of $$(".kit-share, .kit-copy")) {
   b.addEventListener("click", async () => {
@@ -292,14 +567,19 @@ document.addEventListener("click", (ev) => {
     input.focus();
     input.select();
     editing = true;
+    let finished = false;
     const done = async (save) => {
+      if (finished) return;            // Enter, then the blur that taking the field away fires: save once
+      finished = true;
       editing = false;
-      if (save && input.value.trim()) {
+      if (save && input.value.trim() && input.value.trim() !== card.dataset.next) {
+        const v = input.value.trim();
         try {
-          await send("PATCH", "/api/cards/" + encodeURIComponent(card.dataset.slug), { next: input.value.trim() });
-          el.textContent = "next: " + input.value.trim();
-          card.dataset.next = input.value.trim();
-          await refreshRev();
+          const how = await attempt(cardOp(card.dataset, { next: v }),
+                                    () => send("PATCH", "/api/cards/" + encodeURIComponent(card.dataset.slug), { next: v }));
+          el.textContent = "next: " + v;
+          card.dataset.next = v;
+          if (how === "queued") markCard(card, "waiting"); else await refreshRev();
         } catch (e) { notSaved(e); }
       }
       input.replaceWith(el);
@@ -402,9 +682,10 @@ if (board) {
       const to = COLS[Number(k.key) - 1][0];
       if (!card || card.dataset.board === to) return;
       try {
-        await send("PATCH", "/api/cards/" + encodeURIComponent(card.dataset.slug), { board: to });
-        moveCard(card, to);
-        await refreshRev();
+        const how = await attempt(cardOp(card.dataset, { board: to }),
+                                  () => send("PATCH", "/api/cards/" + encodeURIComponent(card.dataset.slug), { board: to }));
+        moveCard(card, to, how === "queued");
+        if (how === "queued") markCard(card, "waiting"); else await refreshRev();
       } catch (e) { notSaved(e); }
     }
   });
@@ -475,19 +756,27 @@ if (board) {
             // card alone that somebody moved meanwhile, and the page reloads to show what is true
             const from = {};
             for (const c of cards) from[c.dataset.slug] = c === ev.item ? ev.from.dataset.board : c.dataset.board;
+            // offline it waits in the outbox; a card made offline isn't on the board to order yet, so only its column goes
+            const item = ev.item, real = slugs.filter((x) => !/^tmp-/.test(x));
+            const op = /^tmp-/.test(item.dataset.slug)
+              ? cardOp(Object.assign({}, item.dataset, { board: ev.from.dataset.board }), { board: to.dataset.board })
+              : { kind: "order", slug: item.dataset.slug, title: item.dataset.title, label: labelOf({ board: to.dataset.board }),
+                  body: { board: to.dataset.board, slugs: real, from: Object.fromEntries(real.map((x) => [x, from[x]])) },
+                  mine: { board: to.dataset.board } };
+            let r = {};
             try {
-              const r = await send("POST", "/api/order", { board: to.dataset.board, slugs, from });
+              const how = await attempt(op, async () => { r = await send("POST", "/api/order", { board: to.dataset.board, slugs, from }); });
               if (r.skipped && r.skipped.length) { location.reload(); return; }
-              ev.item.className = ev.item.className.replace(/\bcol-\w+/, "col-" + to.dataset.board);
-              ev.item.dataset.board = to.dataset.board;
-              const select = ev.item.querySelector("select[name=board]");
+              item.className = item.className.replace(/\bcol-\w+/, "col-" + to.dataset.board);
+              item.dataset.board = to.dataset.board;
+              const select = item.querySelector("select[name=board]");
               if (select) select.value = to.dataset.board;
               recount();
-              await refreshRev();
+              if (how === "queued") markCard(item, "waiting"); else await refreshRev();
             } catch (e) {
               notSaved(e);
               if (!(e instanceof TypeError)) { location.reload(); return; }
-              ev.from.insertBefore(ev.item, ev.from.children[ev.oldIndex] || null);   // offline: put it back
+              ev.from.insertBefore(item, ev.from.children[ev.oldIndex] || null);   // not kept: put it back
               recount();
             }
           },

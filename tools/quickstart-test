@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Micheal Waltz and Machiya contributors
-"""quickstart-test - run the README's Quickstart exactly as written, from a fresh clone, and check what it says you
-should see.
+"""quickstart-test - run the install instructions exactly as written (the README's Quickstart and docs/install.md),
+from a fresh clone, and check what they say you should see.
 
     tools/quickstart-test [--only container|native|all] [--worktree] [--with-packages] [--keep] [--dry-run]
 
-The README marks each runnable block with an HTML comment on the line above its fence:
+The two pages (DOCS) mark each runnable block with an HTML comment on the line above its fence:
 
     <!-- quickstart: NAME [background] -->
     ```bash
@@ -16,14 +16,14 @@ The README marks each runnable block with an HTML comment on the line above its 
 and the output it promises with `<!-- quickstart-expect: NAME -->` above a ```text fence (each non-empty line must
 appear, in order, in the output of the block NAME). The blocks run in a throwaway directory under
 $QUICKSTART_TMP (default /var/tmp/konbini-quickstart), from a fresh `git clone` of this repository (or, with
---worktree, a copy of the working tree, to test README changes before they are committed). Scenarios:
+--worktree, a copy of the working tree, to test changes to the pages before they are committed). Scenarios:
 
     container   [packages-container-debian with --with-packages, when there is no engine], vault, container-podman
                 (or container-docker), check, pm, stop-container
     native      [packages-<os> with --with-packages], venv-bsd (the BSDs), vault, native-install-debian (Linux), native-run-*, check, pm
 
 `background` blocks are servers: they are started, waited for, and killed at the end. A scenario that needs something
-this machine lacks (no podman or docker; an operating system the README has no block for) is skipped, and the
+this machine lacks (no podman or docker; an operating system the pages have no block for) is skipped, and the
 exit code is 1 only if a step fails. Standard library only; needs git, curl and python3 on the machine.
 """
 import argparse
@@ -45,8 +45,11 @@ BLOCK_RE = re.compile(r"<!--\s*quickstart:\s*(\S+)((?:\s+\S+)*?)\s*-->\s*\n```[a
 EXPECT_RE = re.compile(r"<!--\s*quickstart-expect:\s*(\S+)\s*-->\s*\n```[a-z]*\n(.*?)\n```", re.S)
 
 
-def parse(readme):
-    text = open(readme, encoding="utf-8").read()
+DOCS = ("README.md", os.path.join("docs", "install.md"))      # the Quickstart, and every other way to run it
+
+
+def parse(paths):
+    text = "\n".join(open(p, encoding="utf-8").read() for p in paths)
     blocks = {m.group(1): {"flags": m.group(2).split(), "code": m.group(3)} for m in BLOCK_RE.finditer(text)}
     expects = {m.group(1): [l for l in m.group(2).splitlines() if l.strip()] for m in EXPECT_RE.finditer(text)}
     return blocks, expects
@@ -122,7 +125,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="list the steps and exit")
     a = ap.parse_args()
 
-    blocks, expects = parse(os.path.join(ROOT, "README.md"))
+    blocks, expects = parse([os.path.join(ROOT, p) for p in DOCS])
     plan = scenarios(a.only, a.with_packages)
     for sc in plan:
         if sc[1] is None:
@@ -132,7 +135,7 @@ def main():
         for name in sc[1]:
             b = blocks.get(name)
             if b is None:
-                print("  %-22s MISSING in the README" % name)
+                print("  %-22s MISSING in %s" % (name, " and ".join(DOCS)))
                 continue
             first = b["code"].splitlines()[0]
             print("  %-22s %s%s%s" % (name, "[background] " if "background" in b["flags"] else "", first,
@@ -145,7 +148,7 @@ def main():
         return 0
     missing = [n for sc in runnable for n in sc[1] if n not in blocks]
     if missing:
-        print("README has no block named: " + ", ".join(sorted(set(missing))))
+        print("%s have no block named: %s" % (" and ".join(DOCS), ", ".join(sorted(set(missing)))))
         return 1
     if not port_free():
         print("port %d is in use on this machine; stop what listens there first" % PORT)
@@ -185,7 +188,7 @@ def main():
                         print(out[-1500:])
                         failed.append("%s/%s: expected %r in the output" % (sc[0], name, line))
                         break
-                    print("   output matches the README (%d lines)" % len(expects[name]))
+                    print("   output matches the page (%d lines)" % len(expects[name]))
             else:
                 print("== scenario %s: PASS" % sc[0])
         except Exception as exc:  # a crash is a failure, and the cleanup still runs

@@ -20,7 +20,7 @@ licence, AGPL-3.0-or-later (see `LICENSE`).
 - **Do not edit `app/vaultkit/`.** It is vendored from the Machiya `vaultkit` and the build fails on drift. Fix it
   upstream, tag it, then re-vendor with `tools/vendor-vaultkit <tag>` (set `VAULTKIT_REPO`).
 - The board only edits **frontmatter lines**, never note bodies, and never rewrites history in `.board/events`.
-- A new setting gets a `KANBAN_*` name, a default that is safe for a public install, and a row in the README table.
+- A new setting gets a `KANBAN_*` name, a default that is safe for a public install, and a row in `docs/settings.md`.
 
 ## Tests
 

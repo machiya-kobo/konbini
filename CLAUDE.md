@@ -6,8 +6,10 @@ time. It is one of the Machiya services (see the Machiya repository: principles,
 (Niwa) and the note reader (Kura) are separate services; `/garden/*` redirects to Niwa when `KANBAN_NIWA_URL` is set and
 `POST /api/garden/suggest` answers 308 to Niwa's `/api/suggest`. Konbini is the project-management layer: card pages show
 the project and link the note to Kura (read) and Obsidian (edit) when those are configured; they don't render it. Every
-sister service is optional: with its setting unset, its links are simply off. `README.md` has the install and the
-settings table; `CONTRIBUTING.md` the workflow.
+sister service is optional: with its setting unset, its links are simply off. `README.md` has the overview and the
+Quickstart, `docs/` the install guide, access, settings, vault layout and `pm` (`tools/quickstart-test` runs the
+marked blocks in README.md and `docs/install.md`; `tools/screenshots` remakes the README's pictures); `CONTRIBUTING.md`
+the workflow.
 
 ## Layout
 
@@ -127,7 +129,7 @@ settings table; `CONTRIBUTING.md` the workflow.
 ## Rules
 
 - Modern HTML only; the board page stays under about 100 KB; no front-end build step.
-- A new setting gets a `KANBAN_*` name, a default that is safe for a public install, and a row in the README table.
+- A new setting gets a `KANBAN_*` name, a default that is safe for a public install, and a row in `docs/settings.md`.
 - **Never commit personal details, preferences or settings.** This repository ships neutral defaults only. Hostnames, tailnet and network names, people's names, logins and emails, device names and team IDs, vault and folder names, tokens, and anyone's own choices or settings (themes and text size, rooms, `.env` and `local.*` files, the identity file `identity.toml`, `prefs.sqlite3` and other data) stay outside the repository: in settings, gitignored files or the deployment's own repository. Code, tests, fixtures, docs, comments, screenshots and commit messages use `example.com`, `example.ts.net`, "the user" and the sample vault. Check the diff for them before you push: once the repository is public, its history can't take them back.
 - Test against a throwaway clone of a vault repo, never a real one; run the image as uid 1000.
 - Commit messages start with `konbini: `. Run the tests before you push.

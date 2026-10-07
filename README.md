@@ -336,7 +336,8 @@ Konbini expects a git repository of Markdown notes, at its root or in one folder
   `type/idea`, `area/projects` and one `area/<lane>`. The lane is the first area tag other than `area/projects`.
 - **Dated rows.** The calendar, roundups and writing kits read dated table rows from any note:
   `| 2026-01-15 | milestone | Shipped | details |` (a date, a category, a change, then anything). A card's `## Log`
-  table gives its milestones; tables in `Systems/<host>.md` notes give machine changes. Without those notes the pages
+  table gives its milestones. Tables in notes under `Systems/` give machine changes, named by the note's `host:`
+  (monthly notes such as `Systems/Change Logs/<host> 2026-10.md`) or its title. Without those notes the pages
   just have fewer rows.
 - **Commits.** A card's note may hold a generated block between `<!-- project-sync:start -->` and
   `<!-- project-sync:end -->`. Its `- YYYY-MM-DD: commit subject` bullets stand in for the repository's recent commits

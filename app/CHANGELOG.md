@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.15.5
+
+- Machine change logs kept as monthly notes (`Systems/Change Logs/<host> YYYY-MM.md`, with `host:` in the frontmatter) are named after the machine, not the month note, in roundups, the calendar, the digest (one entry per host per day) and a writing kit's machine changes. The older one-note-per-host tables work as before, and a host note's list of links to its months adds nothing.
+- A writing kit no longer lists a whole machine's change log for a card whose repository is named after that machine.
+
 ## 0.15.4
 
 - vaultkit 0.25.2: code in a writing kit and the search page's field use the readable text colour for raised backgrounds, from the shared stylesheet (Konbini's own override is gone).

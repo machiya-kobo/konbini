@@ -14,7 +14,7 @@ import urllib.request
 from urllib.parse import quote, urlsplit
 
 from store import VAULT, _str, commit_filter
-from timeline import LINK_RE, clean, local_date, log_rows, parse_date
+from timeline import LINK_RE, clean, local_date, log_rows, parse_date, system_host
 from vaultkit import sanitize
 
 FRONT_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
@@ -367,11 +367,14 @@ class Kits:
             needles.add(repo_name)
         needles = {n for n in needles if len(n) >= 3 and n not in machines}
         words = {w for w in re.findall(r"[a-z0-9]+", (card.get("title") or "").lower()) if len(w) >= 4 and w not in STOPWORDS}
+        logs = [(r, fm2, text2) for r, fm2, text2 in self.timeline.notes() if r.startswith("Systems/")]
+        # a word that names a machine (a repository called after its host, without the card's machine/ tag) would
+        # match every row of that machine's change log
+        hosts = {system_host(r, fm2).lower() for r, fm2, _ in logs}
+        needles = {n for n in needles if n not in hosts}
         systems = []
-        for r, fm2, text2 in self.timeline.notes():
-            if not r.startswith("Systems/"):
-                continue
-            host = _str(fm2.get("title")) or r[8:-3]
+        for r, fm2, text2 in logs:
+            host = system_host(r, fm2)
             for d, cells in log_rows(text2):
                 if not d:
                     continue

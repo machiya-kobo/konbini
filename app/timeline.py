@@ -8,7 +8,8 @@ gives the same history:
     were finished before the board existed, the last dated Log row or
     `last_activity` stands in for the end date (marked approximate)
   - Log tables in project notes (milestone/release/status rows)
-  - change-log tables in Systems/<host>.md
+  - change-log tables in Systems/: monthly notes Systems/Change Logs/<host> YYYY-MM.md (`host:` in the frontmatter), or
+    the older Systems/<host>.md
   - the vault's git history, for commits that aren't covered above
 """
 import datetime
@@ -87,6 +88,12 @@ def log_rows(text):
         yield parse_date(m.group(1)), cells
 
 
+def system_host(rel, fm):
+    """The machine a Systems/ note's change log is about: its `host:` (a monthly note, "kiln 2026-10", says
+    host: kiln), else its title, else its file name."""
+    return _str(fm.get("host")) or _str(fm.get("title")) or os.path.splitext(os.path.basename(rel))[0]
+
+
 class Timeline:
     def __init__(self, store):
         self.store = store
@@ -163,7 +170,7 @@ class Timeline:
                 change = clean(cells[1]) if len(cells) > 1 else ""
                 details = clean(cells[2]) if len(cells) > 2 else ""
                 if is_system:
-                    host = title
+                    host = system_host(rel, fm)
                     items.append(Item(d, "systems", host, change, "", "log:" + rel))
                 elif is_project:
                     if category == "start" or (category == "status" and "done" in change.lower()):

@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.17.0
+
+- **`KANBAN_TRUSTED_PROXIES`** (addresses or CIDRs, comma-separated): an identity header (`Tailscale-User-Login` and Tailscale's others, `Remote-User`, `KANBAN_AUTH_HEADER`) counts only on a connection from one of them. From any other peer it is dropped before the board reads it, so the request is anonymous. Without it a peer on the same network as the board could claim to be anyone.
+- **Breaking:** a mode that believes the header (`KANBAN_AUTH=tailscale` or `header`, or `hister` with its `tailscale` fallback) on a bind that isn't loopback now refuses to start without `KANBAN_TRUSTED_PROXIES`. Bind `127.0.0.1` behind `tailscale serve`, name the proxy (a sidecar's address, like `10.210.4.2/32`), or set `KANBAN_AUTH_FALLBACK=none` in hister mode. `0.0.0.0/0` trusts every peer, which is what an unset setting meant before.
+
 ## 0.16.0
 
 Adding, editing and closing cards:

@@ -112,6 +112,57 @@ except identity.IdentityError as err:
 PROBES = ("/api/health", "/api/status", "/api/changelog")
 
 
+def trusted_proxies(value):
+    """KANBAN_TRUSTED_PROXIES: the peer addresses (single addresses or CIDRs, comma-separated) whose identity headers
+    count. () when unset; anything that isn't an address or network refuses to start."""
+    out = []
+    for part in (value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            raise SystemExit("konbini: KANBAN_TRUSTED_PROXIES: %r is not an address or network (like 10.210.4.2/32)" % part)
+    return tuple(out)
+
+
+def peer_trusted(address, proxies):
+    """Whether a connection's peer is one of the trusted proxies; True when none are set."""
+    if not proxies:
+        return True
+    try:
+        ip = ipaddress.ip_address((address or "").split("%")[0])
+    except ValueError:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return any(ip.version == net.version and ip in net for net in proxies)
+
+
+def check_trusted_proxies(headers_matter, bind, proxies):
+    """A mode that believes Tailscale-User-Login (or the proxy's login header) on a bind that isn't loopback believes
+    whoever can reach the port, unless the peers that may send it are named: refuse to start rather than guess."""
+    if headers_matter and not proxies and not identity.is_loopback(bind):
+        raise SystemExit(
+            "konbini: this mode trusts the Tailscale-User-Login header (KANBAN_AUTH=tailscale or header, or hister with its "
+            "tailscale fallback), but the board listens on %s, so any peer that reaches the port could send it. Set "
+            "KANBAN_TRUSTED_PROXIES to the address of the proxy in front of it (like 10.210.4.2/32; 0.0.0.0/0 trusts every "
+            "peer), set KANBAN_AUTH_FALLBACK=none, or bind 127.0.0.1 behind `tailscale serve`." % bind)
+
+
+# KANBAN_TRUSTED_PROXIES: when set, an identity header counts only on a connection from one of these addresses; from any
+# other peer it is dropped before anything reads it, so the request is anonymous and meets the gate. Unset: every peer's
+# headers count, as before (and a header-trusting mode on a non-loopback bind refuses to start, check_trusted_proxies).
+TRUSTED_PROXIES = trusted_proxies(os.environ.get("KANBAN_TRUSTED_PROXIES"))
+IDENTITY_HEADERS = tuple(dict.fromkeys(h for h in (
+    "Tailscale-User-Login", "Tailscale-User-Name", "Tailscale-User-Profile-Pic", "Tailscale-App-Capabilities",
+    "Remote-User", os.environ.get("KANBAN_AUTH_HEADER", "").strip()) if h))
+check_trusted_proxies(
+    (HISTERAUTH is not None and HISTERAUTH.fallback == "tailscale")
+    or (HISTERAUTH is None and AUTH in ("tailscale", "header")),
+    BIND, TRUSTED_PROXIES)
+
+
 def host_name(value):
     """A Host header's (or a setting's) name, lowercased, without the port and trailing dot; "" when it is not a
     plain host[:port] or [v6][:port]."""
@@ -308,6 +359,14 @@ def make_handler(listener):
         protocol_version = "HTTP/1.0"  # no keep-alive, no chunked encoding
         server_version = "konbini/1"
         timeout = REQUEST_TIMEOUT      # a client that stops sending lets its thread go
+
+        def parse_request(self):
+            """After the headers are read: an untrusted peer's identity headers go (KANBAN_TRUSTED_PROXIES)."""
+            ok = super().parse_request()
+            if ok and not peer_trusted(self.client_address[0] if self.client_address else "", TRUSTED_PROXIES):
+                for name in IDENTITY_HEADERS:
+                    del self.headers[name]
+            return ok
 
         def log_message(self, fmt, *args):
             try:
@@ -1262,6 +1321,8 @@ def auth_banner():
     """Start-up lines about where the settings came from and who can get in (KANBAN_AUTH, KANBAN_BIND)."""
     where = "%s:%d" % (BIND, TAILNET_PORT)
     lines = ["startup: settings from %s" % ENV_FILE] if ENV_FILE else []
+    if TRUSTED_PROXIES:
+        lines.append("startup: identity headers only from %s" % ", ".join(str(n) for n in TRUSTED_PROXIES))
     if IDENTITY is not None:
         config, _ = IDENTITY.current()
         lines.append("startup: identity file %s (%d principal%s), KANBAN_AUTH=%s on %s; KANBAN_TAILNET_USERS is not "

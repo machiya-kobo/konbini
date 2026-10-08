@@ -256,7 +256,9 @@ r = boot(KANBAN_AUTH="header")
 assert r.returncode != 0 and "konbini: identity: auth=header needs" in r.stderr, r.stderr[-300:]
 r = boot(KANBAN_BIND="0.0.0.0")
 assert r.returncode != 0 and "konbini: identity:" in r.stderr and "127.0.0.1" in r.stderr, r.stderr[-300:]
-r = boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1")
+r = boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1")        # a header mode also names the peers that may send it
+assert r.returncode != 0 and "KANBAN_TRUSTED_PROXIES" in r.stderr, r.stderr[-300:]
+r = boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", KANBAN_TRUSTED_PROXIES="10.210.4.2/32")
 assert (r.returncode, r.stdout.strip()) == (0, "tailscale tailscale konbini"), (r.stdout, r.stderr[-300:])
 r = boot(KANBAN_AUTH="open", KANBAN_BIND="0.0.0.0")                 # open trusts no header: no bind check
 assert r.returncode == 0, r.stderr[-300:]

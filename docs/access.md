@@ -5,7 +5,8 @@ person or agent may do. Every setting named here is in [Settings](settings.md#ac
 
 - **You, on localhost:** `KANBAN_AUTH=open` and `KANBAN_BIND=127.0.0.1`, as in the Quickstart. No login. Konbini
   answers only to an IP address, `localhost`, `KANBAN_BOARD_URL`'s host or a name in `KANBAN_ALLOWED_HOSTS`.
-- **People on your tailnet:** bind `127.0.0.1`, put `tailscale serve` in front, and list their Tailscale logins in
+- **People on your tailnet:** bind `127.0.0.1`, put `tailscale serve` in front (on another bind, such as a sidecar
+  container, name the proxy in `KANBAN_TRUSTED_PROXIES`), and list their Tailscale logins in
   `KANBAN_TAILNET_USERS` (`KANBAN_AUTH=tailscale`, the default; unset means nobody).
 - **People, agents, sign-in or Shiori devices:** Machiya's identity file, off unless you set it.
   `cd app && python3 -m vaultkit.identity setup` (standard library only) prints each app's settings. See

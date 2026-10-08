@@ -77,7 +77,10 @@ the workflow.
   the repository is named after one of the card's `machine/<host>` tags (one repository per host), the kit reads four
   pages from the API (a checkout is read whole) and keeps only commits whose subject mentions the card's slug, title or title words.
 - **Access.** `KANBAN_AUTH=tailscale` (default) allows only a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS`, and
-  trusts the proxy in front (`tailscale serve`) to set and sanitise that header: bind `127.0.0.1` behind it. `open` has no
+  trusts the proxy in front (`tailscale serve`) to set and sanitise that header: bind `127.0.0.1` behind it. On any other
+  bind, `KANBAN_TRUSTED_PROXIES` (CIDRs; `app.trusted_proxies`/`peer_trusted`) names the peers whose identity headers count:
+  `Handler.parse_request` drops `IDENTITY_HEADERS` from every other peer, and `check_trusted_proxies` refuses to start in
+  a header-trusting mode (tailscale, header, hister with its tailscale fallback) on a non-loopback bind without it. `open` has no
   identity check (localhost or a trusted LAN) but answers only a `Host` that is an IP literal, `localhost`,
   `KANBAN_BOARD_URL`'s host or in `KANBAN_ALLOWED_HOSTS` (DNS rebinding; `host_allowed`). Form posts must be same-origin; API writes that aren't same-origin must send `X-Agent` and no `Origin`/`Referer` (a browser always sends one, so that's another site's page: CSRF).
   `GET /healthz` is open and returns `ok`; `/api/status` is gated.

@@ -3,6 +3,12 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.18.2
+
+- Hovering a pill or link chip thickens its outline instead of filling it (vaultkit 0.26.3: the light fill pulled some themes' text under 4.5:1).
+- The README and install guide are tighter: one link row (Machiya, Quickstart, Install, Settings, then Access, Vault layout, pm, License), the Quickstart pins `markdown` 3.11+, "More ways to run it" and "Docs" are gone (the install guide and the link row cover them), and the License section has the wording the Machiya apps share.
+- The image runs as `USER 1000:1000` by itself, not only when the compose file says so.
+
 ## 0.18.1
 
 - The room's icons (`/static/icons/*` and `/favicon.ico`) answer before the gate in every access mode, so a browser has its tab icon on the sign-in page and before anyone has signed in. They hold no board data.

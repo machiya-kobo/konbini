@@ -21,6 +21,9 @@ COPY . /app
 # The vendored vault core (app/vaultkit/, from machiya-kobo/machiya) must match its manifest: edits go upstream.
 RUN python3 -m vaultkit.verify
 
+# Not root, whatever runs the image (the reference compose says user 1000:1000 as well).
+USER 1000:1000
+
 EXPOSE 8081
 # GET /healthz is open (no identity check, any KANBAN_AUTH) and answers "ok"; the first start indexes the vault.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \

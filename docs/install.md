@@ -11,13 +11,12 @@ marked block here and in the README from a fresh clone and checks the output.
 
 ## In a container
 
-You need `git`, `curl` and either `podman` (4 or newer) or `docker` (24 or newer, from your system's own
-instructions). Podman on Debian or Ubuntu:
+You need `git`, `curl` and either `podman` (4+) or `docker` (24+). Podman on Debian or Ubuntu:
 
 <!-- quickstart: packages-container-debian -->
 ```bash
-sudo apt update
-sudo apt install -y podman git curl
+sudo apt-get update
+sudo apt-get install -y podman git curl
 ```
 
 *Podman.* `--cgroup-manager=cgroupfs` means podman needs no systemd user session, which a fresh or ssh-only machine
@@ -41,7 +40,7 @@ docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(i
 
 ## Natively on the BSDs
 
-Python 3.11+ and `pyyaml` 6+ from packages; `markdown` 3.11+ in a virtual environment (the packaged one is older, and
+Python 3.11 or later and `pyyaml` 6+ from packages; `markdown` 3.11+ in a virtual environment (the packaged one is older, and
 vaultkit refuses it: one note could exhaust memory). Run the package lines as root or with `doas`/`sudo`. A fresh
 OpenBSD has `doas` but no `/etc/doas.conf`; a fresh FreeBSD or NetBSD has no `sudo` (`pkg install sudo`,
 `pkg_add sudo`).
@@ -74,7 +73,7 @@ sudo ln -sf /usr/pkg/bin/python3.13 /usr/pkg/bin/python3
 ```
 
 Then, in the clone, the virtual environment (it keeps the packages' PyYAML and adds `markdown` 3.11 or later), the
-sample vault (steps 2 and 3 of the [Quickstart](../README.md#quickstart)) and the run block:
+sample vault (step 3 of the [Quickstart](../README.md#quickstart)) and the run block:
 
 <!-- quickstart: venv-bsd -->
 ```bash
@@ -140,7 +139,7 @@ A native run stops with Ctrl-C.
 
 ## As part of the Machiya stack
 
-[Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, Kura (the note reader) and Niwa (the garden) around one
+[Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, Kura (the notes app) and Niwa (the garden) around one
 vault, with Hister and SearXNG as optional search engines. Compared with the Quickstart:
 
 - **Start from Machiya's compose:** `compose/compose.yml`, profile `konbini` (plus `compose/mirror.yml` for a shared
@@ -155,7 +154,7 @@ vault, with Hister and SearXNG as optional search engines. Compared with the Qui
 - **Notes folder:** `KANBAN_REPO_SUBDIR` (`VAULT_SUBDIR` in the compose); the default is the repository root.
 - **One vault copy:** `compose/mirror.yml` (or `demo-init --mirror`) points `KANBAN_REPO_REFERENCE` at the mirror's
   checkout (same path in the container) to borrow its git objects, and sets `KANBAN_REPO_SPARSE` to
-  `<notes folder>,.board` to check out only what Konbini uses ("Stack mode" in [CLAUDE.md](../CLAUDE.md)).
+  `<notes folder>,.board` to check out only what Konbini uses.
 - **The other apps:** `KANBAN_KURA_URL` and `KANBAN_NIWA_URL` turn on their links, `KANBAN_BOARD_URL` is this board's
   address, and `MACHIYA_ROOMS` (one value for every app) fills the Rooms menu; the compose passes them from `.env`.
   `MACHIYA_COOKIE_DOMAIN` (e.g. `example.net`) shares the theme and text-size cookies.

@@ -59,6 +59,7 @@ def start(identity_file=False, board_url=False, notes=None, **extra):
     proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env,
                             stdout=subprocess.DEVNULL, stderr=open(d + "/server.log", "w"))      # a file: an unread pipe fills up and stalls the board
     procs.append(proc)
+    logs[port] = d + "/server.log"
     for _ in range(200):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
@@ -69,6 +70,9 @@ def start(identity_file=False, board_url=False, notes=None, **extra):
             time.sleep(0.05)
     proc.kill()
     raise SystemExit("board did not start: " + open(d + "/server.log").read()[-500:])
+
+
+logs = {}      # port -> the board's log file
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -138,6 +142,13 @@ try:
     st, h, body = call(port, "GET", "/offline")
     assert st == 200 and "be reached. Pages you&#x27;ve opened before still work" in body and 'class="tabbar"' in body
     assert 'class="status' not in body and 'type="search"' not in body and "Tailscale" not in body, body[-800:]
+
+    # -- the log has the request without its query: a search term is the user's, not the log's ----------------------------
+    call(port, "GET", "/search?q=secretlantern")
+    call(port, "GET", "/?topic=secretfilter")
+    time.sleep(0.2)
+    log = open(logs[port]).read()
+    assert '"GET /search' in log and "secretlantern" not in log and "secretfilter" not in log, log[-400:]
 
     # -- icons are named after the room key; the old kanban-* names answer 301 --------------------------------------
     st, h, body = call(port, "GET", "/")

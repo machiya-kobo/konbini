@@ -26,6 +26,9 @@ HARNESS = textwrap.dedent('''
     call("patch_none", "PATCH", "/api/cards/kura", {"Content-Type": "application/json", "X-Agent": "t"},
          json.dumps({"next": "no header"}).encode())
     call("get_none", "GET", "/")
+    # the room's icons answer before the gate, in every mode (the sign-in page's tab icon); no data behind them
+    call("icon_none", "GET", "/static/icons/konbini-small.svg")
+    call("favicon_none", "GET", "/favicon.ico")
     # /healthz: open in every mode, no header, no data
     out["healthz"] = [urllib.request.urlopen("http://127.0.0.1:%d/healthz" % port, timeout=10).status,
                       urllib.request.urlopen("http://127.0.0.1:%d/healthz" % port, timeout=10).read().decode()]
@@ -108,6 +111,7 @@ r = run(None); out = json.loads(r.stdout.strip().splitlines()[-1])
 assert "/healthz" not in r.stderr and "GET /api/status" in r.stderr, r.stderr[-400:]     # health polls are not logged
 assert out["auth"] == "tailscale" and out["bind"] == "127.0.0.1", out
 assert (out["get_none"], out["get_owner"], out["get_other"]) == (403, 200, 403), out
+assert (out["icon_none"], out["favicon_none"]) == (200, 200), out
 assert out["patch_owner"] == 200 and out["form_crosssite"] == 403 and out["form_sameorigin"] == 302, out
 assert out["actors"] == ["owner@example"] and out["patch_none"] == 403 and out["health_auth"] == "tailscale", out
 assert out["status_auth"] == "tailscale", out

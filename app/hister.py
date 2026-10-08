@@ -25,6 +25,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from vaultkit import websafe
+
 CACHE_SECONDS = 600
 # The code-import service (docs/contracts/hister.md) stores the owner's repositories, READMEs, issues and releases in
 # Hister as documents with metadata.source "code". Only Shiori's Code area shows them: every query from here leaves them out,
@@ -94,7 +96,7 @@ class Hister:
             headers["X-Access-Token"] = token
         req = urllib.request.Request(self.api + path, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with websafe.token_opener().open(req, timeout=timeout) as r:      # no redirects: the token goes nowhere else
                 raw, status = r.read(), r.status
         except urllib.error.HTTPError as e:
             raw, status = e.read(), e.code

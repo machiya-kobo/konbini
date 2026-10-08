@@ -10,6 +10,23 @@ import hister  # noqa: E402
 
 TOKEN = "tok-3f9a1c0d-never-log-me"
 seen = []
+stolen = []
+
+
+class Elsewhere(http.server.BaseHTTPRequestHandler):
+    """Where a redirect would send the token."""
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        stolen.append((self.path, self.headers.get("X-Access-Token")))
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+
+other = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Elsewhere)
+threading.Thread(target=other.serve_forever, daemon=True).start()
 
 
 class Fake(http.server.BaseHTTPRequestHandler):
@@ -21,6 +38,12 @@ class Fake(http.server.BaseHTTPRequestHandler):
         if n:
             self.rfile.read(n)
         seen.append((self.command, self.path, self.headers.get("X-Access-Token"), self.headers.get("Origin")))
+        if self.path.startswith("/redir"):
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:%d/stolen" % other.server_address[1])
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         body = json.dumps({"documents": [], "total": 0}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -52,6 +75,10 @@ h.call("POST", "/api/add", {"url": "https://example.com/"})
 h.delete("https://example.com/")
 assert len(seen) - n >= 4 and set(tokens_since(n)) == {TOKEN}, seen[n:]
 assert all(o == "hister://" for _, _, _, o in seen[n:])
+
+# a redirect is not followed: the token goes to Hister and nowhere else
+status, _ = h.call("GET", "/redir")
+assert status == 302 and stolen == [], (status, stolen)
 
 # unset: nothing is sent
 n = len(seen)

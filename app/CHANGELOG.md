@@ -3,6 +3,13 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.18.1
+
+- The room's icons (`/static/icons/*` and `/favicon.ico`) answer before the gate in every access mode, so a browser has its tab icon on the sign-in page and before anyone has signed in. They hold no board data.
+- Hister calls (which carry the access token) no longer follow a redirect: it is an error, so the token goes to Hister and nowhere else.
+- The board's log lines no longer include a request's query string (search terms and filters).
+- A test (`tests/test_private_names.py`, from the Machiya repository) keeps private host, account and people's names out of the repository; it reads its list from outside the repository and skips without it.
+
 ## 0.18.0
 
 Shiori's look, shared with every Machiya app (the style guide, vaultkit 0.26.2):

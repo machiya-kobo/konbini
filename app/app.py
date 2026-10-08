@@ -374,7 +374,8 @@ def make_handler(listener):
                     return
             except ValueError:
                 pass
-            sys.stderr.write("%s %s %s\n" % (listener, self.log_name(), CONTROL.sub("?", fmt % args)))
+            # the request without its query: a search term or a filter is the user's, not the log's
+            sys.stderr.write("%s %s %s\n" % (listener, self.log_name(), re.sub(r"\?\S*", "", CONTROL.sub("?", fmt % args))))
 
         def send_header(self, keyword, value):
             """No header, in any answer, takes a control character (the last line of defence behind guarded()):
@@ -633,9 +634,11 @@ def make_handler(listener):
             return ("http://" + host, "https://" + host) if host_allowed(host, ALLOWED_HOSTS) else ()
 
         def public_asset(self, path):
-            """The sign-in page's own look (the shared UI and the room's icons) answers before the gate when sign-in is
-            on: vendored static files, no board data."""
-            return IDENTITY is not None and IDENTITY.signin and (path in SHARED_UI or path.startswith("/static/icons/") or path == "/favicon.ico")
+            """What answers before the gate: the room's icons always (a browser asks for its tab icon before anyone has
+            signed in) and, when sign-in is on, the shared UI the sign-in page needs: vendored static files, no board data."""
+            if path.startswith("/static/icons/") or path == "/favicon.ico":
+                return True             # the room's icons: the sign-in page's tab icon, no board data, in every mode
+            return IDENTITY is not None and IDENTITY.signin and path in SHARED_UI
 
         def session_cookies(self):
             """Set-Cookie values for this response: a renewed session, or a bad one cleared (vaultkit.identity)."""

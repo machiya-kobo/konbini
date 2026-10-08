@@ -143,6 +143,25 @@ try:
     assert st == 200 and "be reached. Pages you&#x27;ve opened before still work" in body and 'class="tabbar"' in body
     assert 'class="status' not in body and 'type="search"' not in body and "Tailscale" not in body, body[-800:]
 
+    # -- gzip: text answers over 1 KB are compressed for a client that asks, the same bytes once unpacked ---------------
+    import gzip, http.client
+    def raw_get(path, enc):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", path, headers={"Host": "127.0.0.1:%d" % port, **({"Accept-Encoding": enc} if enc else {})})
+        r = c.getresponse(); data = r.read(); h = dict(r.getheaders()); c.close()
+        return r.status, h, data
+    st, h, plain = raw_get("/", "")
+    assert st == 200 and "Content-Encoding" not in h and len(plain) > 1024
+    st, h, packed = raw_get("/", "gzip, deflate")
+    assert h.get("Content-Encoding") == "gzip" and "Accept-Encoding" in h.get("Vary", "") and len(packed) < len(plain) // 2, h
+    assert gzip.decompress(packed) == plain, "the gzipped page differs from the plain one"
+    css = re.search(r'href="(/static/board\.css[^"]*)"', plain.decode()).group(1)
+    st, h, packed = raw_get(css, "gzip")
+    assert h.get("Content-Encoding") == "gzip" and "immutable" in h.get("Cache-Control", "") and raw_get(css, "gzip")[2] == packed
+    assert gzip.decompress(packed) == raw_get(css, "")[2]
+    st, h, tiny = raw_get("/healthz", "gzip")
+    assert "Content-Encoding" not in h and tiny == b"ok\n"
+
     # -- the log has the request without its query: a search term is the user's, not the log's ----------------------------
     call(port, "GET", "/search?q=secretlantern")
     call(port, "GET", "/?topic=secretfilter")
@@ -177,13 +196,13 @@ try:
         st, h, _ = call(port, "GET", "/static/icons/" + name)
         assert st == 200 and h["Content-Type"].startswith("image/"), (name, st)
     # -- the shared pills (machiya.css): Group By, Area, the phone's column tabs, the Plan nav; state and link chips -----
-    assert 'aria-label="Group By"' in body and 'class="pill" href="/?group=area" aria-current="true"' in body, body[:300]
+    assert 'class="segmented" aria-label="Group By"' in body and '<a href="/?group=area" aria-current="true">Area</a>' in body, body[:300]
     assert 'class="pills coltabs"' in body and 'class="pill col-ready"' in body and 'class="count">' in body
     assert 'class="topic"' not in body and "fchip" not in body and "filterbar" in body
     st, h, grouped = call(port, "GET", "/?group=stream&area=crafts")
     assert 'href="/?area=crafts&amp;group=stream" aria-current="true">Stream (Project)' in grouped.replace('group=stream&amp;area=crafts', 'area=crafts&amp;group=stream'), grouped[:200]
     st, h, plan = call(port, "GET", "/goals")
-    assert 'class="pill" href="/goals" aria-current="page">Goals' in plan and 'class="subnav"' not in plan.replace("pills subnav", ""), plan[:200]
+    assert '<a href="/goals" aria-current="page">Goals' in plan and 'class="subnav"' not in plan.replace("pills subnav", ""), plan[:200]
     for old in ("kanban.svg", "kanban-192.png", "kanban-apple-180.png", "kanban-maskable-512.png"):
         st, h, _ = call(port, "GET", "/static/icons/" + old)
         assert (st, h["Location"]) == (301, "/static/icons/konbini" + old[len("kanban"):]), (old, st, h["Location"])

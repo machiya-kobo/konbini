@@ -45,8 +45,9 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
 .lane { margin: 0 0 16px; padding: 8px 10px 10px; border-radius: 14px; background: var(--dark); border: 1px solid var(--line); }
 .lanehead {
   display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 4px 10px;
-  font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--magenta);
+  font-size: var(--fs-m); font-weight: 600; color: var(--magenta);     /* Title Case as written, as every section heading (v0.27) */
 }
+.lanename { text-transform: capitalize; }          /* a lane is named after a tag (area/crafts): written as a name */
 .lanetoggle { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 11px; padding: 0 2px 0 0; }
 .lanecount, .colcount {
   display: inline-block; padding: 0 7px; border-radius: 9px; background: var(--hl); color: var(--fg2);
@@ -61,14 +62,15 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
 .col.col-blocked { border-top-color: var(--red); }
 .col.col-done { border-top-color: var(--green); }
 .col:has(> .empty) { background: transparent; border: 1px dashed var(--line2); }
-.colhead { margin: 0 0 8px; padding: 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.colhead { margin: 0 0 8px; padding: 0 4px; font-size: var(--fs-s); font-weight: 600; }
 section.lane ~ section.lane .colhead { display: none; }
 .colempty { margin: 4px 2px; font-size: 13px; color: var(--muted); }
 
 /* ---- cards -------------------------------------------------------------- */
+/* Shiori's result card (machiya.css .card: a step above the page, 14px corners, the small shadow); the board's cards keep
+   their status stripe and the room for the actions button, and are dragged */
 .card {
-  position: relative; background: var(--hl); border: 0; box-shadow: none; border-radius: 10px; padding: 9px 32px 10px 11px;
-  margin-bottom: 8px; border-left: 3px solid var(--comment); cursor: grab;
+  position: relative; padding: 10px 34px 11px 12px; margin-bottom: 8px; border-left: 3px solid var(--comment); cursor: grab;
   transition: transform .12s ease, box-shadow .12s ease;
 }
 .card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
@@ -78,19 +80,18 @@ section.lane ~ section.lane .colhead { display: none; }
 .card.col-wip { border-left-color: var(--orange); }
 .card.col-blocked { border-left-color: var(--red); }
 .card.col-done { border-left-color: var(--green); }
-.card.col-done .title { color: var(--fg2); }
-.card .title { display: block; color: var(--fg); font-weight: 600; font-size: 14px; line-height: 1.3; }
-/* cards wear Konbini's magenta wherever they appear (machiya.css: .is-card sets --thing) */
-.card.is-card .title { color: var(--thing); }
-.card .summary {
-  margin: 4px 0 0; font-size: 12.5px; color: var(--fg2);
+/* cards wear Konbini's magenta wherever they appear (machiya.css: .is-card sets --thing); in the lanes, where five columns
+   share the width, the title is a size down from the lists' 16px */
+.col .card .title { font-size: var(--fs-m); font-weight: 600; }
+.card .snippet {
+  margin: 4px 0 0; font-size: var(--fs-s);
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card .next, .card .blocked { margin: 6px 0 0; font-size: 12px; line-height: 1.35; }
 .card .next { color: var(--muted); cursor: text; }
 .card .next:hover { color: var(--fg); }
 .card .blocked { color: var(--red); }
-.card .meta, .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
 /* state chips are machiya.css's .chip (outlined, in --chip); a chip that opens something is .chip.link; topics are .tag */
 .chip.p1 { --chip: var(--red); font-weight: 600; }
 .chip.p2 { --chip: var(--yellow); font-weight: 600; }
@@ -163,7 +164,11 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
 .chip.why { --chip: var(--orange); }
 
 /* ---- Plan: the sub-nav over Streams, Goals and Timeline is a row of pills (machiya.css) ---- */
-.subnav, .monthnav { margin: 0 0 var(--sp-4); }
+.segmented.subnav, .segmented.monthnav, .segmented.revjump { margin: 0 0 var(--sp-4); }
+/* a view switch (Group By) beside the filter pills (Area): how the page is laid out, then what it shows */
+.viewrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 0 0 8px; }
+.viewswitch { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.viewrow .pills { flex: 1 1 260px; min-width: 0; }
 
 /* ---- streams: the chip, the roll-up ------------------------------------ */
 a.chip.stream { --chip: var(--magenta); }
@@ -188,7 +193,7 @@ main.timeline { overflow-x: hidden; }
 main.timeline .gtrack { background: var(--dark); }        /* months, not the calendar's day grid */
 .tlnav { color: var(--muted); font-size: var(--fs-s); margin: 4px 0 12px; }
 .pills + .pills { margin-top: 4px; }
-.pillabel { flex: none; align-self: center; padding-right: 2px; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.pillabel { flex: none; align-self: center; padding-right: 2px; color: var(--muted); font-size: var(--fs-s); font-weight: 600; }
 .tlhead { border-bottom: 0; }
 .tlticks { position: relative; height: 18px; }
 .tick { position: absolute; top: 0; font-size: 11px; color: var(--muted); border-left: 1px solid var(--line2); padding-left: 3px; white-space: nowrap; }

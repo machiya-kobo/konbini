@@ -90,11 +90,10 @@ def build(cards, events_of, activity, limits=None, today=None):
     reasons, placed, every = {}, {}, {}
     for c in live:
         slug, why = c["slug"], []
-        evs = events_of(slug)
         if c["board"] == "wip" and c["area"] in over:
             why.append(("wip", "%s over its limit" % c["area"]))
         if is_blocked(c) and c["board"] not in ("done",):
-            since = blocked_since(c, evs)
+            since = blocked_since(c, events_of(slug))      # only these two kinds of card need their events
             days = (today - since).days if since else None
             if days is not None and days >= BLOCKED_DAYS:
                 why.append(("blocked", "blocked %dd" % days))
@@ -105,7 +104,7 @@ def build(cards, events_of, activity, limits=None, today=None):
         if c["board"] in ("wip", "ready") and not (c.get("next") or "").strip():
             why.append(("nonext", "no next action"))
         if c["board"] == "done":
-            d = done_on(c, evs, week_start)
+            d = done_on(c, events_of(slug), week_start)
             if d:
                 why.append(("done", "done %s" % d.strftime("%a")))
         if c["board"] == "backlog":

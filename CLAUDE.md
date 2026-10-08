@@ -122,13 +122,24 @@ the workflow.
   writing kit quotes the note; both go
   through `vaultkit.sanitize.clean`. Every HTML answer carries `shell.security_headers()` (`script-src 'self'`): no
   inline `<script>` and no `on…=` attribute in the board's markup; behaviour goes in `board.js`.
-- **The style guide's pieces** (Machiya `docs/style-guide.md`, `machiya.css`): `modern.pill()`/`pills()` are the filter pills
-  (Group By, Area, the Plan nav, review jumps, Posts, timeline and month rows; `.pills.coltabs` is the phone's column tabs,
-  which `board.js` fills with `.on`); a state chip is `.chip` with `--chip` set in `board.css` (outlined, no fill: a fill
-  of its own colour fails 4.5:1), a chip that opens something is `.chip.link`, a topic is `.tag`. Nothing is tinted: every
-  list here is Konbini's own cards, and a card's colour is the status stripe. A mixed list would tint the other rooms' items
-  (`.tinted.is-note`). The browser-tab icon is `static/icons/konbini-small.svg` (a 16 px grid) and `konbini.ico`
-  (16/32/48 from it); `tests/test_pages.py` checks the files, `/favicon.ico` and that the header mark is `konbini.svg`.
+- **The style guide's pieces** (Machiya `docs/style-guide.md`, `machiya.css`): a **view switch** (how a page is shown: Group By,
+  the Plan pages, Posts' Show, the roundup and calendar rows, the review's section jumps) is `modern.segmented()` /
+  `segment()`, the neutral `.segmented` control (`aria-current` on the chosen one), never coloured; a **filter** (Area, the
+  phone's column tabs) is `modern.pills()` / `pill()`, outlined pills with the current one filled (`.pills.coltabs`, which
+  `board.js` fills with `.on`). A state chip is `.chip` with `--chip` set in `board.css` (outlined, no fill: a fill of its
+  own colour fails 4.5:1), a chip that opens something is `.chip.link`, a topic is `.tag`. A board card is the shared
+  `.card` (a step above the page, 14px corners) with the status stripe on its left edge, its parts `.title`, `.snippet` and
+  `.meta`; Now, Review and Search lay them out in `.cards`. Headings are Title Case as written, lanes and columns too
+  (`.lanename` is capitalised: it is a tag's name). Nothing is tinted: every list here is Konbini's own cards, and a card's
+  colour is the status stripe; a mixed list would tint the other rooms' items (`.tinted.is-note`). The browser-tab icon is
+  `static/icons/konbini-small.svg` (a 16 px grid) and `konbini.ico` (16/32/48 from it); `tests/test_pages.py` checks the files,
+  `/favicon.ico` and that the header mark is `konbini.svg`.
+- **Speed** (`tests/test_perf.py`): a note is read and parsed once per change of the file (`Store.load`, keyed by mtime, size
+  and inode; the importer's `scan()` also keeps what it made of each note, `fresh=True` ignores that, as the drift check does;
+  `Timeline.read_changed` is vaultkit's `read_notes` over the same cache). `events` has indexes on `(card, ts)`, `ts` and the
+  client id: a per-card query must not scan the table. Don't loop over `store.cards()` or `store.events(...)` inside a loop
+  over cards (pass the list in: `Kits.build(cards=)`), and don't run a `git log` per note (`Kits.vault_log` is one per HEAD).
+  Text answers over 1 KB are gzipped for a client that asks (`Handler.compressed`; a cached static file once).
 - Titles are `shell.title(ROOM, what)` with the nav's page names; a 404 is `shell.not_found` inside the header and
   tabs; `/offline` is `shell.offline`. `tests/test_pages.py` covers these, the headers, icons, manifest and prefs.
 - **Colours on raised surfaces** (vaultkit 0.25): board.css's first rule gives Konbini's own panels (lanes, chips,

@@ -27,6 +27,7 @@ it from the clone. Writes from the web UI need a same-origin Referer or
 Origin; API callers identify themselves with X-Agent and send no Origin or Referer (an API write with another
 site's Origin or Referer, or with neither X-Agent nor a same-origin header, is refused: CSRF).
 """
+import gzip
 import ipaddress
 import json
 import os
@@ -325,6 +326,12 @@ def local_target(referer, keep_query=True):
     if not target.startswith("/") or target[1:2] in ("/", "\\") or any(ord(c) < 32 or ord(c) == 127 for c in target):
         return ""
     return target
+
+
+GZIP_MIN = 1024                 # smaller answers aren't worth the header
+GZIP_TYPES = {"text/html", "text/css", "text/javascript", "text/plain", "text/markdown", "application/json",
+              "application/manifest+json", "image/svg+xml"}
+GZIPPED = {}                    # (type, length, hash) -> the gzipped bytes of a cached static file
 
 
 def page_headers(headers):
@@ -679,6 +686,7 @@ def make_handler(listener):
                 # signed in through the tailnet because sign-in is unavailable: say so at the top of the page
                 data = re.sub(rb"(<main\b[^>]*>)", lambda m: m.group(1) + histerauth.banner_html().encode("utf-8"), data,
                               count=1)
+            headers, data = self.compressed(ctype, headers, data)
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
@@ -689,6 +697,26 @@ def make_handler(listener):
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(data)
+
+        def compressed(self, ctype, headers, data):
+            """(headers, data) gzipped when the client takes it and it is text worth it: a board of hundreds of cards is
+            hundreds of KB of HTML and JSON, a tenth of that over the wire (tailscale serve doesn't compress). A cached
+            file (it has a max-age) is compressed once."""
+            if len(data) < GZIP_MIN or not ctype.split(";")[0] in GZIP_TYPES or "gzip" not in (self.headers.get("Accept-Encoding") or ""):
+                return headers, data
+            cached = any(k.lower() == "cache-control" and "max-age" in v for k, v in headers)
+            key = (ctype, len(data), hash(data)) if cached else None
+            packed = GZIPPED.get(key) if key else None
+            if packed is None:
+                packed = gzip.compress(data, compresslevel=5 if not cached else 9, mtime=0)
+                if key:
+                    if len(GZIPPED) >= 32:
+                        GZIPPED.pop(next(iter(GZIPPED)))
+                    GZIPPED[key] = packed
+            vary = [v for k, v in headers if k.lower() == "vary"]
+            headers = [(k, v) for k, v in headers if k.lower() != "vary"]
+            headers += [("Content-Encoding", "gzip"), ("Vary", ", ".join(vary + ["Accept-Encoding"]))]
+            return headers, packed
 
         def stream(self):
             """Server-sent events: one `rev` message whenever the board changes.
@@ -1204,12 +1232,12 @@ def make_handler(listener):
                 # with an identity file, only the owner sees the details below: Hister's internal address and raw git
                 # and Hister error texts (they can name hosts and paths). Others get what a probe needs.
                 self.send_json(200, {"ok": True, "version": VERSION, "head": store.meta("head"),
-                                     "cards": len(store.cards()), "auth": AUTH,
+                                     "cards": store.count(), "auth": AUTH,
                                      "vaultkit": "v" + vaultkit.__version__,
                                      "error": "sync failed" if writer.status().get("error") else None})
             elif path in ("/api/health", "/api/status"):      # /api/status: the probe path every room answers
                 self.send_json(200, {"ok": True, "version": VERSION, "imported": store.meta("imported"), "head": store.meta("head"),
-                                     "vaultkit": "v" + vaultkit.__version__, "cards": len(store.cards()), "sync": writer.status(),
+                                     "vaultkit": "v" + vaultkit.__version__, "cards": store.count(), "sync": writer.status(),
                                      "hister": hister.status() if hister else "off",
                                      "livesync": {"status": livesync_status(), "problems": livesync_problems(),
                                                   "phone_conflicts": store.phone_conflicts},
@@ -1270,7 +1298,7 @@ def footer_status():
     except ValueError:
         return {"text": "not imported yet", "state": "stale"}
     ago = "just now" if mins < 1 else ("%d min ago" % mins if mins < 120 else "%d h ago" % (mins // 60))
-    return {"text": "synced %s %s · %d cards" % (head, ago, len(store.cards())),
+    return {"text": "synced %s %s · %d cards" % (head, ago, store.count()),
             "state": "ok" if mins < 30 else "stale"}
 
 
@@ -1373,4 +1401,5 @@ if __name__ == "__main__":
     threading.Thread(target=writer.worker, daemon=True).start()
     threading.Thread(target=links.worker, daemon=True).start()
     threading.Thread(target=kits.warm, daemon=True).start()
+    threading.Thread(target=garden.index, daemon=True).start()      # the first page needn't wait for the vault index
     serve(TAILNET_PORT, "tailnet")

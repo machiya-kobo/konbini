@@ -19,7 +19,8 @@ import subprocess
 from zoneinfo import ZoneInfo
 
 from store import VAULT, _str, commit_filter
-from vaultkit.notes import read_notes
+from vaultkit.front import PHONE_CONFLICT
+from vaultkit.notes import SKIP_DIRS, read_notes
 
 TZ = ZoneInfo(os.environ.get("TZ") or "UTC")      # the board's days (calendar, roundups): set TZ in the deploy
 ROW_RE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|(.*)\|\s*$")
@@ -103,12 +104,33 @@ class Timeline:
     # -- sources -------------------------------------------------------
 
     def notes(self):
-        """(rel, frontmatter, text) for every note, cached per git HEAD."""
+        """(rel, frontmatter, text) for every note, cached per git HEAD and board revision. A new revision reads only
+        the notes that changed (by modification time and size), not the whole vault again."""
         head = self.store.meta("head") + self.store.meta("rev")
         if self._cache[0] == head:
             return self._cache[1]
-        out = read_notes(os.path.join(self.repo, VAULT))   # Templates/, dot dirs and LiveSync conflict copies left out
+        out = self.read_changed(os.path.join(self.repo, VAULT))
         self._cache = (head, out)
+        return out
+
+    def read_changed(self, root):
+        """vaultkit's read_notes (same notes, same order: Templates/, dot dirs, LiveSync conflict copies and symlinks
+        left out), but a note whose modification time, size and inode are as last time isn't read or parsed again
+        (Store.load keeps it)."""
+        out = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS]
+            for name in filenames:
+                if not name.endswith(".md") or PHONE_CONFLICT in name:
+                    continue
+                full = os.path.join(dirpath, name)
+                try:
+                    st = os.lstat(full)
+                except OSError:
+                    continue
+                loaded = self.store.load(full, (st.st_mtime_ns, st.st_size, st.st_ino))
+                if loaded:
+                    out.append((os.path.relpath(full, root), loaded[1] or {}, loaded[0]))
         return out
 
     def items(self, start, end):

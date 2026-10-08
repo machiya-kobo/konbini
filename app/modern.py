@@ -259,7 +259,7 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
     if text:
         if len(text) > 180:
             text = text[:177].rstrip() + "..."
-        lines.append('<p class="summary">%s</p>' % e(text))
+        lines.append('<p class="snippet">%s</p>' % e(text))
     waits = card.get("_waiting_on") or []
     if card.get("board") == "blocked" and card.get("blocked_by"):
         lines.append('<p class="blocked">blocked: %s</p>' % e(card["blocked_by"]))
@@ -368,6 +368,20 @@ def pills(label, items, cls="", title=""):
         (" " + cls) if cls else "", e(label), ('<span class="pillabel">%s</span>' % e(title)) if title else "", "".join(items))
 
 
+def segment(href, text, current=False, count=None, page=False):
+    """One option of a view switch (machiya.css .segmented): the chosen one is the raised pill."""
+    return '<a href="%s"%s>%s%s</a>' % (
+        e(href), (' aria-current="%s"' % ("page" if page else "true")) if current else "", e(text),
+        (' <span class="count">%d</span>' % count) if count is not None else "")
+
+
+def segmented(label, items, cls="", title=""):
+    """A view switch (Group By, the Plan pages, a period): how a page is shown or where it goes, not what it holds, so
+    neutral (vaultkit 0.27.1) and never a coloured filter pill. title: a small label before it."""
+    box = '<nav class="segmented%s" aria-label="%s">%s</nav>' % ((" " + cls) if cls else "", e(label), "".join(items))
+    return ('<div class="viewswitch"><span class="pillabel">%s</span>%s</div>' % (e(title), box)) if title else box
+
+
 def filter_bar(query, cards, claims):
     f = facets(cards, claims)
 
@@ -394,12 +408,14 @@ def filter_bar(query, cards, claims):
     # many values (topic, machine, claimed, effort, stream) stay selects in the filter form
     board_cards = [c for c in filter_cards([c for c in cards if c["board"]], {k: v for k, v in (query or {}).items() if k != "area"}, claims)]
     per_area = {a: sum(1 for c in board_cards if a in (c.get("areas") or [c["area"]])) for a in f["area"]}
-    rows = pills("Group By", [pill(url(group="area"), "Area", group not in ("stream", "family")),
-                              pill(url(group="stream"), "Stream (Project)", group == "stream"),
-                              pill(url(group="family"), "Family", group == "family")], title="Group By")
+    # Group By is how the board is laid out (a view switch: neutral); Area is what it shows (a filter: coloured pills)
+    rows = segmented("Group By", [segment(url(group="area"), "Area", group not in ("stream", "family")),
+                                  segment(url(group="stream"), "Stream (Project)", group == "stream"),
+                                  segment(url(group="family"), "Family", group == "family")], title="Group By")
     if len(f["area"]) > 1:
         rows += pills("Area", [pill(url(area=None), "All", not qget(query, "area"), len(board_cards))] +
                       [pill(url(area=a), a, qget(query, "area") == a, per_area[a]) for a in f["area"]], title="Area")
+    rows = '<div class="viewrow">%s</div>' % rows
     # text search is the header's search field now (/search); a ?q= on the board still filters and shows as a chip
     return ('%s<form class="filterbar" method="get" action="/">%s%s'
             '%s%s%s%s%s<button type="submit" class="quiet">Filter</button></form>%s'
@@ -457,7 +473,7 @@ def now(ctx, cards, claims=None, rev=""):
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'
         parts.append('<section class="nowsec"><h2 class="colhead col-%s">%s <span class="colcount">%d</span></h2>'
-                     '<div class="nowlist">%s</div></section>' % (col, e(name), len(items), body))
+                     '<div class="cards nowlist">%s</div></section>' % (col, e(name), len(items), body))
     parts.append('<p class="nowmore"><a href="/review">Weekly review</a> &middot; <a href="/plan">Plan</a> (<a href="/streams">streams</a>, '
                  '<a href="/goals">goals</a>, <a href="/timeline">timeline</a>) &middot; '
                  '<a href="/posts">Posts</a> &middot; '
@@ -488,17 +504,17 @@ def deps_page(ctx, cards, graph, chart):
 def review(ctx, cards, data, claims=None, rev=""):
     """The weekly review (review.py): one section per question, each card once, the other reasons as chips."""
     claims = claims or {}
-    jump = [pill("#r-" + key, title, count=len(rows)) for key, title, _, rows in data["sections"]]
+    jump = [segment("#r-" + key, title, count=len(rows)) for key, title, _, rows in data["sections"]]
     limits = "".join('<span class="chip lim%s" title="%d in WIP, limit %d">%s %d/%d</span>'
                      % (" over" if n > lim else "", n, lim, e(area), n, lim) for area, n, lim in data["areas"])
-    parts = [pills("Sections", jump + [pill("/deps", "Dependencies")], "revjump")]
+    parts = [segmented("Sections", jump + [segment("/deps", "Dependencies")], "revjump")]
     if limits:
         parts.append('<p class="limits">WIP by area %s</p>' % limits)
     for key, title, hint, rows in data["sections"]:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True, why=why)
                          for c, why in rows) or '<p class="none"><b>All Clear</b></p>'
         parts.append('<section class="nowsec revsec" id="r-%s"><h2 class="colhead">%s <span class="colcount">%d</span></h2>'
-                     '<p class="hint">%s</p><div class="nowlist">%s</div></section>' % (key, e(title), len(rows), e(hint), body))
+                     '<p class="hint">%s</p><div class="cards nowlist">%s</div></section>' % (key, e(title), len(rows), e(hint), body))
     main = '<main id="board" class="now review" data-rev="%s">%s</main>' % (e(rev), "\n".join(parts))
     return page(ctx, "Review", board_header(ctx, counts_of(cards), "Weekly review", "review") + main,
                 KANBAN_TABS, "review")
@@ -535,7 +551,7 @@ PLAN_TABS = [("/streams", "streams", "Streams"), ("/goals", "goals", "Goals"), (
 
 def plan_nav(current):
     """The Plan sub-nav: Streams · Goals · Timeline."""
-    return pills("Plan", [pill(href, label, key == current, page=True) for href, key, label in PLAN_TABS], "subnav")
+    return segmented("Plan", [segment(href, label, key == current, page=True) for href, key, label in PLAN_TABS], "subnav")
 
 
 def streams_page(ctx, cards, what="Plan"):
@@ -650,11 +666,12 @@ def timeline_page(ctx, cards, data, start, end, group):
     shift = lambda n: (start.replace(day=1) + datetime.timedelta(days=31 * n)).replace(day=1)
     months_n = max(1, round(span / 30.4))
     ym = start.strftime("%Y-%m")
-    nav = (pills("Range", [pill("/timeline?from=%s&months=%d&by=%s" % (shift(-3).strftime("%Y-%m"), months_n, group), "Earlier"),
-                           pill("/timeline?by=" + group, "Now"),
-                           pill("/timeline?from=%s&months=%d&by=%s" % (shift(3).strftime("%Y-%m"), months_n, group), "Later")]) +
-           pills("Group By", [pill("/timeline?from=%s&months=%d&by=%s" % (ym, months_n, by), label, group == by)
-                              for by, label in (("area", "Area"), ("stream", "Stream"))], title="Group By") +
+    nav = ('<div class="viewrow">%s%s</div>' % (
+        segmented("Range", [segment("/timeline?from=%s&months=%d&by=%s" % (shift(-3).strftime("%Y-%m"), months_n, group), "Earlier"),
+                            segment("/timeline?by=" + group, "Now"),
+                            segment("/timeline?from=%s&months=%d&by=%s" % (shift(3).strftime("%Y-%m"), months_n, group), "Later")]),
+        segmented("Group By", [segment("/timeline?from=%s&months=%d&by=%s" % (ym, months_n, by), label, group == by)
+                               for by, label in (("area", "Area"), ("stream", "Stream"))], title="Group By")) +
            '<p class="tlnav"><span class="gmile inline"></span> Log milestone &middot; <span class="gdue inline"></span> due</p>')
     body = nav + ticks + ("".join(sections) or '<p class="none"><b>Nothing in This Range</b> No card was worked on or is due '
                                                  'in these months.</p>')
@@ -677,7 +694,7 @@ def search_page(ctx, cards, q, claims=None):
     elif not hits:
         body = '<p class="none"><b>No Matching Cards</b> Nothing on the board mentions &ldquo;%s&rdquo;.</p>' % e(q)
     else:
-        body = ('<p class="none">%d card%s</p><div class="nowlist">%s</div>'
+        body = ('<p class="none">%d card%s</p><div class="cards nowlist">%s</div>'
                 % (len(hits), "" if len(hits) == 1 else "s",
                    "\n".join(card_html(ctx, c, (claims or {}).get(c["slug"]), show_area=True, show_updated=True) for c in hits)))
     body += shell.handoff(q.strip())      # the field is the header's pill, which fetches this page as you type
@@ -1106,10 +1123,10 @@ def calendar(ctx, month, cards):
              % ("".join('<b>%s</b>' % w for w in ("M", "T", "W", "T", "F", "S", "S")), "".join(mini),
                 "".join(daylist) or '<li class="none"><b>Nothing This Month</b></li>'))
     body = (
-        '<main class="calpage">%s' % pills("Month", [
-            pill("/calendar?month=" + month["prev"].strftime("%Y-%m"), "\u2039 " + month["prev"].strftime("%b")),
-            pill("/roundup?period=month&date=" + start.isoformat(), "Roundup for " + start.strftime("%B")),
-            pill("/calendar?month=" + month["next"].strftime("%Y-%m"), month["next"].strftime("%b") + " \u203a")], "monthnav") +
+        '<main class="calpage">%s' % segmented("Month", [
+            segment("/calendar?month=" + month["prev"].strftime("%Y-%m"), "\u2039 " + month["prev"].strftime("%b")),
+            segment("/roundup?period=month&date=" + start.isoformat(), "Roundup for " + start.strftime("%B")),
+            segment("/calendar?month=" + month["next"].strftime("%Y-%m"), month["next"].strftime("%b") + " \u203a")], "monthnav") +
         '<table class="cal"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(rows)) +
         phone +
         '<p class="legend">%s</p>' % legend +
@@ -1119,11 +1136,11 @@ def calendar(ctx, month, cards):
 
 
 def roundup(ctx, r, cards):
-    navline = pills("Period", [pill("/roundup?period=%s&date=%s" % (r["kind"], r["prev"].isoformat()), "\u2039 Previous")] +
-                    [pill("/roundup?period=%s&date=%s" % (k, r["start"].isoformat()), k.title(), k == r["kind"], page=True)
-                     for k in ("day", "week", "month", "year")] +
-                    [pill("/roundup?period=%s&date=%s" % (r["kind"], r["next"].isoformat()), "Next \u203a"),
-                     pill("/roundup.md?period=%s&date=%s" % (r["kind"], r["start"].isoformat()), "Markdown")], "monthnav")
+    navline = segmented("Period", [segment("/roundup?period=%s&date=%s" % (r["kind"], r["prev"].isoformat()), "\u2039 Previous")] +
+                        [segment("/roundup?period=%s&date=%s" % (k, r["start"].isoformat()), k.title(), k == r["kind"], page=True)
+                         for k in ("day", "week", "month", "year")] +
+                        [segment("/roundup?period=%s&date=%s" % (r["kind"], r["next"].isoformat()), "Next \u203a"),
+                         segment("/roundup.md?period=%s&date=%s" % (r["kind"], r["start"].isoformat()), "Markdown")], "monthnav")
     parts = []
     for key, name, rows in r["sections"]:
         items = []
@@ -1230,11 +1247,11 @@ def posts(ctx, data, cards, show="ready"):
                 '<div class="postacts"><a class="btn" href="/p/%s/kit">Kit</a><a class="btn quiet" href="/p/%s">Card</a>%s</div></li>'
                 % (slug, e(c["title"]), status, when, e(c.get("summary") or ""), size_chips(entry["size"]), e(c.get("area") or ""),
                    exist, slug, slug, skip))
-    tabs = [("ready", "Ready to write"), ("progress", "In progress"), ("skipped", "Skipped"), ("published", "Published")]
-    chips = [pill("/posts?show=" + k, label, k == show, len(data.get(k) or [])) for k, label in tabs if data.get(k) or k in ("ready", show)]
+    tabs = [("ready", "Ready to Write"), ("progress", "In Progress"), ("skipped", "Skipped"), ("published", "Published")]
+    chips = [segment("/posts?show=" + k, label, k == show, len(data.get(k) or [])) for k, label in tabs if data.get(k) or k in ("ready", show)]
     parts = ['<main class="posts">',
              '<p class="none">Finished projects without a blog post. Write from the kit, then mark the card <b>published</b>.</p>',
-             pills("Show", chips)]
+             segmented("Show", chips)]
     if show == "ready":
         parts.append('<ul class="postlist">%s</ul>' % ("".join(row(x) for x in data["ready"]) or '<li class="none"><b>All Written Up</b> Every finished project has a post, or was skipped.</li>'))
     elif show == "progress":

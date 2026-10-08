@@ -13,7 +13,7 @@ import time
 import urllib.request
 from urllib.parse import quote, urlsplit
 
-from store import VAULT, _str, commit_filter
+from store import GIT_SCOPE, VAULT, _str, commit_filter
 from writer import lead_of
 from timeline import LINK_RE, clean, local_date, log_rows, parse_date, system_host
 from vaultkit import sanitize
@@ -143,6 +143,8 @@ class Kits:
         self.board_url = board_url.rstrip("/")
         self._remote = {}
         self._lock = threading.Lock()
+        self._systems = (None, None)         # (the notes it was read from, (logs, hosts)): see system_logs
+        self._vault_log = (None, {})         # (HEAD, {note path: [(date, subject)]}): see vault_log
 
     def taxonomy(self):
         """The vault repo's .board/kit.json as {tag_synonyms, area_category, default_category, ignore_tags,
@@ -237,6 +239,35 @@ class Kits:
 
     # -- the kit --------------------------------------------------------------
 
+    def system_logs(self):
+        """([(host, [(date, cells, lowercased row text)])], {lowercased hosts}) for the Systems/ change logs, read once
+        per set of notes (a kit build used to parse every machine's log again)."""
+        notes = self.timeline.notes()
+        with self._lock:
+            if self._systems[0] is not notes:
+                logs = [(system_host(r, fm2), [(d, cells, " ".join(cells).lower()) for d, cells in log_rows(text2) if d])
+                        for r, fm2, text2 in notes if r.startswith("Systems/")]
+                self._systems = (notes, (logs, {h.lower() for h, _ in logs}))
+            return self._systems[1]
+
+    def vault_log(self):
+        """{note path: [(date, subject)] newest first}: the vault's commits per note from ONE `git log` per HEAD (a kit
+        build asked git once per note: about 40 ms each in a small repository, more in a long history)."""
+        head = self.store.meta("head")
+        with self._lock:
+            if self._vault_log[0] != head or not head:
+                out = self.store.git("-c", "core.quotePath=false", "log", "--format=%x1e%as%x1f%s", "--name-only", "--", GIT_SCOPE)
+                by_path, current = {}, None
+                prefix = (VAULT + "/") if VAULT else ""
+                for line in out.split("\n"):          # not splitlines(): that breaks lines at \x1e too
+                    if line.startswith("\x1e"):
+                        when, _, subject = line[1:].partition("\x1f")
+                        current = (when, subject)
+                    elif line and current and line.startswith(prefix):
+                        by_path.setdefault(line[len(prefix):], []).append(current)
+                self._vault_log = (head, by_path)
+            return self._vault_log[1]
+
     def note_of(self, card):
         self.garden.index()
         return self.garden.notes.get(card["path"])
@@ -257,7 +288,7 @@ class Kits:
             approx = True
         return started, finished, approx
 
-    def build(self, card, remote=True):
+    def build(self, card, remote=True, cards=None):
         note = self.note_of(card)
         fm = note.fm if note else {}
         text = note.text if note else ""
@@ -369,32 +400,20 @@ class Kits:
             needles.add(repo_name)
         needles = {n for n in needles if len(n) >= 3 and n not in machines}
         words = {w for w in re.findall(r"[a-z0-9]+", (card.get("title") or "").lower()) if len(w) >= 4 and w not in STOPWORDS}
-        logs = [(r, fm2, text2) for r, fm2, text2 in self.timeline.notes() if r.startswith("Systems/")]
+        logs, hosts = self.system_logs()
         # a word that names a machine (a repository called after its host, without the card's machine/ tag) would
         # match every row of that machine's change log
-        hosts = {system_host(r, fm2).lower() for r, fm2, _ in logs}
         needles = {n for n in needles if n not in hosts}
         systems = []
-        for r, fm2, text2 in logs:
-            host = system_host(r, fm2)
-            for d, cells in log_rows(text2):
-                if not d:
-                    continue
-                row = " ".join(cells).lower()
+        for host, rows in logs:
+            for d, cells, row in rows:
                 if any(n in row for n in needles):
                     systems.append({"date": d.isoformat(), "host": host, "change": clean(cells[1] if len(cells) > 1 else ""),
                                     "details": clean(cells[2] if len(cells) > 2 else "", 300)})
         systems.sort(key=lambda s: s["date"])
 
-        vault_commits = []
-        for line in self.store.git("log", "--format=%as\x1f%s", "--", os.path.join(VAULT, rel)).splitlines():
-            try:
-                when, subject = line.split("\x1f", 1)
-            except ValueError:
-                continue
-            if not SKIP_COMMIT_RE.match(subject):
-                vault_commits.append({"date": when, "subject": subject[:160]})
-        vault_commits = vault_commits[:40]
+        vault_commits = [{"date": when, "subject": subject[:160]} for when, subject in self.vault_log().get(rel, ())
+                         if not SKIP_COMMIT_RE.match(subject)][:40]
         repos = [u for u in (card.get("repo"), _str(fm.get("mirror"))) if u and u.startswith("http")]
         repo_commits, repo_note = [], ""
         if repos and remote:
@@ -451,7 +470,7 @@ class Kits:
         numbers = numbers[:20]
         open_checks = [c for c in checks if not c["done"]][:10]
         followups = []
-        for c in self.store.cards():
+        for c in (cards if cards is not None else self.store.cards()):      # cards: the caller's (/posts builds hundreds)
             if c["slug"] == slug or c.get("board") in ("done", "archived", None):
                 continue
             n = self.garden.notes.get(c["path"])
@@ -628,7 +647,8 @@ class Kits:
         published post; not one closed as "won't do"), in progress (a post status on an unfinished card),
         and published."""
         ready, progress, published, skipped = [], [], [], []
-        for c in self.store.cards():
+        every = self.store.cards()
+        for c in every:
             status = c.get("post") or "none"
             if status == "published":
                 published.append({"card": c, "url": c.get("post_url") or ""})
@@ -640,7 +660,7 @@ class Kits:
             if c.get("board") == "archived" and status == "none" and (self.store.closeout(c["slug"]) or {}).get("outcome") == "wontdo":
                 continue                    # closed without doing it: nothing to write up
             if finished_col or status != "none":
-                k = self.build(c, remote=False)
+                k = self.build(c, remote=False, cards=every)
                 entry = {"card": c, "finished": k["finished"], "approx": k["finished_approx"], "size": k["size"],
                          "existing": k["blog"]["existing"], "status": status}
                 (ready if finished_col else progress).append(entry)

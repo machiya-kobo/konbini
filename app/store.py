@@ -29,6 +29,7 @@ import yaml
 # Frontmatter, conflict markers, LiveSync conflict copies: shared with Kura and Niwa (vendored, see app/vaultkit/).
 from vaultkit.front import (CONFLICT_RE, FRONT_RE, PHONE_CONFLICT, WIKILINK_RE, _str, _unlink,  # noqa: F401
                             note_front, tags_of)
+from vaultkit.notes import read_file
 
 def commit_filter(*settings):
     """The commit subjects the calendar, roundups and kits leave out: the board's own (`board: `) and merges, plus the
@@ -77,6 +78,9 @@ CREATE TABLE IF NOT EXISTS events (
     actor TEXT,
     data TEXT
 );
+CREATE INDEX IF NOT EXISTS events_card_ts ON events (card, ts);
+CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
+CREATE INDEX IF NOT EXISTS events_client ON events (json_extract(data, '$.client_id'));
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS links (
     url TEXT PRIMARY KEY, first_seen TEXT, last_checked TEXT, status TEXT, http INTEGER, fails INTEGER,
@@ -96,15 +100,17 @@ def slugify(name):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "card"
 
 
-def parse_note(text, rel):
-    """Return a card dict for a note, or None if it isn't a card."""
+def parse_note(text, rel, fm=None):
+    """Return a card dict for a note, or None if it isn't a card. fm: the note's frontmatter when the caller has parsed it
+    already (scan does: parsing YAML twice per note was half of an import)."""
     m = FRONT_RE.match(text)
     if not m:
         return None
-    try:
-        fm = yaml.safe_load(m.group(1))
-    except yaml.YAMLError:
-        return None
+    if not isinstance(fm, dict):
+        try:
+            fm = yaml.safe_load(m.group(1))
+        except yaml.YAMLError:
+            return None
     if not isinstance(fm, dict):
         return None
 
@@ -205,6 +211,8 @@ class Store:
         self.broken = []            # [(path, reason)] notes that look like cards but don't parse
         self.legacy = []            # [{slug, path, field}] notes still carrying the old field names (not read)
         self.phone_conflicts = []   # LiveSync conflict copies waiting to be merged
+        self._parsed = {}           # path -> ((mtime_ns, size, inode), text, frontmatter): see load
+        self._scanned = {}          # path -> ((mtime_ns, size, inode), what read_note made of it): see scan
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db = sqlite3.connect(db_path, check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -217,10 +225,14 @@ class Store:
 
     # -- import --------------------------------------------------------
 
-    def scan(self):
+    def scan(self, fresh=False):
+        """Every card in the notes folder, and the book-keeping of the import (broken and legacy notes, the tags in use).
+        A note whose modification time, size and inode are as at the last scan isn't read or parsed again (parsing YAML
+        is most of an import's time); fresh=True reads everything, as the periodic drift check does."""
         root = os.path.join(self.repo, VAULT)
         cards, seen, broken, phone, legacy = [], set(), [], [], []
         self.all_tags = set()
+        old, kept = ({} if fresh else self._scanned), {}
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith("."))
             for name in sorted(filenames):
@@ -234,28 +246,37 @@ class Store:
                     phone.append(rel)
                     continue
                 try:
-                    with open(full, encoding="utf-8", errors="replace") as f:
-                        text = f.read()
+                    st = os.stat(full)
+                    key = (st.st_mtime_ns, st.st_size, st.st_ino)
+                    hit = old.get(full)
+                    if hit and hit[0] == key:
+                        info = hit[1]
+                    else:
+                        loaded = self.load(full, key)
+                        if loaded is None:
+                            continue
+                        info = self.read_note(loaded[0], rel, loaded[1])
                 except OSError:
                     continue
-                fm = note_front(text)
-                self.all_tags.update(tags_of(fm))
-                if CONFLICT_RE.search(text):
-                    broken.append((rel, "unresolved git conflict markers"))
-                elif fm is None and FRONT_RE.match(text) and re.search(r"^(status:|  - type/project)", text, re.M):
-                    broken.append((rel, "frontmatter doesn't parse"))
-                card = parse_note(text, rel)
-                old = legacy_names(fm, tags_of(fm)) if fm else []
-                if old:
-                    legacy.append({"slug": (card or {}).get("slug", ""), "path": rel, "field": ", ".join(old)})
+                kept[full] = (key, info)
+                tags, why, old_names, card = info
+                self.all_tags.update(tags)
+                if why:
+                    broken.append((rel, why))
+                if old_names:
+                    legacy.append({"slug": (card or {}).get("slug", ""), "path": rel, "field": ", ".join(old_names)})
                 if not card:
                     continue
+                card = dict(card)               # the slug may change below; the cached one doesn't
                 slug, n = card["slug"], 2
                 while card["slug"] in seen:
                     card["slug"] = "%s-%d" % (slug, n)
                     n += 1
                 seen.add(card["slug"])
                 cards.append(card)
+        if not fresh:
+            self._scanned = kept
+        self._parsed = {p: v for p, v in self._parsed.items() if p in kept}      # notes that are gone
         self.broken = broken
         self.phone_conflicts = sorted(phone)
         self.legacy = legacy
@@ -267,6 +288,32 @@ class Store:
             print("import: %s: old field names ignored: %s (see the Machiya frontmatter schema)" % (path, field), flush=True)
         self._legacy_logged = now
         return cards
+
+    def load(self, full, key):
+        """(text, frontmatter or None) of a note, read and parsed once per change of the file: the importer and the
+        timeline's notes (which the garden index, the kits and the link checker read) share it. None when it isn't a
+        regular file (read_file: symlinks and the like are never read)."""
+        hit = self._parsed.get(full)
+        if hit and hit[0] == key:
+            return hit[1], hit[2]
+        text = read_file(full)
+        if text is None:
+            return None
+        fm = note_front(text)
+        self._parsed[full] = (key, text, fm)
+        return text, fm
+
+    @staticmethod
+    def read_note(text, rel, fm):
+        """(tags, why it is broken or "", old field names, card or None) for one note's text and frontmatter."""
+        tags = tags_of(fm)
+        why = ""
+        if CONFLICT_RE.search(text):
+            why = "unresolved git conflict markers"
+        elif fm is None and FRONT_RE.match(text) and re.search(r"^(status:|  - type/project)", text, re.M):
+            why = "frontmatter doesn't parse"
+        card = parse_note(text, rel, fm)
+        return tags, why, (legacy_names(fm, tags_of(fm)) if fm else []), card
 
     def load_events(self):
         events = []
@@ -364,6 +411,11 @@ class Store:
         with self.lock:
             rows = self.db.execute("SELECT data FROM cards").fetchall()
         return [json.loads(r[0]) for r in rows]
+
+    def count(self):
+        """How many cards there are, without loading them."""
+        with self.lock:
+            return self.db.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
 
     def upsert(self, card):
         with self.lock, self.db:

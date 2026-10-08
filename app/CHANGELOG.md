@@ -3,6 +3,21 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.19.0
+
+Round two of Shiori's look (vaultkit 0.27.3):
+- **Cards.** A card is the shared result card: a step above the page, 14px corners, the small shadow, with the status stripe on its left edge. Now, Review, Search and the stream pages list them in `.cards`.
+- **View switches are neutral.** Group By, the Plan pages (Streams, Goals, Timeline), the Timeline's range and Group By, Posts' Show, the review's section jumps and the calendar and roundup rows are a `.segmented` control: a sunken track with the chosen option raised, never coloured. Area and the phone's column tabs are what the board shows, so they stay coloured filter pills.
+- **Headings in Title Case,** as written: lanes, columns, the sections of Now and Review. The header's current page is a raised pill, without an underline.
+- A pill under the pointer lifts onto a raised surface (vaultkit 0.27.3).
+
+Faster, on a vault of 600 cards, 3,000 notes and 30,000 events (median, before → after): Posts 16.4 s → 0.27 s, Review 2.8 s → 93 ms, Timeline 1.5 s → 84 ms, Calendar 1.5 s → 121 ms, Archived 0.40 s → 24 ms, the first page after a start 1.6 s → 41 ms, the first change after one 2.0 s → 0.13 s, start-up 2.8 s → 1.8 s. On a 107-card vault: Posts 4.3 s → 72 ms, a writing kit 106 → 13 ms. Why:
+- Events had no index, so each card's events scanned the whole table: Review, Timeline, Calendar, Archived and Posts asked for them once per card. Indexed (the table is migrated when the board starts), and Review asks only for blocked and done cards.
+- A note is read and parsed once per change of the file, not once per page: the importer, the timeline, the vault index, the kits and the link checker share it, so a change re-reads the notes that changed, not the vault, and the importer no longer parses every note's YAML twice.
+- Posts built a kit per finished card, each running a `git log` for its note, re-reading every change log and loading every card: one `git log` per commit, the logs parsed once, the cards loaded once. The vault index no longer runs a `git log` over the whole history that only Niwa reads.
+- Pages are gzipped for a client that accepts it (the 600-card board: 624 KB → 55 KB; `/api/cards` 539 KB → 50 KB), a cached file once. The vault index is built at start-up, once at a time.
+- Memory: 360 requests and 60 writes grew the process by 25 MB before and by none now.
+
 ## 0.18.2
 
 - Hovering a pill or link chip thickens its outline instead of filling it (vaultkit 0.26.3: the light fill pulled some themes' text under 4.5:1).

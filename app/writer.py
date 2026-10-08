@@ -803,7 +803,7 @@ class Writer:
     def verify(self):
         """Drift check: the SQLite cache must equal a fresh scan of the notes
         (and the events log). If it doesn't, log what differed and rebuild."""
-        fresh = {c["slug"]: c for c in self.store.scan()}
+        fresh = {c["slug"]: c for c in self.store.scan(fresh=True)}
         cached = {c["slug"]: c for c in self.store.cards()}
         differ = sorted(k for k in set(fresh) | set(cached) if fresh.get(k) != cached.get(k))
         events_on_disk = len(self.store.load_events())

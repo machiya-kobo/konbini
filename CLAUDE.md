@@ -1,169 +1,86 @@
-# CLAUDE.md — Konbini (contributor guide)
+# CLAUDE.md: working on Konbini
 
-Konbini is a project board built from a git repository of Markdown notes with YAML frontmatter (an Obsidian
-vault works as it is). SQLite is a cache and git is the backup: the board rebuilds from the notes plus `.board/` at any
-time. It is one of the Machiya services (see the Machiya repository: principles, contracts, vaultkit). The garden
-(Niwa) and the note reader (Kura) are separate services; `/garden/*` redirects to Niwa when `KANBAN_NIWA_URL` is set and
-`POST /api/garden/suggest` answers 308 to Niwa's `/api/suggest`. Konbini is the project-management layer: card pages show
-the project and its description (the lead of its note) and link the note to Kura (read) and Obsidian (edit) when those
-are configured; they render nothing else of it. Every
-sister service is optional: with its setting unset, its links are simply off. `README.md` has the overview and the
-Quickstart, `docs/` the install guide, access, settings, vault layout and `pm` (`tools/quickstart-test` runs the
-marked blocks in README.md and `docs/install.md`; `tools/screenshots` remakes the README's pictures); `CONTRIBUTING.md`
-the workflow.
+Konbini is a project board built from a git repository of Markdown notes with YAML frontmatter (an Obsidian vault works
+as it is). A note whose `status:` is a column (backlog, ready, wip, blocked, done, archived) is a card. SQLite is a cache
+and git is the backup: the board rebuilds from the notes plus `.board/` at any time. It is one of the Machiya apps and
+runs on its own; Kura, Niwa and Shiori are optional neighbours (their links are off when their settings are unset).
+`README.md` is the overview and Quickstart, `docs/` the install guide, access, settings, vault layout and `pm`,
+`CONTRIBUTING.md` the workflow. Frontmatter, API contracts and the style guide live in the
+[Machiya repository](https://github.com/machiya-kobo/machiya) (`docs/frontmatter.md`, `docs/contracts/`, `docs/style-guide.md`).
+
+## Set up, run, test
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install 'markdown>=3.11' pyyaml    # Python 3.11 or later; git, sqlite3 and openssl too
+tools/demo-vault demo-vault && mkdir demo-data                              # the sample vault as a git repository
+KANBAN_REPO="$PWD/demo-vault" KANBAN_REPO_SUBDIR=personal KANBAN_DB="$PWD/demo-data/konbini.sqlite3" \
+  KANBAN_AUTH=open KANBAN_BIND=127.0.0.1 .venv/bin/python app/app.py       # http://127.0.0.1:8081/
+KONBINI_TEST_PYTHON=.venv/bin/python tests/run.sh                          # every tests/test_*.py, each on its own throwaway vault
+```
+
+Playwright for Python (with Chromium) is needed for `tests/test_outbox.py` and `tests/test_contrast.py`; they skip without it.
+`tools/quickstart-test` runs the marked blocks in `README.md` and `docs/install.md`; `tools/screenshots` remakes the README's
+pictures from the sample vault. There is no linter or formatter: match the surrounding code (naming, comment density, idiom).
+Test against a throwaway vault, never a real one.
 
 ## Layout
 
-- `app/` — the server. `app.py` routes and the listener; `store.py` index, events, claims; `writer.py` frontmatter
-  edits and the batched git export; `timeline.py` calendar/roundup items; `deps.py` dependencies (`dependsOn` resolved
-  with vaultkit's wikilink rules: waits for / unblocks / waiting on; a card waiting on an unfinished dependency counts as
-  blocked; the `/deps` graph); streams (a card's `stream:`: the chip, the filter and grouping, `/streams`, `/streams/<name>`
-  as a board; in `modern.py`); `goals.py` goals and due dates (a card's `goal:`/`due:`; `/goals`: a goal's target = its
-  cards' latest due, progress = done/total); `/timeline` (`Timeline.range`: started->done bars, Log milestones, due
-  diamonds, by area or stream); `/search` (the header's one search field: cards by title, summary, next, waiting, tags,
-  family, stream and goal); `review.py` the weekly review (`/review`: per-area WIP limits from `KANBAN_WIP_LIMITS`,
-  default 3; blocked 7+ days; stale; no next action; done this week; Backlog); `digest.py` the board half of Niwa's
-  stream (`/api/digest`); `garden.py` the vault index and renderer (a thin vaultkit `Vault`; kits and link rot read notes
-  from it); `kit.py` writing kits (see below); `blog.py` a read-only Jekyll blog index; `modern.py` the pages (HTML5),
-  built on the shared Machiya shell (`vaultkit.shell`; `machiya.css`/`machiya.js` served from `app/vaultkit/ui/`; the
-  Rooms switcher from `MACHIYA_ROOMS`) with `/settings` (Appearance, Board, Apps, About); `board.css` holds only this
-  room's own rules; `common.py` shared helpers (filters, facets, history, colors, the request context); `links.py` link
-  rot for card notes (the Wayback Machine, a cold archive, Hister; Niwa checks published notes); `hister.py` the Hister
-  client; `urlnorm.py` the URL normalisation rule (an identical copy lives in machiya-kobo/niwa: keep them in step); `static/`
-  board.css, board.js, icons (`/sw.js` is generated by `modern.service_worker()` from the vendored `machiya-sw.js`), and `mermaid.min.js` (vendored Mermaid, MIT; `board.js` loads it only on a note with a ```mermaid block
-  and renders it in the page theme; bump `MERMAID_V` in board.js with the file).
-- `app/vaultkit/` — the shared vault core (frontmatter, `read_notes`, `Note`, `Vault` = index + wikilink resolution +
-  renderer, git `Mirror`), **vendored** from `vaultkit/` in the Machiya repository and shared with Kura and Niwa.
-  `garden.Garden` subclasses `Vault`; `store.py`/`timeline.py` import from it. **Never edit `app/vaultkit/`**: the build
-  runs `python3 -m vaultkit.verify` and fails on drift. Fix it in vaultkit, tag, then `VAULTKIT_REPO=<machiya checkout>
+- `app/`: the server. `app.py` routes and listener; `store.py` import, index, events, claims; `writer.py` frontmatter edits
+  and the batched git export; `modern.py` the pages (HTML5, on the shared Machiya shell) and `/settings`; `common.py`
+  filters and helpers; `deps.py`, `goals.py`, `review.py`, `timeline.py`, `digest.py`, `kit.py` (writing kits), `blog.py`,
+  `links.py` (link rot), `hister.py`, `garden.py` (the vault index, a thin vaultkit `Vault`), `urlnorm.py` (the URL rule;
+  an identical copy lives in Niwa: keep them in step); `static/` is `board.css`, `board.js`, `outbox.js` and the icons.
+- `app/vaultkit/` is the shared vault core, **vendored** from the Machiya repository. **Never edit it**: the build runs
+  `python3 -m vaultkit.verify` and fails on drift. Change it upstream, then `VAULTKIT_REPO=<machiya checkout>
   tools/vendor-vaultkit <tag>`.
-- `tests/` — `tests/run.sh` runs every `test_*.py`. They need python 3 with `markdown` and `pyyaml` (plus git, sqlite3,
-  openssl): `KONBINI_TEST_PYTHON=<python> tests/run.sh`, else `python3` if it has them, else the built image (`--image`).
-  Each test makes its own throwaway vault and listeners.
-- `tools/` — `pm` (the board's command line, a standard-library client of the HTTP API; `tests/test_pm.py` runs it
-  against a fake board), `Dockerfile.dev` (the dev image without the optional Hister stage: `podman build -f
-  tools/Dockerfile.dev -t konbini-dev app`), `vendor-vaultkit`, `shots.py` (Playwright screenshots) and `tsproxy.py` (a
-  stand-in for `tailscale serve` that injects the identity header, for testing the service worker).
+- `tests/`, and `tools/`: `pm` (the command line, a standard-library client of the HTTP API), `demo-vault`,
+  `vendor-vaultkit`, `quickstart-test`, `screenshots`, `Dockerfile.dev` (the image without the optional Hister stage),
+  `tsproxy.py` (stands in for `tailscale serve`).
 
 ## What the code relies on
 
-- **What a card is.** A note whose `status:` is a board column (backlog, ready, wip, blocked, done, archived), or a note
-  tagged `type/project` (it lands in the Unsorted tray). The old field names (`board`, `blocked_by`, `date`,
-  integer `priority`, `status/*` tags) are **not read**: such a note is logged at start-up and listed under
-  `legacy_names` on `/api/status`. The fields are described in the Machiya repository's `docs/frontmatter.md`.
-- **The `/api/cards` and `/api/digest` contract is stable** (Niwa and Shiori read them; see the Machiya repository's
-  `docs/contracts/konbini-api.md`): the card keeps `board`, `blocked_by`, an integer `priority` and an old-style
-  `status` in the API even though the notes use `status`, `waiting` and `priority: high|normal|low`. The writer accepts
-  both names as input and writes only the new ones.
-- **Writes touch frontmatter lines only**, as line edits (never a YAML load and dump, which would reorder keys and
-  conflict with the next export), and never a note body, except **the description**: the text under the note's title
-  heading up to the next heading (`writer.lead_of` / `set_lead`; owner's decision, 2026-10-07, which replaced "the board
-  never writes a body"). A stub note is written once, at creation. The description can't contain a heading (it would
-  start a new section) or an open code fence (422); a line git would read as a conflict is indented. `merge_note` keeps
-  the board's description edit when upstream changed other parts of the note and drops it when both sides wrote the
-  description (the alert says so). The
-  garden's fields (`publish`, `growth`, `confidence`, `garden_pin`) belong to Niwa; the board refuses `publish` (403).
-  New `topic/*` and `area/*` tags are the maintainer's to create; an agent write that would add one is refused (409/403).
-- **Events** go to `.board/events/*.jsonl` and are never rewritten (Niwa reads older events from there too).
-- **The git export** batches edits: a commit after `KANBAN_EXPORT_IDLE` seconds idle or `KANBAN_EXPORT_MAX` at most, a
-  pull between batches (never a stash), a rebase with a replay when upstream moved, a push that retries. Conflict markers
-  are never committed (`CONFLICT_RE`: a bare `=======` line counts), and a note that carries them is flagged on the board.
-  A repo with no commits or no origin says so once at start-up and keeps its commits local.
-- **Writing kits** map a card's topics and area onto a blog's tags and categories. That taxonomy is data, not code: an
-  optional `.board/kit.json` (`tag_synonyms`, `area_category`, `default_category`, `ignore_tags`, `ignore_categories`) in the repository. Sets feed some lists:
-  sort them, or the order changes with every process (the related notes are sorted).
-- **Where a kit gets a repository's commits.** From a read-only checkout under `KANBAN_REPOS`, else from the forge's
-  API: GitHub, or a host whose name contains `forgejo` or `gitea` (the Gitea-style `/api/v1`); other hosts get none. When
-  the repository is named after one of the card's `machine/<host>` tags (one repository per host), the kit reads four
-  pages from the API (a checkout is read whole) and keeps only commits whose subject mentions the card's slug, title or title words.
-- **Access.** `KANBAN_AUTH=tailscale` (default) allows only a `Tailscale-User-Login` in `KANBAN_TAILNET_USERS`, and
-  trusts the proxy in front (`tailscale serve`) to set and sanitise that header: bind `127.0.0.1` behind it. On any other
-  bind, `KANBAN_TRUSTED_PROXIES` (CIDRs; `app.trusted_proxies`/`peer_trusted`) names the peers whose identity headers count:
-  `Handler.parse_request` drops `IDENTITY_HEADERS` from every other peer, and `check_trusted_proxies` refuses to start in
-  a header-trusting mode (tailscale, header, hister with its tailscale fallback) on a non-loopback bind without it. `open` has no
-  identity check (localhost or a trusted LAN) but answers only a `Host` that is an IP literal, `localhost`,
-  `KANBAN_BOARD_URL`'s host or in `KANBAN_ALLOWED_HOSTS` (DNS rebinding; `host_allowed`). Form posts must be same-origin; API writes that aren't same-origin must send `X-Agent` and no `Origin`/`Referer` (a browser always sends one, so that's another site's page: CSRF).
-  `GET /healthz` is open and returns `ok`; `/api/status` is gated.
-- **Identity.** With `MACHIYA_IDENTITY_FILE` (vaultkit `identity`, [Machiya's `docs/identity.md`](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md)) the file is the
-  gate instead of `KANBAN_TAILNET_USERS`: `Handler.who()` resolves the principal once per request and `Handler.can()`
-  asks its `konbini` grants. `read` for every page and read API (`/healthz` stays open), `write` for every change
-  (`do_write`), `areas` for new `area/*` lanes and new tags (`writer.check_tags(areas=...)`; it replaces
-  `agent == "web"`, which still decides when `areas` is None, i.e. without the file). 401 for no or a bad proof (never
-  a fall-through), 403 for a missing grant. `send()` and the event stream pass on the renewed or cleared session
-  cookie. The event `actor` is the principal's name; `X-Agent` is only a label. The CSRF rules above hold in every
-  mode. **Sign-in, pairing, preferences** (vaultkit `signin`; sign-in and pairing only with the file, 404 without): `GET/POST /signin`
-  (`KANBAN_SIGNIN=1`), `POST /signout` and `POST /api/pair` are handled before the gate (after open mode's `Host`
-  rule), with `signin.read_body` and its limits and none of the board's CSRF rules (vaultkit's same-origin rule for
-  sign-in/out; pairing has no cookie). `GET/PUT /api/prefs` comes after the gate (`read`) and takes vaultkit's rule
-  instead of the `/api` write rule: a token needs no `Origin` or `X-Agent`, anything else must be same-origin.
-  Without the file `/api/prefs` is `identity.ambient`'s (after the old gate), and in open mode without
-  `KANBAN_BOARD_URL` the request's own allowed `Host` is the origin (`prefs_origins()`). `SIGNIN_ORIGINS` is
-  `KANBAN_BOARD_URL`'s origin (as `secure` follows its scheme); `prefs.sqlite3` sits next to `KANBAN_DB` (not the
-  cache). Every page whose request has a principal gets `prefs_url` (and with the file `who=`, the signed-in name).
-  With sign-in on, the shared UI and icons answer before the gate (the sign-in page needs them) and a browser's 401 is
-  `signin.needed`; Settings shows Account (#account) for every principal, Sign Out for a `session`. `tests/test_signin.py` covers it. `KANBAN_AUTH=header` exists only with the file, and a header mode on a public bind needs
-  `KANBAN_BIND_BEHIND_PROXY=1`. `tests/test_identity.py` covers each grant and proof; `tests/test_auth.py` the
-  no-file gate, which must not change.
-- **Hister is optional and single-user.** Every Hister call sends `Origin: hister://`; never `hister index --force` a URL
-  Hister already has (it replaces the imported metadata). Saving pages into Hister is off unless `KANBAN_HISTER_SAVE`,
-  and the Wayback lookup is off unless `KANBAN_ARCHIVE=wayback`. When the Hister server's version changes, bump
-  `HISTER_VERSION` in `app/Dockerfile`.
-- **Stack mode** (optional): with `KANBAN_REPO_REFERENCE=<another clone>` the board borrows that clone's objects at
-  start-up (`vaultkit.git.borrow`: alternates + `repack -a -d -l`, idempotent), and with
-  `KANBAN_REPO_SPARSE=<folders>,.board` checks out only what it reads and writes (cone mode keeps the root
-  `.gitattributes`). Both empty = a full clone of its own. A missing reference is logged and the board goes on.
+- **Writes touch frontmatter lines only**, as line edits (never a YAML load and dump: it reorders keys and conflicts with the
+  next export), and never a note body except **the description**, the text under the note's title up to the next heading
+  (`writer.lead_of` / `set_lead`). It can't contain a heading or an open code fence (422). The garden's fields (`publish`,
+  `growth`, `confidence`, `garden_pin`) belong to Niwa; the board refuses `publish` (403). New `topic/*` and `area/*` tags
+  are the maintainer's to create; an agent write that would add one is refused.
+- **The `/api/cards` and `/api/digest` contract is stable** (Niwa and Shiori read it): the card keeps `board`, `blocked_by`,
+  an integer `priority` and an old-style `status` even though notes use `status`, `waiting` and `priority: high|normal|low`.
+  The old field names are not read; such a note is logged and listed under `legacy_names` on `/api/status`.
+- **Events** go to `.board/events/*.jsonl` and are never rewritten. The git export batches edits (`KANBAN_EXPORT_IDLE`,
+  `KANBAN_EXPORT_MAX`), pulls between batches (never a stash), rebases with a replay when upstream moved, and never commits
+  conflict markers (`CONFLICT_RE`).
+- **Access.** `KANBAN_AUTH=tailscale` (default) trusts a `Tailscale-User-Login` header from the proxy in front: bind
+  `127.0.0.1` behind it, or name the proxies in `KANBAN_TRUSTED_PROXIES` (header-trusting modes refuse a public bind without
+  it). `open` has no identity check but answers only an allowed `Host` (DNS rebinding). Form posts must be same-origin; API
+  writes that aren't need `X-Agent` and no `Origin`/`Referer` (CSRF). With `MACHIYA_IDENTITY_FILE` the file is the gate
+  (`Handler.who()`, `Handler.can()`; sign-in, pairing, `/api/prefs`). `tests/test_auth.py` (no file), `test_identity.py` and
+  `test_signin.py` cover it; `GET /healthz` is open.
+- **A note is data, never code.** Card pages render a card's description and writing kits quote the note, both through
+  `vaultkit.sanitize.clean`. Every HTML answer carries a CSP with `script-src 'self'`: no inline `<script>` and no `on…=`
+  attribute; behaviour goes in `board.js`.
+- **Hister is optional and single-user:** every call sends `Origin: hister://`, and never `hister index --force` a URL it
+  already has. Saving into Hister is off unless `KANBAN_HISTER_SAVE`; the Wayback lookup unless `KANBAN_ARCHIVE=wayback`.
+- **Stack mode** (optional): `KANBAN_REPO_REFERENCE` borrows another clone's objects, `KANBAN_REPO_SPARSE` checks out only
+  what the board reads and writes.
+- **Speed** (`tests/test_perf.py`): a note is read and parsed once per change (`Store.load`, `Timeline.read_changed`). Don't
+  loop over `store.cards()` or `store.events()` inside a loop over cards, don't run a `git log` per note, and keep the
+  indexes on `events`. Text answers over 1 KB are gzipped.
+- **The outbox** (`static/outbox.js`): a move, edit, note or new card that can't reach the board waits in IndexedDB, marked
+  "waiting", and goes out in order with what it was based on, so the board's 409 rule applies. `tests/test_outbox.py`.
 
-## Pages
+## Look and rules
 
-- **The room key is `konbini`** (`modern.ROOM`): the shell, the icon files (`static/icons/konbini-*`; the old
-  `kanban-*` names answer 301) and the browser's `localStorage` keys (`konbini.*`). The settings keep their `KANBAN_`
-  prefix and `envfile.load_for("kanban")`, so existing installs need no change.
-- **A note is data, never code.** Card pages render only a card's description (Markdown, `[[links]]` as plain text); the
-  writing kit quotes the note; both go
-  through `vaultkit.sanitize.clean`. Every HTML answer carries `shell.security_headers()` (`script-src 'self'`): no
-  inline `<script>` and no `on…=` attribute in the board's markup; behaviour goes in `board.js`.
-- **The style guide's pieces** (Machiya `docs/style-guide.md`, `machiya.css`): a **view switch** (how a page is shown: Group By,
-  the Plan pages, Posts' Show, the roundup and calendar rows, the review's section jumps) is `modern.segmented()` /
-  `segment()`, the neutral `.segmented` control (`aria-current` on the chosen one), never coloured; a **filter** (Area, the
-  phone's column tabs) is `modern.pills()` / `pill()`, outlined pills with the current one filled (`.pills.coltabs`, which
-  `board.js` fills with `.on`). A state chip is `.chip` with `--chip` set in `board.css` (outlined, no fill: a fill of its
-  own colour fails 4.5:1), a chip that opens something is `.chip.link`, a topic is `.tag`. A board card is the shared
-  `.card.tinted` (a step above the page, 14px corners) tinted in its column's colour (`--tint` set per `.col-*` in
-  `board.css`: Backlog slate, Ready blue, WIP orange, Blocked red, Done green), its parts `.title`, `.snippet` and `.meta`;
-  Now, Review and Search lay them out in `.cards`. Settings → Card Style (Tint, Solid, Left Bar, None; the `cardStyle`
-  cookie and account key `konbini.card_style`) sets `<body data-card-style>` in `modern.page()` (no attribute is Tint), and
-  machiya.css draws the four styles; `tests/test_contrast.py` measures the card texts in all of them. Headings are Title Case as written, lanes and columns too
-  (`.lanename` is capitalised: it is a tag's name). A mixed list would tint the other rooms' items by their room (`.tinted.is-note`); here every
-  card is Konbini's own, so the tint is the card's status. The browser-tab icon is
-  `static/icons/konbini-small.svg` (a 16 px grid) and `konbini.ico` (16/32/48 from it); `tests/test_pages.py` checks the files,
-  `/favicon.ico` and that the header mark is `konbini.svg`.
-- **Speed** (`tests/test_perf.py`): a note is read and parsed once per change of the file (`Store.load`, keyed by mtime, size
-  and inode; the importer's `scan()` also keeps what it made of each note, `fresh=True` ignores that, as the drift check does;
-  `Timeline.read_changed` is vaultkit's `read_notes` over the same cache). `events` has indexes on `(card, ts)`, `ts` and the
-  client id: a per-card query must not scan the table. Don't loop over `store.cards()` or `store.events(...)` inside a loop
-  over cards (pass the list in: `Kits.build(cards=)`), and don't run a `git log` per note (`Kits.vault_log` is one per HEAD).
-  Text answers over 1 KB are gzipped for a client that asks (`Handler.compressed`; a cached static file once).
-- Titles are `shell.title(ROOM, what)` with the nav's page names; a 404 is `shell.not_found` inside the header and
-  tabs; `/offline` is `shell.offline`. `tests/test_pages.py` covers these, the headers, icons, manifest and prefs.
-- **Colours on raised surfaces** (vaultkit 0.25): board.css's first rule gives Konbini's own panels (lanes, chips,
-  forms, the sheet, the calendar) the accents' panel shades and `--menu-fg`/`--menu-muted`; `--comment` is never a text
-  colour. `tests/test_contrast.py` measures every page (4.5:1; `KONBINI_CONTRAST_PALETTES=all` for all ten palettes).
-- `board.js` posts the board's forms with `fetch`. **The outbox** (`static/outbox.js`, shared with the service worker's
-  Background Sync): a move, field edit, note or new card that can't reach the board (offline, a TypeError, a 502-504)
-  waits in IndexedDB and shows on the page marked "waiting"; it is sent in order with what it was based on (the card
-  form's `o_<name>`, `o_board` included; `/api/order`'s `from`), so the board's 409 rule applies. A conflict or a
-  refusal waits for the person (Keep Mine / Use the Board's / Dismiss); 401 holds the queue; no credentials are
-  stored. New cards carry a `tmp-` slug until the board answers; a note or new card carries a `client_id` (kept on
-  its event, `store.event_by_client`) so a retry after a lost answer isn't saved twice. Tag changes aren't queued.
-  `tests/test_outbox.py`.
-
-## Rules
-
-- Modern HTML only; the board page stays under about 100 KB; no front-end build step.
+- Pages follow the Machiya style guide: `.segmented` for view switches (Group By), `.pills` for filters, `.chip` (outlined, in
+  `--chip`) for state, `.chip.link` for links that open something, `.tag` for topics, and the shared `.card` (tinted by its
+  column; Settings → Card Style: Tint, Solid, Left Bar, None). Headings are Title Case as written. Colours on raised surfaces
+  use the panel shades; `tests/test_contrast.py` measures every page at 4.5:1 (`KONBINI_CONTRAST_PALETTES=all` for all ten
+  palettes) and must stay green.
+- Modern HTML only; the board page stays small (about 100 KB for the sample vault); no front-end build step.
 - A new setting gets a `KANBAN_*` name, a default that is safe for a public install, and a row in `docs/settings.md`.
-- **Never commit personal details, preferences or settings.** This repository ships neutral defaults only. Hostnames, tailnet and network names, people's names, logins and emails, device names and team IDs, vault and folder names, tokens, and anyone's own choices or settings (themes and text size, rooms, `.env` and `local.*` files, the identity file `identity.toml`, `prefs.sqlite3` and other data) stay outside the repository: in settings, gitignored files or the deployment's own repository. Code, tests, fixtures, docs, comments, screenshots and commit messages use `example.com`, `example.ts.net`, "the user" and the sample vault. Check the diff for them before you push: once the repository is public, its history can't take them back.
-- Test against a throwaway clone of a vault repo, never a real one; run the image as uid 1000.
-- Commit messages start with `konbini: `. Run the tests before you push.
-- **Release tags are signed.** Make `vX.Y.Z` with the Machiya repository's `tools/release-tag` (annotated, SSH-signed, checked
-  against its allowed signers; see its `docs/release-signing.md`), not `git tag`, then push it with `main`. Commits stay
-  unsigned. The image build verifies the tag and refuses an unsigned one once a release has been signed.
+- American English in docs and UI text (the Machiya `docs/voice.md`): Title Case labels, short words.
+- **Never commit personal details or settings.** The repository ships neutral defaults. Hostnames, tailnet names, people's
+  names, logins and emails, device names, vault and folder names, tokens, and anyone's own choices or settings (`.env`
+  files, `identity.toml`, `prefs.sqlite3`, data) stay outside it. Code, tests, docs, comments, screenshots and commit
+  messages use `example.com`, `example.ts.net`, "the user" and the sample vault. Check your diff before you push.
+- Commit messages start with `konbini: `. Run the tests before you send a change.

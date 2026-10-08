@@ -10,3 +10,6 @@ repo/
 *.sqlite3-*
 # Machiya's identity file (logins, token hashes, the session key): never in the repository
 identity.toml
+
+# a maintainer's own notes for their coding agent (not shared)
+CLAUDE.local.md

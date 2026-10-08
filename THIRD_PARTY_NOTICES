@@ -3,7 +3,7 @@ Third-party software shipped with Konbini
 
 Konbini is licensed under the GNU Affero General Public License, version 3 or
 (at your option) any later version (see LICENSE). It ships or uses the
-following third-party software, each under its own licence.
+following third-party software, each under its own license.
 
 (`app/urlnorm.py` is the project's own code, not third-party: it is licensed like the rest of Konbini.)
 
@@ -63,7 +63,7 @@ SOFTWARE.
 
 The Mermaid bundle also contains other libraries (among them DOMPurify under
 Apache-2.0 OR MPL-2.0, lodash-es and cytoscape under MIT, and d3 under ISC).
-Their licence notices are kept in the bundle's "Bundled license information"
+Their license notices are kept in the bundle's "Bundled license information"
 comment in app/static/mermaid.min.js.
 
 --------------------------------------------------------------------------------
@@ -81,4 +81,4 @@ vaultkit (app/vaultkit/)
 --------------------------------------------------------------------------------
 
 vaultkit, the shared vault core and page shell of Machiya, is vendored from the
-Machiya repository and is under the same licence as Konbini (AGPL-3.0-or-later).
+Machiya repository and is under the same license as Konbini (AGPL-3.0-or-later).

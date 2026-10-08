@@ -2,7 +2,7 @@
 
 Konbini is a small, dependency-light Python web app (the standard library plus `markdown` and `pyyaml`). Bug reports,
 fixes and focused features are welcome. By contributing you agree that your work is licensed under the project's
-licence, AGPL-3.0-or-later (see `LICENSE`).
+license, AGPL-3.0-or-later (see `LICENSE`).
 
 ## Before you start
 

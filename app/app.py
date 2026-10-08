@@ -448,7 +448,8 @@ def make_handler(listener):
             """KANBAN_AUTH=hister: vaultkit.histerauth's decision for this request (a Result), worked out once. A page is
             a browser's top-level load; everything else (an API call, a fetch, the service worker) is never redirected."""
             if getattr(self, "_hres", None) is None:
-                self._hres = HISTERAUTH.resolve(self.headers, is_page=self.is_page(), path=self.path)
+                self._hres = HISTERAUTH.resolve(self.headers, is_page=self.is_page(), path=self.path,
+                                               client=self.client_address[0] if self.client_address else None)   # v0.29: the peer, for KANBAN_TRUSTED_PROXIES
             return self._hres
 
         def is_page(self):

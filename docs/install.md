@@ -144,8 +144,9 @@ vault, with Hister and SearXNG as optional search engines. Compared with the Qui
 
 - **Start from Machiya's compose:** `compose/compose.yml`, profile `konbini` (plus `compose/mirror.yml` for a shared
   vault copy). For the sample vault, `compose/demo-init` writes a `.env` and clones a bare copy. For your own, copy
-  `compose/.env.example` to `.env` and clone your vault into `KONBINI_REPO`: Konbini needs its own read-write clone
-  with a reachable origin. The image builds from this repository's `app/`, expected at `../../konbini` from
+  `compose/.env.example` to `.env` and clone the stack's `vault.git` into `KONBINI_REPO`
+  (`git clone /srv/machiya/vault.git /srv/machiya/konbini-repo`): Konbini needs its own read-write clone with a
+  reachable origin. The image builds from this repository's `app/`, expected at `../../konbini` from
   `compose/` (or set `KONBINI_SRC`).
 - **Who may use it:** as in [Who can use it](access.md) (`KONBINI_AUTH`, `KONBINI_USERS`). The compose
   defaults to `KANBAN_AUTH=open` for the localhost demo and sets `KANBAN_ALLOWED_HOSTS=konbini`, the name the other

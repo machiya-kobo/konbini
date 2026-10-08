@@ -65,6 +65,14 @@ r = pm("stream", "one", "Release 1.0"); assert seen[-1][2] == {"stream": "Releas
 r = pm("goal", "one", "-"); assert seen[-1][2] == {"goal": ""}, seen
 r = pm("due", "one", "2026-12-01"); assert seen[-1][2] == {"due": "2026-12-01"}, seen
 r = pm("new", "A card", "--area", "tools", "--summary", "s"); assert seen[-1][:3] == ("POST", "/api/cards", {"title": "A card", "area": "tools", "board": "backlog", "summary": "s"}), seen
+r = pm("new", "B card", "--area", "tools", "--description", "Why.", "--stream", "Lanterns")
+assert seen[-1][2] == {"title": "B card", "area": "tools", "board": "backlog", "summary": "", "description": "Why.", "stream": "Lanterns"}, seen
+r = pm("describe", "one", "New words"); assert seen[-1][:3] == ("PATCH", "/api/cards/one", {"description": "New words"}), seen
+r = pm("describe", "one", "-"); assert seen[-1][2] == {"description": ""}, seen
+r = pm("area", "one", "crafts"); assert seen[-1][2] == {"area": "crafts"}, seen
+r = pm("archive", "one"); assert seen[-1][2] == {"board": "archived"}, seen
+r = pm("drop", "one", "not this year"); assert seen[-1][2] == {"board": "archived", "outcome": "wontdo", "reason": "not this year"}, seen
+r = pm("drop", "one"); assert seen[-1][2] == {"board": "archived", "outcome": "wontdo", "reason": ""}, seen
 r = pm("claim", "one"); assert seen[-1][:2] == ("POST", "/api/cards/one/claim"), seen
 r = pm("kit", "one"); assert r.stdout == "# kit\n", r
 

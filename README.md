@@ -11,7 +11,7 @@ Konbini (コンビニ, "convenience store") is the project board for Machiya and
 <p align="center"><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a><br>Manage your projects</p>
 <table>
   <tr>
-    <td align="center" width="33%"><a href="docs/screenshots/konbini-card-light.png"><img src="docs/screenshots/konbini-card-light.png" alt="A card's page in the light theme: column buttons, its stream, goal, due date and the card it unblocks" width="100%"></a><br>Open a card</td>
+    <td align="center" width="33%"><a href="docs/screenshots/konbini-card-light.png"><img src="docs/screenshots/konbini-card-light.png" alt="A card's page in the light theme: column buttons, Archive and Won't do, its description and the editable fields" width="100%"></a><br>Open a card</td>
     <td align="center" width="33%"><a href="docs/screenshots/konbini-review-dark.png"><img src="docs/screenshots/konbini-review-dark.png" alt="The weekly review in the dark theme: WIP by area, cards blocked a week or more, and stale cards" width="100%"></a><br>Review your week</td>
     <td align="center" width="33%"><a href="docs/screenshots/konbini-kit-light.png"><img src="docs/screenshots/konbini-kit-light.png" alt="The writing kit for a finished sample project in the light theme: dates, facts and the post's front matter" width="100%"></a><br>Write up a finished project</td>
   </tr>
@@ -23,6 +23,8 @@ Every screenshot uses the sample vault: a paper-lantern workshop and a trip to K
 - **Your notes are the board.** A note whose `status:` is a column (backlog, ready, wip, blocked, done, archived) is
   a card.
 - **Git keeps the history.** Konbini commits its edits to your vault. Its database is only a cache.
+- **Describe it on the card.** The description is the text under your note's title; edit it in Konbini or Obsidian.
+- **Close it out.** Archive a card, or mark it won't do with a reason.
 - **Installs on your phone** from the browser's menu, like an app.
 - **Offline support.** Changes wait on your device and go out when you're back on The Internet. If someone changed the
   card meanwhile, you pick which version stays.

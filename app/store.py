@@ -402,6 +402,14 @@ class Store:
             rows = self.db.execute(sql, args).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def closeout(self, slug):
+        """How an archived card was closed: {"outcome": "wontdo" or "", "reason": text, "ts": when} from the move
+        into Archived (the newest one), or None when no such move is known (a note archived by hand)."""
+        for ev in self.events(card=slug, limit=200, etype="move"):
+            if ((ev.get("changes") or {}).get("board") or [None, None])[1] == "archived":
+                return {"outcome": ev.get("outcome") or "", "reason": ev.get("reason") or "", "ts": ev.get("ts") or ""}
+        return None
+
     # -- links (link rot) ---------------------------------------------
 
     def link(self, url):

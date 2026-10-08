@@ -12,7 +12,7 @@ from vaultkit import palettes  # noqa: E402
 
 PAGES = ["/", "/now", "/review", "/p/lantern", "/p/lantern-festival-kit", "/p/washi-paper-tests/kit", "/posts",
          "/calendar", "/roundup?period=month", "/streams", "/streams/Lanterns", "/goals", "/timeline", "/deps",
-         "/search?q=lantern", "/archived", "/share", "/settings"]
+         "/search?q=lantern", "/archived", "/share", "/settings", "/p/old-lantern-restoration"]
 PHONE_PAGES = ["/", "/p/lantern", "/calendar"]
 WHICH = os.environ.get("KONBINI_CONTRAST_PALETTES", "")
 PALETTES = list(palettes.PALETTES) if WHICH == "all" else (WHICH.split(",") if WHICH else ["tokyo-night", "solarized"])
@@ -59,6 +59,7 @@ try:
                     for path in pages:
                         page.goto(BASE + path)
                         page.wait_for_timeout(150)
+                        page.evaluate("document.querySelectorAll('details').forEach(d => { d.open = true; })")   # Won't do, More, Details
                         for what, got, need in page.evaluate(AUDIT):
                             failures.append("%s %s %s %s: %s %.2f < %g" % (palette, theme, viewport["width"], path, what, got, need))
                         if path == "/" and viewport["width"] == 1280:          # the action sheet and the outbox badge

@@ -19,7 +19,11 @@
   pm next <slug> "<next action>"
   pm block <slug> "<reason>"       move to blocked with a reason
   pm log <slug> "<message>"        add an event to the card's history
-  pm new "<title>" --area A [--board backlog] [--summary S]
+  pm describe <slug> "<text>"      set the description (the text under the note's title), or - to clear it
+  pm area <slug> <area>            move the card to another swimlane (an area that exists)
+  pm archive <slug>                take the card off the board; the note stays
+  pm drop <slug> ["<reason>"]      close it as won't do (archived, kept out of Posts), with a reason
+  pm new "<title>" --area A [--board backlog] [--summary S] [--description D] [--stream S]
   pm tag <slug> +topic/x -topic/y
   pm claim <slug>                  mark the card as being worked on (15 min)
 
@@ -207,6 +211,19 @@ def main():
     nw.add_argument("--area", required=True)
     nw.add_argument("--board", default="backlog", choices=COLUMNS)
     nw.add_argument("--summary", default="")
+    nw.add_argument("--description", default="")
+    nw.add_argument("--stream", default="")
+    de = sub.add_parser("describe")
+    de.add_argument("slug")
+    de.add_argument("text")
+    ar = sub.add_parser("area")
+    ar.add_argument("slug")
+    ar.add_argument("area")
+    ac = sub.add_parser("archive")
+    ac.add_argument("slug")
+    dr = sub.add_parser("drop")
+    dr.add_argument("slug")
+    dr.add_argument("reason", nargs="?", default="")
     tg = sub.add_parser("tag")
     tg.add_argument("slug")
     tg.add_argument("changes", nargs="*", help="+topic/x to add, -topic/y to remove")
@@ -251,6 +268,8 @@ def main():
                 print("%-10s %s" % (k, ", ".join(v) if isinstance(v, list) else v))
         if c.get("checks_total"):
             print("%-10s %d/%d" % ("checklist", c["checks_done"], c["checks_total"]))
+        if c.get("description"):
+            print("\n" + c["description"] + "\n")
         print("%-10s %s/p/%s" % ("url", URL, q(c["slug"])))
     elif a.cmd == "dep":
         card = get("/api/cards/" + q(a.slug))
@@ -314,8 +333,17 @@ def main():
     elif a.cmd == "log":
         print(json.dumps(write("POST", "/api/cards/%s/events" % q(a.slug), {"type": "comment", "body": a.message}), indent=1))
     elif a.cmd == "new":
-        print(json.dumps(write("POST", "/api/cards", {"title": a.title, "area": a.area, "board": a.board,
-                                                       "summary": a.summary}), indent=1))
+        body = {"title": a.title, "area": a.area, "board": a.board, "summary": a.summary}
+        body.update({k: v for k, v in (("description", a.description), ("stream", a.stream)) if v})
+        print(json.dumps(write("POST", "/api/cards", body), indent=1))
+    elif a.cmd == "describe":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"description": "" if a.text == "-" else a.text}), indent=1))
+    elif a.cmd == "area":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"area": a.area}), indent=1))
+    elif a.cmd == "archive":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"board": "archived"}), indent=1))
+    elif a.cmd == "drop":
+        print(json.dumps(write("PATCH", "/api/cards/" + q(a.slug), {"board": "archived", "outcome": "wontdo", "reason": a.reason}), indent=1))
     elif a.cmd == "tag":
         add = [t[1:] for t in a.changes if t.startswith("+")]
         remove = [t[1:] for t in a.changes if t.startswith("-")]

@@ -5,7 +5,8 @@ vault works as it is). SQLite is a cache and git is the backup: the board rebuil
 time. It is one of the Machiya services (see the Machiya repository: principles, contracts, vaultkit). The garden
 (Niwa) and the note reader (Kura) are separate services; `/garden/*` redirects to Niwa when `KANBAN_NIWA_URL` is set and
 `POST /api/garden/suggest` answers 308 to Niwa's `/api/suggest`. Konbini is the project-management layer: card pages show
-the project and link the note to Kura (read) and Obsidian (edit) when those are configured; they don't render it. Every
+the project and its description (the lead of its note) and link the note to Kura (read) and Obsidian (edit) when those
+are configured; they render nothing else of it. Every
 sister service is optional: with its setting unset, its links are simply off. `README.md` has the overview and the
 Quickstart, `docs/` the install guide, access, settings, vault layout and `pm` (`tools/quickstart-test` runs the
 marked blocks in README.md and `docs/install.md`; `tools/screenshots` remakes the README's pictures); `CONTRIBUTING.md`
@@ -55,7 +56,12 @@ the workflow.
   `status` in the API even though the notes use `status`, `waiting` and `priority: high|normal|low`. The writer accepts
   both names as input and writes only the new ones.
 - **Writes touch frontmatter lines only**, as line edits (never a YAML load and dump, which would reorder keys and
-  conflict with the next export), and never a note body, except that a stub note is written once, at creation. The
+  conflict with the next export), and never a note body, except **the description**: the text under the note's title
+  heading up to the next heading (`writer.lead_of` / `set_lead`; owner's decision, 2026-10-07, which replaced "the board
+  never writes a body"). A stub note is written once, at creation. The description can't contain a heading (it would
+  start a new section) or an open code fence (422); a line git would read as a conflict is indented. `merge_note` keeps
+  the board's description edit when upstream changed other parts of the note and drops it when both sides wrote the
+  description (the alert says so). The
   garden's fields (`publish`, `growth`, `confidence`, `garden_pin`) belong to Niwa; the board refuses `publish` (403).
   New `topic/*` and `area/*` tags are the maintainer's to create; an agent write that would add one is refused (409/403).
 - **Events** go to `.board/events/*.jsonl` and are never rewritten (Niwa reads older events from there too).
@@ -109,7 +115,8 @@ the workflow.
 - **The room key is `konbini`** (`modern.ROOM`): the shell, the icon files (`static/icons/konbini-*`; the old
   `kanban-*` names answer 301) and the browser's `localStorage` keys (`konbini.*`). The settings keep their `KANBAN_`
   prefix and `envfile.load_for("kanban")`, so existing installs need no change.
-- **A note is data, never code.** Card pages don't render notes; the writing kit quotes one, and its HTML goes
+- **A note is data, never code.** Card pages render only a card's description (Markdown, `[[links]]` as plain text); the
+  writing kit quotes the note; both go
   through `vaultkit.sanitize.clean`. Every HTML answer carries `shell.security_headers()` (`script-src 'self'`): no
   inline `<script>` and no `on…=` attribute in the board's markup; behaviour goes in `board.js`.
 - Titles are `shell.title(ROOM, what)` with the nav's page names; a 404 is `shell.not_found` inside the header and

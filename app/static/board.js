@@ -149,7 +149,8 @@ function formOp(form, action, data) {
     const comment = (body.comment || "").trim();
     if (!Object.keys(mine).length && !comment) return null;
     const slug = decodeURIComponent(m[1]);
-    return { kind: "form", slug, title: ($("h1.ntitle") || {}).textContent || slug, label: labelOf(mine, comment), body, mine };
+    return { kind: "form", slug, title: ($("h1.ntitle") || {}).textContent || slug,
+             label: labelOf(mine, comment, body.outcome ? { outcome: body.outcome, reason: (body.reason || "").trim() } : null), body, mine };
   }
   if (path === "/new" || path === "/share") {
     const url = get("url"), text = get("text");
@@ -158,7 +159,9 @@ function formOp(form, action, data) {
     const tmp = "tmp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     return { kind: "create", slug: tmp, tmp, title, label: "New card",
              body: { title, area: get("area") || "projects", board: "backlog",
-                     summary: path === "/share" ? [text, url].filter(Boolean).join(" ").slice(0, 300) : "",
+                     summary: path === "/share" ? [text, url].filter(Boolean).join(" ").slice(0, 300) : get("summary"),
+                     description: path === "/share" ? [text, url].filter(Boolean).join("\n\n") : get("description"),
+                     stream: path === "/share" ? "" : get("stream"), priority: path === "/share" ? "" : get("priority"),
                      confirm_new_tags: ["1", "true"].includes(get("confirm_new_tags")) } };
   }
   return null;
@@ -226,6 +229,7 @@ function recount() {
   }
 }
 function moveCard(card, to, quiet) {
+  if (to === "archived") { card.remove(); recount(); return; }     // the board shows no Archived column
   const lane = card.closest(".lane");
   const col = lane ? lane.querySelector(".col.col-" + to) : null;
   if (!col && !quiet) { location.reload(); return; }
@@ -252,9 +256,11 @@ function openSheet(card) {
     + '<div class="prio">' + [["1", "P1"], ["2", "P2"], ["3", "P3"], ["", "no priority"]].map(([v, l]) =>
       '<button type="button" class="quiet" data-prio="' + v + '">' + l + '</button>').join("") + '</div>'
     + '<div class="acts"><button type="button" data-act="next">Edit next…</button>'
-    + '<button type="button" data-act="note">Add a note…</button>'
+    + '<button type="button" data-act="note">Add a comment…</button>'
     + (/^tmp-/.test(d.slug) ? "" : '<a href="/p/' + encodeURIComponent(d.slug) + '">Open card</a>'
       + '<a href="/p/' + encodeURIComponent(d.slug) + '/kit">Writing kit</a>')
+    + (d.board !== "archived" && !/^tmp-/.test(d.slug) ? '<button type="button" data-act="archive">Archive</button>'
+      + '<button type="button" data-act="wontdo">Won’t do…</button>' : "")
     + (d.garden ? '<a href="' + esc(d.garden) + '">Read in the Garden</a>' : "")
     + (d.kura ? '<a href="' + esc(d.kura) + '">View in Kura</a>' : "")
     + (vault ? '<a href="obsidian://open?vault=' + encodeURIComponent(vault) + '&file=' + encodeURIComponent(d.note) + '">Open in Obsidian</a>' : "") + '</div>';
@@ -283,7 +289,7 @@ function openSheet(card) {
     };
   }
   $("[data-act=note]", sheet).onclick = async () => {
-    const v = prompt("A line for the card's history");
+    const v = prompt("A comment for the card's history");
     if (v === null || !v.trim()) return;
     try {
       const how = await attempt(cardOp(d, {}, v.trim()),
@@ -292,6 +298,25 @@ function openSheet(card) {
       if (how === "queued") markCard(card, "waiting"); else toast("Note added");
     } catch (e) { notSaved(e); }
   };
+  for (const b of $$("[data-act=archive], [data-act=wontdo]", sheet)) {
+    b.onclick = async () => {
+      const wont = b.dataset.act === "wontdo";
+      let reason = "";
+      if (wont) {
+        reason = prompt("Why won’t you do this? (optional)");
+        if (reason === null) return;
+        reason = reason.trim();
+      }
+      const extra = wont ? { outcome: "wontdo", reason } : null;
+      try {
+        const how = await attempt(cardOp(d, { board: "archived" }, "", extra),
+                                  () => send("PATCH", "/api/cards/" + encodeURIComponent(d.slug), Object.assign({ board: "archived" }, extra)));
+        sheet.close();
+        moveCard(card, "archived", how === "queued");
+        if (how !== "queued") { toast(wont ? "Closed as won’t do" : "Archived"); await refreshRev(); }
+      } catch (e) { notSaved(e); }
+    };
+  }
   $("[data-act=next]", sheet).onclick = async () => {
     sheet.close();
     const el = card.querySelector(".next");
@@ -332,18 +357,20 @@ const COLNAME = Object.fromEntries(COLS.concat([["archived", "Archived"]]));
 let outbox = [];
 let flushing = false, signinNeeded = false, outDlg = null;
 
-function labelOf(mine, comment) {
-  const parts = Object.entries(mine).map(([k, v]) => k === "board" ? "Move to " + (COLNAME[v] || v)
+function labelOf(mine, comment, extra) {
+  if (extra && extra.outcome === "wontdo") return "Won’t do" + (extra.reason ? ": " + extra.reason : "");
+  const parts = Object.entries(mine).map(([k, v]) => k === "board" ? (v === "archived" ? "Archive" : "Move to " + (COLNAME[v] || v))
     : k === "priority" ? (v ? "P" + v : "No priority") : k === "next" ? "Next: " + v : "Edit " + k.replace("_", " "));
-  if (comment) parts.push("Note: " + comment);
+  if (comment) parts.push("Comment: " + comment);
   return parts.join(" · ");
 }
 // A change to a card, with what the page showed for each field (o_<name>: the board refuses it if that changed since)
-function cardOp(d, fields, comment) {
+function cardOp(d, fields, comment, extra) {
   const body = {}, mine = {};
   for (const [k, v] of Object.entries(fields)) { body[k] = String(v ?? ""); body["o_" + k] = String(d[k] ?? ""); mine[k] = body[k]; }
   if (comment) body.comment = comment;
-  return { kind: "form", slug: d.slug, title: d.title || d.slug, label: labelOf(mine, comment), body, mine };
+  if (extra) Object.assign(body, extra);                       // how a card was closed (outcome, reason)
+  return { kind: "form", slug: d.slug, title: d.title || d.slug, label: labelOf(mine, comment, extra), body, mine };
 }
 async function busy() {
   try { return !!OB && (await OB.all()).some((o) => o.state !== "refused"); } catch (e) { return false; }

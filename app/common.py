@@ -137,10 +137,12 @@ def event_line(ev):
     ch = ev.get("changes") or {}
     if what == "move" and "board" in ch:
         what = "moved %s -> %s" % (ch["board"][0] or "-", ch["board"][1])
+        if ev.get("outcome") == "wontdo":
+            what += " (won't do%s)" % (": " + ev["reason"] if ev.get("reason") else "")
     elif what == "edit":
         what = "edited " + ", ".join(k for k in ch)
     elif what == "comment":
-        what = "note: " + ev.get("body", "")
+        what = "comment: " + ev.get("body", "")
     elif what == "create":
         what = "created in " + ev.get("board", "")
     who = ev.get("agent") if ev.get("agent") not in (None, "web", "api") else ev.get("actor", "")

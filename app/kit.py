@@ -14,6 +14,7 @@ import urllib.request
 from urllib.parse import quote, urlsplit
 
 from store import VAULT, _str, commit_filter
+from writer import lead_of
 from timeline import LINK_RE, clean, local_date, log_rows, parse_date, system_host
 from vaultkit import sanitize
 
@@ -299,7 +300,8 @@ class Kits:
         started, finished, approx = self.dates(card, fm, log, events)
         days = (finished - started).days if started and finished else None
 
-        overview = paragraphs(section_text(secs, r"^overview$") or (secs[0][2] if secs and secs[0][0] == 0 else ""))
+        # the "## Overview" section, else the description (the lead under the title), else the text before any heading
+        overview = paragraphs(section_text(secs, r"^overview$") or lead_of(text) or (secs[0][2] if secs and secs[0][0] == 0 else ""))
         if not overview:
             for level, title, txt in secs:
                 if level >= 2 and title.lower() not in ("log", "status", "related notes") and paragraphs(txt, 1):
@@ -623,7 +625,7 @@ class Kits:
 
     def posts(self):
         """Cards for the /posts page: ready to write (Done or archived, no
-        published post), in progress (a post status on an unfinished card),
+        published post; not one closed as "won't do"), in progress (a post status on an unfinished card),
         and published."""
         ready, progress, published, skipped = [], [], [], []
         for c in self.store.cards():
@@ -635,6 +637,8 @@ class Kits:
                 skipped.append({"card": c})
                 continue
             finished_col = c.get("board") in ("done", "archived")
+            if c.get("board") == "archived" and status == "none" and (self.store.closeout(c["slug"]) or {}).get("outcome") == "wontdo":
+                continue                    # closed without doing it: nothing to write up
             if finished_col or status != "none":
                 k = self.build(c, remote=False)
                 entry = {"card": c, "finished": k["finished"], "approx": k["finished_approx"], "size": k["size"],

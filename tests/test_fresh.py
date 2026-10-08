@@ -13,7 +13,7 @@ html = modern.new_form(["docs", "ops", "tools"])
 assert '<select name="area"><option value="docs">docs</option><option value="ops">ops</option><option value="tools">tools</option></select>' in html, html
 assert "confirm_new_tags" not in html and 'type="text" name="area"' not in html
 html = modern.new_form([])
-assert 'type="text" name="area"' in html and 'name="confirm_new_tags" value="1"' in html and "<select" not in html, html
+assert 'type="text" name="area"' in html and 'name="confirm_new_tags" value="1"' in html and '<select name="area"' not in html, html
 
 # the kit taxonomy
 class S:  # the bits of Store that Kits.taxonomy touches
@@ -80,7 +80,7 @@ def run(repo_setup):
 
 # empty repo: a first-lane box, a first card, and the log says each local-only fact once, with no git failures
 out, log = run(lambda d: None)
-assert 'type="text" name="area"' in out["form"] and "<select" not in out["form"], out["form"]
+assert 'type="text" name="area"' in out["form"] and '<select name="area"' not in out["form"], out["form"]
 assert out["post"] == 302 and out["cards"] == ["first-card"], out
 assert not re.search(r"git .* failed", log), log
 assert log.count("no commits yet in the vault repo") == 1 and log.count("no origin remote: commits stay local") == 1, log
@@ -90,6 +90,7 @@ def vault(d):
     for i, area in enumerate(("tools", "ops", "docs", "projects")):
         open("%s/N%d.md" % (d, i), "w").write("---\ntitle: N%d\ntags:\n  - type/reference\n  - area/%s\n---\n" % (i, area))
 out, log = run(vault)
-assert re.findall(r'<option value="([^"]+)"', out["form"]) == ["docs", "ops", "projects", "tools"], out["form"]
+area_select = re.search(r'<select name="area">(.*?)</select>', out["form"]).group(1)
+assert re.findall(r'<option value="([^"]+)"', area_select) == ["docs", "ops", "projects", "tools"], out["form"]
 assert "confirm_new_tags" not in out["form"]
 print("fresh tests: all passed")

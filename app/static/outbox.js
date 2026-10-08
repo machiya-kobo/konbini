@@ -15,7 +15,8 @@
 (function () {
   "use strict";
   const DB = "konbini-outbox", STORE = "ops", LOCK = "konbini-outbox", SYNC = "konbini-outbox";
-  const FIELDS = ["board", "next", "priority", "blocked_by", "dependsOn", "stream", "goal", "due", "post", "post_url"];
+  const FIELDS = ["board", "title", "summary", "description", "area", "next", "priority", "blocked_by", "dependsOn", "stream", "goal",
+    "due", "post", "post_url"];
   let dbp = null;
 
   function open() {
@@ -64,7 +65,7 @@
   // -- one entry to the board ------------------------------------------------------------------------------------
   function norm(field, value) {
     if (Array.isArray(value)) value = value.join(", ");
-    value = value === null || value === undefined ? "" : String(value);
+    value = value === null || value === undefined ? "" : String(value).replace(/\r\n/g, "\n");
     return field === "post" && !value ? "none" : value;
   }
   // What the board's error page says (shell.message: <main class="msg">…<p>why</p>), without a DOM (the worker has none)

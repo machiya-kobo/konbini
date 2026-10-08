@@ -11,9 +11,13 @@ machine), and follows no redirects meanwhile. An address without a scheme is htt
 ```sh
 pm ls --area tools            # cards (also --board, --machine, --topic, --tag, --json)
 pm show <slug>                # one card
-pm new "Title" --area tools --summary "one line"
+pm new "Title" --area tools --summary "one line" --description "why" --stream "Release 1.0"
+pm describe <slug> "the text under the title"   # "-" clears it
+pm area <slug> crafts                    # another swimlane (an area that exists)
 pm move <slug> wip            # backlog | ready | wip | blocked | done | archived
 pm next <slug> "the next concrete action"
+pm archive <slug>                        # off the board; the note stays
+pm drop <slug> "not this year"           # won't do: archived, with a reason, kept out of Posts
 pm block <slug> "waiting on a part"      # moves to blocked with a reason
 pm log <slug> "a note for the card's history"
 pm tag <slug> +topic/a -topic/b          # existing tags only

@@ -67,6 +67,75 @@ class WriteError(Exception):
         self.status, self.message, self.extra = status, message, extra
 
 
+# -- the description: the lead of a note's body ------------------------------------------------------------------
+# A card's description is the text under the note's title heading, up to the next heading of any level (or, in a
+# note with no title heading, the text before the first heading). It is the one part of the body the board writes;
+# everything below it is the note's, and stays as it is. A leading "> Stub created by Konbini" line (the old stubs)
+# is not part of it.
+
+HEADING_RE = re.compile(r"^#{1,6}[ \t]+\S")
+FENCE_RE = re.compile(r"^(```|~~~)")
+STUB_RE = re.compile(r"^>[ \t]*Stub created by Konbini\.[^\n]*$", re.M)
+DESCRIPTION_MAX = 20000
+
+
+def lead_span(text):
+    """(start, end, titled) character offsets of the description in a whole note: `start` just after the title
+    heading's line (or at the body's start when there is none), `end` where the next heading starts (or the end of
+    the text); `titled` is whether a title heading precedes it."""
+    m = FRONT_RE.match(text)
+    pos = m.end() if m else 0
+    start, titled, fence = pos, False, False
+    first = True
+    for line in text[pos:].splitlines(keepends=True):
+        bare = line.rstrip("\r\n")
+        if FENCE_RE.match(bare):
+            fence = not fence
+        elif not fence and HEADING_RE.match(bare):
+            if first and bare.startswith("# ") and not titled:
+                titled, start = True, pos + len(line)
+                pos += len(line)
+                first = False
+                continue
+            return start, pos, titled
+        if bare.strip():
+            first = False
+        pos += len(line)
+    return start, pos, titled
+
+
+def lead_of(text):
+    """The description in a whole note, trimmed: "" when there isn't one."""
+    start, end, _ = lead_span(text)
+    return STUB_RE.sub("", text[start:end].replace("\r\n", "\n")).strip()
+
+
+def clean_description(value):
+    """A description as the board will write it: text, bounded. A line git would read as a merge conflict (a bare
+    =======, or one starting <<<<<<< or >>>>>>>) is indented one space, so pasted text always saves."""
+    if value is not None and not isinstance(value, str):
+        raise WriteError(422, "description must be text")
+    text = CONTROL_CHARS.sub(lambda m: m.group(0) if m.group(0) in "\n\t" else " ", (value or "").replace("\r\n", "\n").replace("\r", "\n")).strip()
+    if len(text) > DESCRIPTION_MAX:
+        raise WriteError(422, "the description is too long (%d characters at most)" % DESCRIPTION_MAX)
+    return CONFLICT_RE.sub(lambda m: " " + m.group(0), text)
+
+
+def set_lead(text, description):
+    """The whole note with its description replaced (inserted under the title heading when there is none). Raises
+    a 422 when the text can't be read back as written: a heading would start a new section, an open code fence would
+    swallow the rest of the note."""
+    start, end, titled = lead_span(text)
+    tail = text[end:]
+    block = ("\n" if titled else "") + description + "\n" if description else ("\n" if titled and tail.strip() else "")
+    if tail.strip() and description:
+        block += "\n"
+    out = text[:start] + block + tail
+    if lead_of(out) != description:
+        raise WriteError(422, "a description can't have headings (a line starting with #) or an unclosed code fence")
+    return out
+
+
 # -- frontmatter line editing ---------------------------------------------
 
 def yaml_scalar(value):
@@ -138,9 +207,10 @@ def note_tags(text):
 
 def merge_note(base, ours, theirs):
     """Three-way merge of a note the board edited (ours) with an upstream edit
-    (theirs). The board only writes frontmatter, so the body is always theirs;
-    a key the board changed takes the board's value, every other key keeps
-    upstream's, and tags merge as add/remove sets. Returns the merged text, or None if it can't be merged safely."""
+    (theirs). The board writes frontmatter and the description (the lead of the body), so the rest of the body is
+    always theirs; a key the board changed takes the board's value, every other key keeps upstream's, tags merge as
+    add/remove sets, and the board's description edit is kept unless upstream changed the description too.
+    Returns the merged text, or None if it can't be merged safely."""
     fb, fo, ft = note_front(base) or {}, note_front(ours), note_front(theirs)
     if fo is None or ft is None:
         return None
@@ -157,7 +227,13 @@ def merge_note(base, ours, theirs):
     tags = [t for t in tt if t not in removed]
     tags += [t for t in added if t not in tags]
     try:
-        return edit_front(theirs, scalars, tags if tags != tt else None)
+        merged = edit_front(theirs, scalars, tags if tags != tt else None)
+        db, do, dt = lead_of(base), lead_of(ours), lead_of(theirs)
+        if do != db and do != dt:
+            if dt != db:
+                return None             # both sides wrote the description: don't guess
+            merged = set_lead(merged, do)
+        return merged
     except (WriteError, yaml.YAMLError):
         return None
 
@@ -276,7 +352,27 @@ class Writer:
             scalars, changes = {}, {}
             for key in ("next", "blocked_by", "summary", "title", "stream", "goal"):
                 if key in fields:
-                    scalars[key] = str(fields[key] or "").strip()
+                    scalars[key] = one_line(fields[key], {"title": 120, "summary": 500, "next": 500, "blocked_by": 300}.get(key, 120))
+            if "title" in scalars and not scalars["title"]:
+                raise WriteError(422, "title is required")
+            area_change = None
+            if "area" in fields:         # the swimlane: swap the card's area/* tag (an existing one, unless allowed to make lanes)
+                want = str(fields.pop("area") or "").strip().replace("area/", "")
+                have = card.get("area") or ""
+                if want and want != have:
+                    area_change = [have, want]
+                    fields["tags_add"] = list(fields.get("tags_add") or []) + ["area/" + want]
+                    if have and have != "projects" and "area/" + have in note_tags(text):
+                        fields["tags_remove"] = list(fields.get("tags_remove") or []) + ["area/" + have]
+            description = None
+            if "description" in fields:
+                description = clean_description(fields["description"])
+            outcome, reason = "", ""
+            if "outcome" in fields:      # how a card was closed: "wontdo" (archived without doing it), with an optional reason
+                outcome = str(fields["outcome"] or "").strip().lower()
+                if outcome not in ("", "wontdo"):
+                    raise WriteError(422, "outcome must be wontdo")
+                reason = one_line(fields.get("reason"), 300)
             if "due" in fields:
                 due = str(fields["due"] or "").strip()
                 try:
@@ -314,6 +410,8 @@ class Writer:
 
             tags = note_tags(text)
             new_tags = list(tags)
+            if area_change:
+                changes["area"] = area_change
             if "board" in fields:
                 col = str(fields["board"]).lower()
                 if col not in COLUMNS:
@@ -331,6 +429,11 @@ class Writer:
                         scalars["completedDate"] = None               # reopened
                 if col != "blocked" and "blocked_by" not in fields and card.get("blocked_by"):
                     scalars["blocked_by"] = None
+            if outcome and not (changes.get("board") and changes["board"][1] == "archived"):
+                raise WriteError(422, "wontdo applies when a card is archived")
+            old_description = lead_of(text)
+            if description is not None and description != old_description:
+                changes["description"] = [old_description[:120], description[:120]]
             add = [t for t in fields.get("tags_add") or [] if t not in new_tags]
             remove = set(fields.get("tags_remove") or [])
             if add:
@@ -343,7 +446,8 @@ class Writer:
                         and (old or None) != (value or None):
                     changes[key] = [old, value]
             if new_tags == tags and all(card.get(k) == v for k, v in scalars.items()
-                                        if k in ("board", "rank")) and not (set(scalars) - {"board", "rank"}):
+                                        if k in ("board", "rank")) and not (set(scalars) - {"board", "rank"}) \
+                    and "description" not in changes:
                 return card
             scalars["updated"] = datetime.date.today().isoformat()
             # Written under the new names (the Machiya frontmatter schema): status, waiting, priority as
@@ -357,6 +461,8 @@ class Writer:
             if out.get("priority"):
                 out["priority"] = PRIORITY_NAMES[out["priority"]]
             text2 = edit_front(text, out, new_tags if new_tags != tags else None)
+            if "description" in changes:
+                text2 = set_lead(text2, description)
             self.write_file(card["path"], text2)
             card2 = self.reindex(card["path"], slug)
 
@@ -365,7 +471,7 @@ class Writer:
             if add or remove:
                 ev_changes["tags"] = {"add": add, "remove": sorted(remove)}
             if ev_changes:
-                self.event(slug, etype, actor, agent, changes=ev_changes)
+                self.event(slug, etype, actor, agent, changes=ev_changes, outcome=outcome, reason=reason)
             summary = ("%s->%s" % (slug, changes["board"][1])) if "board" in changes else slug
             if ev_changes or "rank" in fields:
                 self.touch(slug, summary)
@@ -433,7 +539,7 @@ class Writer:
                     return self.store.card(done["card"])
             # Text that ends up in a note is one line of plain text: a newline in a summary could write a bare "=======" (a
             # Markdown heading underline, and a git conflict marker to the export, which then refused every batch).
-            for key in ("title", "summary", "area", "project"):
+            for key in ("title", "summary", "area", "project", "stream"):
                 if fields.get(key) is not None and not isinstance(fields.get(key), str):
                     raise WriteError(422, "%s must be text" % key)
             for key in ("topics", "machines"):
@@ -442,6 +548,8 @@ class Writer:
                     raise WriteError(422, "%s must be a list of text" % key)
             title = one_line(fields.get("title"), 120)
             summary = one_line(fields.get("summary"), 500)
+            stream = one_line(fields.get("stream"), 120)
+            description = clean_description(fields.get("description")) or summary    # the lead; the summary when none is given
             fields = dict(fields, summary=summary)
             if not title:
                 raise WriteError(422, "title is required")
@@ -479,18 +587,25 @@ class Writer:
                 lines.append("priority: " + PRIORITY_NAMES[int(pr)])
             if col == "wip":
                 lines.append("started: " + today)
+            if stream:
+                lines.append("stream: " + yaml_scalar(stream))
             lines += ["summary: " + yaml_scalar(summary),
                       "created_by: " + yaml_scalar("%s (%s)" % (actor, agent)),
-                      "updated: " + today, "publish: false", "---", "",
-                      "# " + title, "", "> Stub created by Konbini. Flesh out as needed.", "",
-                      "## Overview", "", summary, "", "## Next Steps", "", "- [ ] ", "",
-                      "## Related Notes", "", "- ", ""]
+                      "updated: " + today, "publish: false", "---", "", "# " + title, ""]
+            note_text = "\n".join(lines)
             os.makedirs(os.path.dirname(self.full(rel)), exist_ok=True)
-            self.write_file(rel, "\n".join(lines))
+            self.write_file(rel, set_lead(note_text, description) if description else note_text)
             card = self.reindex(rel, slug)
             self.event(slug, "create", actor, agent, path=rel, board=col, client_id=cid)
             self.touch(slug, slug + " (new)")
             return card
+
+    def description(self, card):
+        """The card's description (the lead of its note), or ""."""
+        try:
+            return lead_of(self.read(card["path"]))
+        except OSError:
+            return ""
 
     def reindex(self, rel, slug):
         card = parse_note(self.read(rel), rel)
@@ -630,7 +745,7 @@ class Writer:
             else:
                 text = merge_note(b, o, t)
                 if text is None:
-                    notes.append("%s: couldn't merge frontmatter; kept upstream" % rel)
+                    notes.append("%s: couldn't merge the frontmatter or description; kept upstream" % rel)
                 else:
                     merged[rel] = text
         self.git("reset", "-q", "--hard", upstream)

@@ -3,6 +3,17 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.16.0
+
+Adding, editing and closing cards:
+- **Descriptions.** A card has a description: the text under its note's title, up to the next heading. The card page shows it, and the New Card form, the card form, the API (`description`) and `pm` write it. Kits use it as the overview. This is the one part of a note's body the board writes (it can't contain headings, and everything below it is left alone); if you and the board both change it between two pulls, the board keeps yours.
+- **One card page.** The read-only table and the form that repeated it are one page. Title, Summary, Description, Stream, Area, Priority, Next and Due are up front; Waiting on, Depends on, Goal (and Post and Post URL, once a card is finished) sit under More. "Add note" is Comment. Area changes a card's swimlane to one that exists.
+- **Closing out.** Archive and Won't do (with an optional reason) are on the card page and in the phone sheet, offline too. A closed card shows how it was closed and can be moved back to a column. Cards closed as won't do stay out of Posts. `pm archive` and `pm drop`.
+- **New Card details.** Summary, Stream, Priority and Description when you add a card, right on the board.
+- **Projects.** A stream is a project, and the pages say so: Group By offers Stream (Project) in Settings and the filter bar, and a stream's chip links to its page.
+- API, all additive: `GET /api/cards/<slug>` has `description`; `PATCH` takes `description`, `area`, and `outcome: "wontdo"` with `reason` when archiving; `POST /api/cards` takes `description` and `stream`. `pm describe`, `pm area` and `--description` and `--stream` on `pm new`.
+- Fixes: a multi-line field no longer looks "changed since you opened this page" when a browser posts its line breaks as CRLF.
+
 ## 0.15.5
 
 - Machine change logs kept as monthly notes (`Systems/Change Logs/<host> YYYY-MM.md`, with `host:` in the frontmatter) are named after the machine, not the month note, in roundups, the calendar, the digest (one entry per host per day) and a writing kit's machine changes. The older one-note-per-host tables work as before, and a host note's list of links to its months adds nothing.

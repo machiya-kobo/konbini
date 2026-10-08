@@ -54,7 +54,8 @@ def start(signin=False):
                    KANBAN_BOARD_URL="http://127.0.0.1:%d" % port)
     open(d + "/server.py", "w").write(SERVER)
     proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                            stdout=subprocess.DEVNULL,
+                            stderr=open(d + "/server.log", "w"))      # a file: an unread pipe fills up and stalls the board
     procs.append(proc)
     for _ in range(200):
         try:
@@ -65,7 +66,7 @@ def start(signin=False):
                 break
             time.sleep(0.05)
     proc.kill()
-    raise SystemExit("board did not start: " + proc.stderr.read().decode()[-500:])
+    raise SystemExit("board did not start: " + open(d + "/server.log").read()[-500:])
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -98,7 +99,12 @@ def agent_patch(port, slug, fields):
 def until(what, check, timeout=20):
     end = time.time() + timeout
     while time.time() < end:
-        got = check()
+        try:
+            got = check()
+        except Exception as exc:                 # the board reloads its page after a send: look again on the new one
+            if "Execution context was destroyed" not in str(exc):
+                raise
+            got = None
         if got:
             return got
         time.sleep(0.2)
@@ -316,6 +322,27 @@ try:
         evs = json.loads(call(port, "GET", "/api/cards/echo/events")[2])
         evs = evs if isinstance(evs, list) else evs.get("events", [])
         assert [e.get("body") for e in evs].count("said once") == 1, evs
+
+        # -- closing cards offline: Won't do keeps its reason; Archive from the sheet takes the card off the board at once
+        go(BASE + "/p/delta")
+        page.wait_for_timeout(2000)                                  # a send's own reload (1.5 s) settles before the lights go out
+        ctx.set_offline(True)
+        page.click("details.wontdo summary")
+        page.fill("details.wontdo input[name=reason]", "not now")
+        page.click("details.wontdo button[type=submit]")
+        until("won't do waiting", lambda: badge() == "1 waiting" and "Won" in page.inner_text(".waitmsg"))
+        page.goto(BASE + "/")                                        # the board's offline copy, with the waiting change marked
+        page.click('.card[data-slug="bravo"] .more')
+        page.click('dialog.sheet [data-act=archive]')
+        until("bravo off the board", lambda: not page.query_selector('.card[data-slug="bravo"]') and badge() == "2 waiting")
+        ctx.set_offline(False)
+        page.evaluate("window.dispatchEvent(new Event('online'))")
+        until("both closed", lambda: card(port, "bravo")["board"] == "archived" and card(port, "delta")["board"] == "archived")
+        evs = json.loads(call(port, "GET", "/api/cards/delta/events")[2])
+        evs = evs if isinstance(evs, list) else evs.get("events", [])
+        assert any(e.get("outcome") == "wontdo" and e.get("reason") == "not now" for e in evs), evs
+        assert "outcome" not in " ".join(json.dumps(e) for e in json.loads(call(port, "GET", "/api/cards/bravo/events")[2]) if isinstance(e, dict) and e.get("type") == "move" and e["changes"]["board"][1] == "archived"), "Archive is not Won't do"
+        until("queue empty", lambda: page.evaluate("KonbiniOutbox.all().then(o => o.length)") == 0)
 
         # -- online, nothing waiting: a change goes straight to the board as before ------------------------------------
         go(BASE + "/")

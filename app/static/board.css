@@ -12,7 +12,8 @@ main.msg { max-width: 640px; }
    panels; tests/test_contrast.py measures every page in Chromium. */
 .lane, .card, .chip, .topic, .checks, .claim, .when, .stage, .col-badge, .colchip, .lanecount, .colcount,
 .coltabs button, .moves .mv, table.detail, .editform, .newform, .postform, .tagsec, table.cal td.day, .daylist li,
-.gtrack, .revjump a, .lim, .subnav a, .monthnav a, .typechips a, .fchip, dialog.sheet, .outboxbadge, .toast, .banner,
+.gtrack, .revjump a, .lim, .subnav a, .monthnav a, .typechips a, .fchip, dialog.sheet, .outboxbadge, .toast, .banner, .closed,
+.closeout summary, .newmore, .editform details.more,
 main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar input, button.quiet, .btn.quiet {
   --blue: var(--blue-panel); --orange: var(--orange-panel); --red: var(--red-panel); --yellow: var(--yellow-panel);
   --green: var(--green-panel); --teal: var(--teal-panel); --magenta: var(--magenta-panel); --cyan: var(--cyan-panel);
@@ -230,6 +231,34 @@ table.detail td { background: var(--hl); border-radius: 0 8px 8px 0; padding: 7p
 }
 .editform label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .editform .row { margin-left: 98px; }
+.editform textarea, .newform textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.45; }
+.editform label small, .newmore label small { grid-column: 2; color: var(--muted); font-size: 12px; }
+.editform details.more { display: grid; gap: 8px; }
+.editform details.more > summary, .newmore > summary, .closeout summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.editform details.more[open] > summary { margin-bottom: 4px; }
+.editform .row { margin-top: 2px; }
+
+/* closing a card: Archive, and Won't do with an optional reason */
+.closed { margin: 0 0 12px; padding: 9px 12px; border-radius: 10px; background: var(--hl); color: var(--fg); font-size: 14px; }
+.closed b { color: var(--yellow); }
+.closeout { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; margin: -6px 0 16px; }
+.closeout form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
+details.wontdo > summary { list-style: none; padding: 7px 14px; border-radius: 8px; background: var(--hl); color: var(--fg2); cursor: pointer; font-weight: 600; font-size: 13px; line-height: 1.2; }
+details.wontdo > summary::-webkit-details-marker { display: none; }
+details.wontdo[open] > summary { margin-bottom: 6px; }
+details.wontdo input[type=text] { width: min(320px, 70vw); }
+
+/* the card's description: the lead of its note */
+.desc { max-width: var(--measure); margin: 0 0 16px; }
+.desc > :first-child { margin-top: 0; }
+.desc > :last-child { margin-bottom: 0; }
+
+/* the New Card form's details */
+.newmore { flex: 1 0 100%; display: grid; gap: 8px; }
+.newmore label { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; }
+.newmore select { justify-self: start; min-width: 8em; }
+.newmore label small { margin-top: -4px; }
+.newform .newmore input[type=text], .newform .newmore textarea { width: 100%; max-width: 560px; box-sizing: border-box; }
 section.history h3 { color: var(--magenta); font-size: 14px; margin: 20px 0 6px; }
 ul.history { list-style: none; padding: 0; margin: 0 0 16px; }
 ul.history li { padding: 5px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
@@ -508,7 +537,8 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
   table.detail, table.detail tbody, table.detail tr, table.detail th, table.detail td { display: block; width: auto; }
   table.detail th { border-radius: 8px 8px 0 0; padding: 5px 12px 2px; }
   table.detail td { border-radius: 0 0 8px 8px; margin-bottom: 4px; }
-  .editform label { grid-template-columns: 1fr; gap: 4px; }
+  .editform label, .newmore label { grid-template-columns: 1fr; gap: 4px; }
+  .editform label small, .newmore label small { grid-column: 1; }
   .editform .row { margin-left: 0; }
   h1.ntitle, article.note .nhead h1 { font-size: 24px; }
   .moves .mv { flex: 1 0 auto; }

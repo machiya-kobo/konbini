@@ -17,7 +17,7 @@ w = Writer(st)
 c = w.create({"title": "Two", "area": "tools"}, "me", "test")
 assert os.path.exists("%s/%s/Projects/Two.md" % (d, VAULT)), os.listdir(d)
 text = open("%s/%s/Projects/Two.md" % (d, VAULT)).read()
-assert "[[Projects/Example" not in text and "[[" not in text and "## Related Notes" in text, text
+assert "[[Projects/Example" not in text and "[[" not in text and "\n# Two\n" in text, text
 w.update("one", {"board": "wip"}, "me", "test")
 assert "status: wip" in open("%s/%s/Projects/One.md" % (d, VAULT)).read()
 print("ok", VAULT)

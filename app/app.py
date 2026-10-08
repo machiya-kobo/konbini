@@ -824,21 +824,26 @@ def make_handler(listener):
                     # Only what you changed is saved: the form carries each field as it was drawn (o_<name>), and a field
                     # you changed that somebody else changed meanwhile is refused (a card page open for an hour must not
                     # revert what an agent wrote in the meantime).
-                    now = dict(modern.form_values(card), board=card.get("board") or "")   # o_board: a move made offline
+                    now = dict(modern.form_values(card, writer.description(card)), board=card.get("board") or "")   # o_board: a move made offline
                     fields = {}
-                    for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream", "goal", "due"):
+                    for k in ("board", "status", "next", "blocked_by", "waiting", "priority", "post", "post_url", "dependsOn", "stream",
+                              "goal", "due", "title", "summary", "description", "area"):
                         if k not in data:
                             continue
-                        value = str(data[k] if data[k] is not None else "")
+                        value = str(data[k] if data[k] is not None else "").replace("\r\n", "\n")   # a browser posts CRLF
                         orig = data.get("o_" + k)
+                        if isinstance(orig, str):
+                            orig = orig.replace("\r\n", "\n")
                         if orig is None:                            # no original (a quick-move form, an old page): only a real change
                             if k not in now or value != now[k]:
                                 fields[k] = data[k]
                         elif value != orig:
                             if now.get(k, orig) != orig:
                                 raise WriteError(409, "%s changed since you opened this page (now: %s); reload and try again"
-                                                 % (k, now[k] or "empty"), code="version_conflict")
+                                                 % (k, (now[k] or "empty")[:80]), code="version_conflict")
                             fields[k] = data[k]
+                    if str(data.get("outcome") or "") == "wontdo" and fields.get("board") == "archived":
+                        fields["outcome"], fields["reason"] = "wontdo", data.get("reason") or ""
                     if fields:
                         writer.update(slug, fields, actor, agent, areas=areas)
                     comment = str(data.get("comment") or "").strip()
@@ -855,10 +860,11 @@ def make_handler(listener):
                     title = str(data.get("title") or "").strip() or url or text[:80]
                     summary = " ".join(x for x in (text, url) if x)[:300]
                     card = writer.create({"title": title[:120], "area": data.get("area") or "projects", "board": "backlog",
-                                          "summary": summary}, actor, agent, areas=areas)
+                                          "summary": summary, "description": "\n\n".join(x for x in (text, url) if x)},
+                                         actor, agent, areas=areas)
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + card["slug"])])
                 elif self.command == "POST" and path == "/new":
-                    fields = {k: data.get(k) for k in ("title", "area", "board", "summary")}
+                    fields = {k: data.get(k) for k in ("title", "area", "board", "summary", "stream", "priority", "description")}
                     fields["confirm_new_tags"] = data.get("confirm_new_tags") in ("1", "true", True)   # the first-lane box
                     card = writer.create(fields, actor, agent, areas=areas)
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + card["slug"])])
@@ -985,7 +991,9 @@ def make_handler(listener):
                                     query=query, activity=store.last_activity(), areas=known_areas())
                 self.send(200, html)
             elif path == "/archived":
-                self.send(200, V(ctx).archived(ctx, store.cards(), store.last_activity()))
+                every = store.cards()
+                closeouts = {c["slug"]: store.closeout(c["slug"]) for c in every if c["board"] == "archived"}
+                self.send(200, V(ctx).archived(ctx, every, store.last_activity(), closeouts))
             elif path == "/share":
                 lanes = sorted({c["area"] for c in store.cards() if c["board"]} | {"projects"})
                 self.send(200, V(ctx).share(ctx, store.cards(), (query.get("title") or [""])[0], (query.get("url") or [""])[0],
@@ -1017,7 +1025,9 @@ def make_handler(listener):
                     self.send(200, V(ctx).detail(ctx, card, cards, store.events(card=card["slug"], limit=60),
                                                 store.claims().get(card["slug"]),
                                                 (query.get("tagmsg") or [""])[0], (query.get("pending") or [""])[0],
-                                                reading, graph.get(card["slug"])))
+                                                reading, graph.get(card["slug"]), writer.description(card),
+                                                store.closeout(card["slug"]) if card["board"] == "archived" else None,
+                                                known_areas()))
                 else:
                     self.send(404, V(ctx).not_found(ctx, path))
             elif path == "/calendar":
@@ -1093,7 +1103,7 @@ def make_handler(listener):
             elif path.startswith("/api/cards/"):
                 card = store.card(path[len("/api/cards/"):])
                 if card:
-                    card = dict(card, claim=store.claims().get(card["slug"]))
+                    card = dict(card, claim=store.claims().get(card["slug"]), description=writer.description(card))
                 self.send_json(200 if card else 404, card or {"error": "not found"})
             elif path == "/api/events":
                 q = lambda k: (query.get(k) or [None])[0]

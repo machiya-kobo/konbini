@@ -5,11 +5,13 @@ import datetime
 import hashlib
 import json
 import os
+import re
 from urllib.parse import quote
 
-from store import COLUMN_TITLES, slugify, sort_key
+from store import COLUMN_TITLES, WIKILINK_RE, slugify, sort_key
 import goals as goalsmod
-from vaultkit import shell
+import markdown
+from vaultkit import sanitize, shell
 from common import (COLUMN_COLOR, KIND_MARK, PRIORITY_COLOR, SHOWN, collapse_history, e, event_line, facets, filter_cards,
                     lane_of, qget, stale_days)
 
@@ -321,9 +323,9 @@ def lane_html(ctx, lane, cards, claims=None):
             % (e(lane), e(lane), n, "".join(cols)))
 
 
-def new_form(areas):
+def new_form(areas, streams=()):
     """The vault's area/* names as a select; a vault with none yet gets a text box for its first one (a new area/* tag
-    is a maintainer's to create, so the form confirms it)."""
+    is a maintainer's to create, so the form confirms it). "Details" holds what a card can start with besides a title."""
     if areas:
         field = '<select name="area">%s</select>' % "".join('<option value="%s">%s</option>' % (e(a), e(a)) for a in areas)
     else:
@@ -332,7 +334,20 @@ def new_form(areas):
     return ('<form class="newform" method="post" action="/new"><label>New card '
             '<input type="text" name="title" maxlength="120" placeholder="title" required></label> '
             '<label>area %s</label> '
-            '<button type="submit">Add to backlog</button></form>' % field)
+            '<button type="submit">Add to backlog</button>'
+            '<details class="newmore"><summary>Details</summary>'
+            '<label>Summary <input type="text" name="summary" maxlength="500" placeholder="one line, shown on the card"></label>'
+            '<label>Stream <input type="text" name="stream" maxlength="120" list="streams" placeholder="the project it belongs to">'
+            '<small>A stream is a project: cards that share one group together.</small></label>'
+            '<label>Priority <select name="priority"><option value="">-</option><option value="1">High</option>'
+            '<option value="2">Normal</option><option value="3">Low</option></select></label>'
+            '<label>Description <textarea name="description" rows="4" placeholder="What is this? Plain Markdown, no headings."></textarea></label>'
+            '</details>%s</form>' % (field, stream_list(streams)))
+
+
+def stream_list(streams):
+    """A datalist of the vault's streams for the forms' Stream fields (id "streams")."""
+    return '<datalist id="streams">%s</datalist>' % "".join('<option value="%s">' % e(v) for v in streams)
 
 
 def filter_bar(query, cards, claims):
@@ -354,18 +369,18 @@ def filter_bar(query, cards, claims):
     # text search is the header's search field now (/search); a ?q= on the board still filters and shows as a chip
     return ('<form class="filterbar" method="get" action="/">%s'
             '%s%s%s%s%s%s<select name="group" aria-label="group by"><option value="">by area</option>'
-            '<option value="family"%s>by family</option><option value="stream"%s>by stream</option></select>'
+            '<option value="stream"%s>by stream (project)</option><option value="family"%s>by family</option></select>'
             '<button type="submit" class="quiet">Filter</button></form>%s'
             % (('<input type="hidden" name="q" value="%s">' % e(qget(query, "q"))) if qget(query, "q") else "", sel("area", f["area"]), sel("topic", f["topic"]), sel("machine", f["machine"]),
                sel("agent", ["any"] + f["agent"], "claimed"), sel("effort", f["effort"]),
                sel("stream", f["stream"]) if f["stream"] else "",
-               " selected" if group == "family" else "", " selected" if group == "stream" else "", chips))
+               " selected" if group == "stream" else "", " selected" if group == "family" else "", chips))
 
 
 def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=None, activity=None, areas=()):
     query = dict(query or {})
-    if "group" not in query and setting(ctx, "group") == "family":   # the Group By setting; ?group= wins
-        query["group"] = ["family"]
+    if "group" not in query and setting(ctx, "group") in ("family", "stream"):   # the Group By setting; ?group= wins
+        query["group"] = [setting(ctx, "group")]
     group = qget(query, "group")
     carded = [dict(c) for c in filter_cards([c for c in cards if c["board"]], query, claims)]
     for c in carded:
@@ -379,7 +394,7 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
         '<button type="button" role="tab" data-col="%s" class="col-%s">%s<span class="n">%d</span></button>'
         % (col, col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
     parts = ['<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
-             new_form(areas), coltabs]
+             new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)), coltabs]
     parts += [lane_html(ctx, lane, [c for c in carded if c["area"] == lane], claims) for lane in shown]
     if not shown:
         parts.append('<p class="none"><b>No Matching Cards</b> <a href="/">Clear the filters</a> to see the whole board.</p>')
@@ -506,7 +521,8 @@ def streams_page(ctx, cards, what="Plan"):
     body += ('<p class="none">%d card%s without a stream &middot; <a href="/?group=stream">the board by stream</a></p>'
              % (loose, "" if loose == 1 else "s")) if loose else ""
     return page(ctx, what, board_header(ctx, counts_of(cards), "Streams", "plan") +
-                '<main class="streams">%s%s</main>' % (plan_nav("streams"), body), KANBAN_TABS, "")
+                '<main class="streams">%s<p class="none">A stream is a project: cards that share one group together.</p>%s</main>'
+                % (plan_nav("streams"), body), KANBAN_TABS, "")
 
 
 def stream_page(ctx, name, cards, claims=None, rev=""):
@@ -640,13 +656,13 @@ def search_page(ctx, cards, q, claims=None):
                 KANBAN_TABS, "")
 
 
-BOARD_SETTINGS = [("group", "Group By", [("area", "Area"), ("family", "Family")], "area"),
+BOARD_SETTINGS = [("group", "Group By", [("area", "Area"), ("stream", "Stream (Project)"), ("family", "Family")], "area"),
                   ("doneCards", "Done Cards", [("5", "5"), ("10", "10"), ("all", "All")], "all")]
 
 
 # Konbini's own settings follow the signed-in person (docs/contracts/prefs.md): the account keeps them as konbini.group
 # and konbini.done_cards; the cookie is the first-render path (the board reads both when it draws the swimlanes)
-shell.APP_PREFS = {"group": {"type": "choice", "values": ["area", "family"], "cookie": True},
+shell.APP_PREFS = {"group": {"type": "choice", "values": ["area", "stream", "family"], "cookie": True},
                    "doneCards": {"type": "choice", "values": ["5", "10", "all"], "cookie": True}}
 
 
@@ -712,28 +728,66 @@ def dep_links(items):
                        e(SHORT.get(d.get("board"), "Unsorted"))) for d in items)
 
 
-def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", reading="", dep=None):
+def describe(text):
+    """A card's description as HTML: Markdown, with [[links]] as their plain text, through the sanitizer like every
+    rendered note (no script, handler or javascript: survives)."""
+    md = WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), text)
+    return sanitize.clean(markdown.markdown(md, extensions=["tables", "fenced_code"], output_format="html"))
+
+
+def closed_note(col, closeout):
+    """The line a closed card carries: how it was closed, and how to reopen it ("" for a card that isn't archived)."""
+    if col != "archived":
+        return ""
+    co = closeout or {}
+    if co.get("outcome") == "wontdo":
+        what = "Won&rsquo;t do" + ((": " + e(co["reason"])) if co.get("reason") else "")
+    else:
+        what = "Archived"
+    return '<p class="closed" role="status"><b>%s</b> Move it back to a column to reopen it.</p>' % what
+
+
+def closeout_forms(card):
+    """Archive, and Won't do with an optional reason (both a move to Archived through the card form, so a card changed
+    meanwhile is refused like any other edit)."""
+    slug, col = quote(card["slug"]), e(card["board"] or "")
+    hidden = '<input type="hidden" name="board" value="archived"><input type="hidden" name="o_board" value="%s">' % col
+    return ('<div class="closeout">'
+            '<form class="archiveform" method="post" action="/p/%s">%s'
+            '<button type="submit" class="quiet" title="Take it off the board; the note stays">Archive</button></form>'
+            '<details class="wontdo"><summary>Won&rsquo;t do&hellip;</summary>'
+            '<form method="post" action="/p/%s">%s<input type="hidden" name="outcome" value="wontdo">'
+            '<input type="text" name="reason" maxlength="300" placeholder="why not? (optional)" aria-label="Reason">'
+            '<button type="submit">Close Card</button></form></details></div>' % (slug, hidden, slug, hidden))
+
+
+def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", reading="", dep=None, description="",
+           closeout=None, areas=()):
     note = card["path"][:-3] if card["path"].endswith(".md") else card["path"]
     obsidian = obsidian_url(note)
     col = card["board"] or ""
     badges = ['<span class="chip col-%s colchip">%s</span>' % (col or "none", e(COLUMN_TITLES.get(col, "Unsorted")))]
     badges += chips(card, show_area=True)
+    if card.get("stream"):
+        badges.append('<a class="chip stream" href="/streams/%s" title="Stream (project)">%s</a>'
+                      % (quote(card["stream"], safe=""), e(card["stream"])))
+    if card.get("goal"):
+        badges.append('<a class="chip goal" href="/goals#g-%s" title="Goal">%s</a>' % (slugify(card["goal"]), e(card["goal"])))
+    if card.get("due"):
+        badges.append('<span class="chip due due-%s">due %s &middot; %s</span>'
+                      % (goalsmod.due_state(card) or "done", e(card["due"]), e(ago_or_in(card["due"]))))
+    if card.get("blocked_by"):
+        badges.append('<span class="chip dep">waiting: %s</span>' % e(card["blocked_by"]))
     if claim:
         badges.append(claim_badge(claim))
     moves = ('<form class="moves" method="post" action="/move" data-board="%s"><input type="hidden" name="slug" value="%s">%s</form>'
              % (e(col), e(card["slug"]), "".join(
                  '<button type="submit" name="board" value="%s" class="mv col-%s"%s>%s</button>'
                  % (c, c, " disabled" if c == col else "", e(SHORT[c])) for c in SHOWN)))
+    shown_description = ('<section class="desc nbody">%s</section>' % describe(description)) \
+        if description and description.strip() != (card.get("summary") or "").strip() else ""
+    # what the board works out, not what you type: the form below has the rest
     rows = [
-        ("Summary", e(card.get("summary"))),
-        ("Next", e(card.get("next"))),
-        ("Stream", ('<a href="/streams/%s">%s</a>' % (quote(card["stream"], safe=""), e(card["stream"])))
-         if card.get("stream") else ""),
-        ("Goal", ('<a href="/goals#g-%s">%s</a>' % (slugify(card["goal"]), e(card["goal"]))) if card.get("goal") else ""),
-        ("Due", ('%s <span class="chip due due-%s">%s</span>' % (e(card["due"]), goalsmod.due_state(card) or "done",
-                                                                 e(ago_or_in(card["due"]))))
-         if card.get("due") else ""),
-        ("Blocked by", e(card.get("blocked_by"))),
         ("Waits for", (dep_links((dep or {}).get("waits_for", []))
                        + "".join(' <span class="chip why" title="No such card or note">%s?</span>' % e(u)
                                  for u in (dep or {}).get("unresolved", [])))
@@ -748,23 +802,24 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
          if card.get("updated") else ""),
         ("Garden", ('<a href="%s/n/%s">%s</a>' % (e(GARDEN_URL), quote(note), "published" if card.get("publish") else "not published (preview, publish)"))
          if GARDEN_URL else ""),
-        ("Post", post_cell(card)),
+        ("Post", post_cell(card) if (card.get("post") or "none") != "none" else ""),
         ("Writing kit", '<a href="/p/%s/kit">outline and facts</a> &middot; <a href="/p/%s/kit.md">markdown</a>'
          % (quote(card["slug"]), quote(card["slug"]))),
-        # The note is read in Kura and edited in Obsidian; the board shows the project.
+        # The note is read in Kura and edited in Obsidian; the board shows the card and its description.
         ("Note", '%s%s%s' % (
             e(card["path"]), (' &middot; <a href="%s">View in Kura</a>' % e(kura_url(note))) if KURA_URL else "",
             (' &middot; <a href="%s">Open in Obsidian</a>' % e(obsidian)) if obsidian else "")),
     ]
     table = "".join('<tr><th>%s</th><td>%s</td></tr>' % (k, v) for k, v in rows if v)
     body = (
-        '<main class="detail"><h1 class="ntitle">%s</h1><p class="badges">%s</p>%s'
+        '<main class="detail"><h1 class="ntitle">%s</h1><p class="badges">%s</p>%s%s%s%s'
         '<table class="detail">%s</table>%s%s%s%s'
         '<p class="foot"><a href="/">&larr; board</a> &middot; <a href="/api/cards/%s">json</a></p></main>'
-        % (e(card["title"]), "".join(badges), moves, table,
-           edit_form(ctx, card) + "".join('<datalist id="%ss">%s</datalist>' % (key, "".join(
-               '<option value="%s">' % e(v) for v in sorted({c[key] for c in cards if c.get(key)}, key=str.lower)))
-               for key in ("stream", "goal")),
+        % (e(card["title"]), "".join(badges), closed_note(col, closeout), moves,
+           closeout_forms(card) if col != "archived" else "", shown_description, table,
+           edit_form(ctx, card, description, areas) + stream_list(sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower))
+           + '<datalist id="goals">%s</datalist>' % "".join(
+               '<option value="%s">' % e(v) for v in sorted({c["goal"] for c in cards if c.get("goal")}, key=str.lower)),
            tags_form(card, tagmsg, pending), reading,
            history(ctx, events), quote(card["slug"])))
     return page(ctx, card["title"], board_header(ctx, counts_of(cards), card["title"], "") + body,
@@ -774,11 +829,14 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
 # The card page's edit form: the fields it posts. It also carries each field's value as it was drawn (o_<name>), so the
 # board can tell what you changed from what you only passed through, and a change to a field somebody else changed
 # meanwhile is refused instead of overwriting it (the sweep's KONB-3).
-FORM_FIELDS = ("priority", "next", "blocked_by", "dependsOn", "stream", "goal", "due", "post", "post_url")
+FORM_FIELDS = ("title", "summary", "description", "priority", "area", "stream", "next", "due", "blocked_by", "dependsOn",
+               "goal", "post", "post_url")
 
 
-def form_values(card):
-    return {"priority": str(card.get("priority") or ""), "next": card.get("next") or "", "blocked_by": card.get("blocked_by") or "",
+def form_values(card, description=""):
+    return {"title": card.get("title") or "", "summary": card.get("summary") or "", "description": description,
+            "priority": str(card.get("priority") or ""), "area": card.get("area") or "",
+            "next": card.get("next") or "", "blocked_by": card.get("blocked_by") or "",
             "dependsOn": ", ".join(card.get("dependsOn") or []), "stream": card.get("stream") or "", "goal": card.get("goal") or "",
             "due": card.get("due") or "", "post": card.get("post") or "none", "post_url": card.get("post_url") or ""}
 
@@ -792,25 +850,37 @@ def link_or_text(url):
     return e(url)
 
 
-def edit_form(ctx, card):
-    originals = "".join('<input type="hidden" name="o_%s" value="%s">' % (k, e(v)) for k, v in form_values(card).items())
+def edit_form(ctx, card, description="", areas=()):
+    originals = "".join('<input type="hidden" name="o_%s" value="%s">' % (k, e(v)) for k, v in form_values(card, description).items())
     pri = "".join('<option value="%s"%s>%s</option>' % (v, " selected" if str(card.get("priority") or "") == v else "", l)
-                  for v, l in (("", "-"), ("1", "P1"), ("2", "P2"), ("3", "P3")))
+                  for v, l in (("", "-"), ("1", "High (P1)"), ("2", "Normal (P2)"), ("3", "Low (P3)")))
+    lanes = sorted(set(areas) | ({card["area"]} if card.get("area") else set()), key=str.lower)
+    lane = "".join('<option value="%s"%s>%s</option>' % (e(a), " selected" if a == card.get("area") else "", e(a)) for a in lanes)
+    finished = (card.get("board") in ("done", "archived")) or (card.get("post") or "none") != "none"
+    post = ('<label>Post <select name="post">%s</select></label>'
+            '<label>Post URL <input type="text" name="post_url" value="%s" placeholder="https://example.com/blog/..."></label>'
+            % (post_options(card), e(card.get("post_url")))) if finished else ""
     return (
         '<form class="editform" method="post" action="/p/%s">'
+        '<label>Title <input type="text" name="title" value="%s" maxlength="120" required></label>'
+        '<label>Summary <input type="text" name="summary" value="%s" maxlength="500" placeholder="one line, shown on the card"></label>'
+        '<label>Description <textarea name="description" rows="6" placeholder="What is this? Plain Markdown, no headings.">%s</textarea></label>'
+        '<label>Stream <input type="text" name="stream" value="%s" list="streams" placeholder="the project it belongs to">'
+        '<small>A stream is a project: cards that share one group together.</small></label>'
+        '<label>Area <select name="area">%s</select><small>The swimlane it sits in.</small></label>'
         '<label>Priority <select name="priority">%s</select></label>'
         '<label>Next <input type="text" name="next" value="%s"></label>'
-        '<label>Blocked by <input type="text" name="blocked_by" value="%s"></label>'
-        '<label>Depends on <input type="text" name="dependsOn" value="%s" placeholder="card titles, comma-separated"></label>'
-        '<label>Stream <input type="text" name="stream" value="%s" placeholder="the workstream, e.g. Release 1.0" list="streams"></label>'
-        '<label>Goal <input type="text" name="goal" value="%s" placeholder="the goal it counts toward" list="goals"></label>'
         '<label>Due <input type="date" name="due" value="%s"></label>'
-        '<label>Add note <input type="text" name="comment" value="" placeholder="a line for the history"></label>'
-        '<label>Post <select name="post">%s</select></label>'
-        '<label>Post URL <input type="text" name="post_url" value="%s" placeholder="https://example.com/blog/..."></label>'
+        '<details class="more"><summary>More</summary>'
+        '<label>Waiting on <input type="text" name="blocked_by" value="%s" placeholder="what is holding it up"></label>'
+        '<label>Depends on <input type="text" name="dependsOn" value="%s" placeholder="card titles, comma-separated"></label>'
+        '<label>Goal <input type="text" name="goal" value="%s" placeholder="the goal it counts toward" list="goals"></label>'
+        '%s</details>'
+        '<label>Comment <input type="text" name="comment" value="" placeholder="a line for the history"></label>'
         '%s<div class="row"><button type="submit">Save</button></div></form>'
-    ) % (quote(card["slug"]), pri, e(card.get("next")), e(card.get("blocked_by")), e(", ".join(card.get("dependsOn") or [])),
-         e(card.get("stream")), e(card.get("goal")), e(card.get("due")), post_options(card), e(card.get("post_url")), originals)
+    ) % (quote(card["slug"]), e(card.get("title")), e(card.get("summary")), e(description), e(card.get("stream")), lane, pri,
+         e(card.get("next")), e(card.get("due")), e(card.get("blocked_by")), e(", ".join(card.get("dependsOn") or [])),
+         e(card.get("goal")), post, originals)
 
 
 def tags_form(card, tagmsg="", pending=""):
@@ -842,13 +912,22 @@ def history(ctx, events):
     return '<section class="history"><h3>History</h3><ul class="history">%s</ul></section>' % "".join(items)
 
 
-def archived(ctx, cards, activity=None):
+def archived(ctx, cards, activity=None, closeouts=None):
+    closeouts = closeouts or {}
     items = sorted((c for c in cards if c["board"] == "archived"), key=lambda c: c.get("updated") or "", reverse=True)
-    rows = "".join('<li><a class="ntl" href="/p/%s">%s</a> <span class="when">%s</span><p class="summary">%s</p>'
+
+    def how(c):
+        co = closeouts.get(c["slug"]) or {}
+        if co.get("outcome") != "wontdo":
+            return ""
+        return '<span class="chip why">won&rsquo;t do</span>' + (('<p class="summary">%s</p>' % e(co["reason"])) if co.get("reason") else "")
+    rows = "".join('<li><a class="ntl" href="/p/%s">%s</a> <span class="when">%s</span>%s<p class="summary">%s</p>'
                    '<div class="meta"><span class="chip area">%s</span><a class="btn quiet" href="/p/%s/kit">kit</a></div></li>'
-                   % (quote(c["slug"]), e(c["title"]), e(ago(c.get("updated"))), e(c.get("summary") or ""), e(c.get("area") or ""), quote(c["slug"]))
+                   % (quote(c["slug"]), e(c["title"]), e(ago(c.get("updated"))), how(c), e(c.get("summary") or ""),
+                      e(c.get("area") or ""), quote(c["slug"]))
                    for c in items) or '<li class="none"><b>Nothing Archived</b></li>'
-    body = ('<main class="posts"><p class="none">Archived cards keep their notes. Move one back from its page.</p>'
+    body = ('<main class="posts"><p class="none">Archived cards keep their notes. Move one back from its page. '
+            'Cards closed as won&rsquo;t do stay out of Posts.</p>'
             '<section><h2 class="sechead">Archived <span class="colcount">%d</span></h2><ul class="postlist plainlist">%s</ul></section></main>'
             % (len(items), rows))
     return page(ctx, "Archived", board_header(ctx, counts_of(cards), "Archived", "") + body, KANBAN_TABS, "board")
@@ -860,8 +939,8 @@ def share(ctx, cards, title="", url="", text="", lanes=()):
             '<p class="none">Saves a link as a Backlog card. Share to Konbini from your phone or browser.</p>'
             '<form class="editform" method="post" action="/share">'
             '<label>Title <input type="text" name="title" value="%s" required></label>'
-            '<label>URL <input type="text" name="url" value="%s"></label>'
-            '<label>Note <input type="text" name="text" value="%s"></label>'
+            '<label>Link <input type="text" name="url" value="%s"></label>'
+            '<label>Notes <input type="text" name="text" value="%s"></label>'
             '<label>Area <select name="area">%s</select></label>'
             '<div class="row"><button type="submit">Add to backlog</button></div></form></main>'
             % (e(title), e(url), e(text), opts))

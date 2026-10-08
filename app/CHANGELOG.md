@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.19.1
+
+- A pill under the pointer fills with 24% of its colour, its text and outline in a darker shade of it that stays readable on that fill in every theme (vaultkit 0.27.4).
+
 ## 0.19.0
 
 Round two of Shiori's look (vaultkit 0.27.3):

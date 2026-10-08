@@ -139,6 +139,7 @@ button, input[type=submit] {
   font: 600 13px system-ui, sans-serif; cursor: pointer;
 }
 button:hover, input[type=submit]:hover { filter: brightness(1.08); }
+button.pill:hover { filter: none; }              /* a pill's hover is machiya.css's (a fill and a darker text), not a brighter button */
 button.quiet { background: var(--hl); color: var(--fg2); }
 button:disabled { opacity: .5; cursor: default; filter: none; }
 .newform {

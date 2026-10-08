@@ -29,7 +29,7 @@ import yaml
 # Frontmatter, conflict markers, LiveSync conflict copies: shared with Kura and Niwa (vendored, see app/vaultkit/).
 from vaultkit.front import (CONFLICT_RE, FRONT_RE, PHONE_CONFLICT, WIKILINK_RE, _str, _unlink,  # noqa: F401
                             note_front, tags_of)
-from vaultkit.notes import read_file
+from vaultkit.notes import RACY_NS, read_file
 
 def commit_filter(*settings):
     """The commit subjects the calendar, roundups and kits leave out: the board's own (`board: `) and merges, plus the
@@ -94,6 +94,13 @@ CREATE TABLE IF NOT EXISTS claims (
     expires REAL NOT NULL
 );
 """
+
+
+def file_key(st):
+    """What tells that a file is unchanged: device, inode, size and both times. None when it changed so recently that a
+    second change in the same (coarse) clock tick would go unseen (git's "racy" rule), so it is read again next time."""
+    key = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    return None if max(st.st_mtime_ns, st.st_ctime_ns) >= time.time_ns() - RACY_NS else key
 
 
 def slugify(name):
@@ -211,8 +218,7 @@ class Store:
         self.broken = []            # [(path, reason)] notes that look like cards but don't parse
         self.legacy = []            # [{slug, path, field}] notes still carrying the old field names (not read)
         self.phone_conflicts = []   # LiveSync conflict copies waiting to be merged
-        self._parsed = {}           # path -> ((mtime_ns, size, inode), text, frontmatter): see load
-        self._scanned = {}          # path -> ((mtime_ns, size, inode), what read_note made of it): see scan
+        self._scanned = {}          # path -> (file_key, what read_note made of it): see scan
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db = sqlite3.connect(db_path, check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -246,16 +252,15 @@ class Store:
                     phone.append(rel)
                     continue
                 try:
-                    st = os.stat(full)
-                    key = (st.st_mtime_ns, st.st_size, st.st_ino)
+                    key = file_key(os.stat(full))
                     hit = old.get(full)
-                    if hit and hit[0] == key:
+                    if key is not None and hit and hit[0] == key:
                         info = hit[1]
                     else:
-                        loaded = self.load(full, key)
-                        if loaded is None:
+                        text = read_file(full)
+                        if text is None:            # not a regular file
                             continue
-                        info = self.read_note(loaded[0], rel, loaded[1])
+                        info = self.read_note(text, rel, note_front(text))
                 except OSError:
                     continue
                 kept[full] = (key, info)
@@ -276,7 +281,6 @@ class Store:
                 cards.append(card)
         if not fresh:
             self._scanned = kept
-        self._parsed = {p: v for p, v in self._parsed.items() if p in kept}      # notes that are gone
         self.broken = broken
         self.phone_conflicts = sorted(phone)
         self.legacy = legacy
@@ -288,20 +292,6 @@ class Store:
             print("import: %s: old field names ignored: %s (see the Machiya frontmatter schema)" % (path, field), flush=True)
         self._legacy_logged = now
         return cards
-
-    def load(self, full, key):
-        """(text, frontmatter or None) of a note, read and parsed once per change of the file: the importer and the
-        timeline's notes (which the garden index, the kits and the link checker read) share it. None when it isn't a
-        regular file (read_file: symlinks and the like are never read)."""
-        hit = self._parsed.get(full)
-        if hit and hit[0] == key:
-            return hit[1], hit[2]
-        text = read_file(full)
-        if text is None:
-            return None
-        fm = note_front(text)
-        self._parsed[full] = (key, text, fm)
-        return text, fm
 
     @staticmethod
     def read_note(text, rel, fm):

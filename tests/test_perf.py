@@ -8,7 +8,7 @@ tmp = tempfile.mkdtemp(prefix="konbini-perf-")
 subprocess.run([os.path.join(ROOT, "tools", "demo-vault"), tmp + "/vault"], check=True, capture_output=True)
 os.environ["KANBAN_REPO_SUBDIR"] = "personal"
 import review, timeline as tl
-from store import Store, VAULT
+from store import Store, VAULT, file_key
 from vaultkit.notes import read_notes
 
 store = Store(tmp + "/k.sqlite3", tmp + "/vault")
@@ -29,15 +29,22 @@ with contextlib.redirect_stdout(log):
     open(os.path.join(tmp, "vault", VAULT, "Projects", "New one.md"), "w").write("---\nstatus: ready\n---\n# New one\n")
     assert "new-one" in {c["slug"] for c in store.scan()}
     os.remove(os.path.join(tmp, "vault", VAULT, "Projects", "New one.md"))
-    assert "new-one" not in {c["slug"] for c in store.scan()} and "New one.md" not in " ".join(store._parsed)
+    assert "new-one" not in {c["slug"] for c in store.scan()}
     open(note, "w").write(text)
 
-# the timeline's notes are vaultkit's read_notes: the same notes in the same order, parsed once for both readers
+# the timeline's notes are vaultkit's read_notes (incremental there); a change shows at once
 t = tl.Timeline(store)
 root = os.path.join(tmp, "vault", VAULT)
-mine, theirs = t.read_changed(root), read_notes(root)
-assert [(r, f, x) for r, f, x in mine] == [(r, f, x) for r, f, x in theirs], "timeline notes differ from read_notes"
-assert t.read_changed(root) == mine and all(p in store._parsed for p in [os.path.join(root, r) for r, _, _ in mine])
+assert [(r, f, x) for r, f, x in t.notes()] == [(r, f, x) for r, f, x in read_notes(root)], "timeline notes differ from read_notes"
+
+# a file that changed a moment ago has no cache key (a second change in the same clock tick would go unseen); an old one has
+f = os.path.join(root, "Projects", "Lantern.md")
+os.utime(f)
+assert file_key(os.stat(f)) is None
+class Stat:
+    st_dev, st_ino, st_size = 1, 2, 3
+    def __init__(self, ago_ns): self.st_mtime_ns = self.st_ctime_ns = time.time_ns() - ago_ns
+assert file_key(Stat(10 * 10 ** 9)) is not None and file_key(Stat(0)) is None
 
 # the commits of every note from one git log are what a git log per note says
 from kit import Kits, SKIP_COMMIT_RE

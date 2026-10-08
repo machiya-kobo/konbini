@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.20.2
+
+- vaultkit 0.28.0: frontmatter is parsed with LibYAML, the vault index is built aside and swapped in whole, and notes are read incrementally. Importing a 600-card, 3,000-note vault takes 1.1 s instead of 2.0 s; pages answer as fast as before.
+- The importer keeps what it made of each note that hasn't changed and, like vaultkit, reads again a file that changed within the last two seconds (the clock that stamps files ticks in milliseconds), and the board's own cache of parsed notes is gone now that vaultkit has one.
+
 ## 0.20.1
 
 - Each release is built for amd64 and arm64 by a GitHub Actions workflow and published as `ghcr.io/machiya-kobo/konbini:<version>`, signed with cosign (keyless); the workflow builds only a tag signed by a release key. The install guide says how to use and verify it.

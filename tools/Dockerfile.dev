@@ -1,7 +1,7 @@
 # Dev image for the throwaway instances (rootless podman): the app without the Hister CLI stage.
 #   podman build -f tools/Dockerfile.dev -t konbini-dev app
 # The release image is built from app/Dockerfile (it adds the Hister CLI).
-FROM public.ecr.aws/docker/library/python:3.13-slim
+FROM public.ecr.aws/docker/library/python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client sqlite3 openssl \

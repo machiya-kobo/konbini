@@ -67,19 +67,21 @@ section.lane ~ section.lane .colhead { display: none; }
 .colempty { margin: 4px 2px; font-size: 13px; color: var(--muted); }
 
 /* ---- cards -------------------------------------------------------------- */
-/* Shiori's result card (machiya.css .card: a step above the page, 14px corners, the small shadow); the board's cards keep
-   their status stripe and the room for the actions button, and are dragged */
+/* Shiori's result card (machiya.css .card: a step above the page, 14px corners, the small shadow), tinted in its column's
+   colour (.tinted: a fill and an outline in --tint; Settings -> Card Style: Solid, Left Bar and None are machiya.css's
+   [data-card-style]); the board's cards keep the room for the actions button, and are dragged */
 .card {
-  position: relative; padding: 10px 34px 11px 12px; margin-bottom: 8px; border-left: 3px solid var(--comment); cursor: grab;
+  position: relative; padding: 10px 34px 11px 12px; margin-bottom: 8px; cursor: grab;
   transition: transform .12s ease, box-shadow .12s ease;
 }
 .card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 @media (prefers-reduced-motion: reduce) { .card { transition: none; } .card:hover { transform: none; } }
 .card:last-child { margin-bottom: 0; }
-.card.col-ready { border-left-color: var(--blue); }
-.card.col-wip { border-left-color: var(--orange); }
-.card.col-blocked { border-left-color: var(--red); }
-.card.col-done { border-left-color: var(--green); }
+.card.tinted { --tint: var(--slate); }                    /* Backlog (and Archived) */
+.card.tinted.col-ready { --tint: var(--blue); }
+.card.tinted.col-wip { --tint: var(--orange); }
+.card.tinted.col-blocked { --tint: var(--red); }
+.card.tinted.col-done { --tint: var(--green); }
 /* cards wear Konbini's magenta wherever they appear (machiya.css: .is-card sets --thing); in the lanes, where five columns
    share the width, the title is a size down from the lists' 16px */
 .col .card .title { font-size: var(--fs-m); font-weight: 600; }

@@ -168,9 +168,12 @@ def page(ctx, what, body, tabs=(), current="", foot=()):
     foot = extra [(href, label)] footer links for the page."""
     status = getattr(ctx, "status", None)
     head = (('<meta name="obsidian-vault" content="%s">\n' % e(OBSIDIAN_VAULT)) if OBSIDIAN_VAULT else "") + SIGNIN_META
-    return shell.page(ctx, ROOM, shell.title(ROOM, what), body + shell.footer(ROOM, status, list(foot)), tabs, current,
+    html = shell.page(ctx, ROOM, shell.title(ROOM, what), body + shell.footer(ROOM, status, list(foot)), tabs, current,
                       head=head, stylesheets=[static_url("board.css")], scripts=[static_url("outbox.js"), static_url("board.js")], icons=ICON,
                       prefs_url=getattr(ctx, "prefs_url", ""), who=getattr(ctx, "who", ""))
+    style = setting(ctx, "cardStyle")
+    # Card Style (vaultkit 0.27.5): <body data-card-style="solid|bar|none">; no attribute is the default, Tint
+    return html.replace("<body ", '<body data-card-style="%s" ' % style, 1) if style and style != "tint" else html
 
 
 def header(ctx, brand, brand_href, links, current, subtitle="", tools="", stats="", cls=""):
@@ -296,7 +299,7 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
     # the sheet's links to the sister rooms, only where the card page has them: Niwa for a published note, Kura
     links = "".join(' data-%s="%s"' % (k, e(v)) for k, v in (("garden", garden_url(card, note)), ("kura", kura_url(note))) if v)
     # data-board, -next and -priority: what the page showed, which a change made offline is based on (board.js, outbox.js)
-    return ('<article class="card is-card col-%s" id="c-%s" data-slug="%s" data-board="%s" data-title="%s" data-next="%s" '
+    return ('<article class="card tinted is-card col-%s" id="c-%s" data-slug="%s" data-board="%s" data-title="%s" data-next="%s" '
             'data-priority="%s" data-note="%s"%s>%s'
             '<button class="more" type="button" aria-label="Actions for %s">&#8943;</button>%s</article>'
             % (e(card["board"] or ""), e(card["slug"]), e(card["slug"]), e(card["board"] or ""), e(card["title"]),
@@ -703,14 +706,17 @@ def search_page(ctx, cards, q, claims=None):
                 KANBAN_TABS, "")
 
 
+CARD_STYLES = [("tint", "Tint"), ("solid", "Solid"), ("bar", "Left Bar"), ("none", "None")]      # Shiori's names and order
 BOARD_SETTINGS = [("group", "Group By", [("area", "Area"), ("stream", "Stream (Project)"), ("family", "Family")], "area"),
-                  ("doneCards", "Done Cards", [("5", "5"), ("10", "10"), ("all", "All")], "all")]
+                  ("doneCards", "Done Cards", [("5", "5"), ("10", "10"), ("all", "All")], "all"),
+                  ("cardStyle", "Card Style", CARD_STYLES, "tint")]
 
 
-# Konbini's own settings follow the signed-in person (docs/contracts/prefs.md): the account keeps them as konbini.group
-# and konbini.done_cards; the cookie is the first-render path (the board reads both when it draws the swimlanes)
+# Konbini's own settings follow the signed-in person (docs/contracts/prefs.md): the account keeps them as konbini.group,
+# konbini.done_cards and konbini.card_style; the cookie is the first-render path (the board reads them when it draws)
 shell.APP_PREFS = {"group": {"type": "choice", "values": ["area", "stream", "family"], "cookie": True},
-                   "doneCards": {"type": "choice", "values": ["5", "10", "all"], "cookie": True}}
+                   "doneCards": {"type": "choice", "values": ["5", "10", "all"], "cookie": True},
+                   "cardStyle": {"type": "choice", "values": [v for v, _ in CARD_STYLES], "cookie": True}}
 
 
 def setting(ctx, key):
@@ -744,7 +750,7 @@ def settings(ctx, cards, version, vaultkit, status_text, account="", session=Fal
     About."""
     board = ("Board", [shell.select(label, key, choices, setting(ctx, key), cookie=True)
                        for key, label, choices, _ in BOARD_SETTINGS] + [shell.offline_row()],
-             "Group By and Done Cards follow you to your other devices when signed in. "
+             "Group By, Done Cards and Card Style follow you to your other devices when signed in. "
              "Offline Copies stay on this device.")
     body = shell.settings_page([shell.shared_section(ctx, ROOM, shell.rooms(), state, account), board,
                                 account_section(account, session), shell.about_section(ROOM, version, status_text, vaultkit)],

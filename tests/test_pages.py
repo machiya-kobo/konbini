@@ -143,6 +143,20 @@ try:
     assert st == 200 and "be reached. Pages you&#x27;ve opened before still work" in body and 'class="tabbar"' in body
     assert 'class="status' not in body and 'type="search"' not in body and "Tailscale" not in body, body[-800:]
 
+    # -- Card Style: cards are tinted by their column; the setting is a row in Settings and a <body> attribute ------------
+    st, h, board = call(port, "GET", "/")
+    assert 'class="card tinted is-card col-' in board and "data-card-style" not in board
+    st, h, sett = call(port, "GET", "/settings")
+    assert '<span>Card Style</span>' in sett and 'data-set="cardStyle"' in sett, sett[:200]
+    assert [m for m in re.findall(r'<option value="(tint|solid|bar|none)"', sett)] == ["tint", "solid", "bar", "none"]
+    assert "Left Bar" in sett and '<option value="tint" selected>Tint</option>' in sett
+    for style in ("solid", "bar", "none"):
+        st, h, styled = call(port, "GET", "/", headers={"Cookie": "cardStyle=" + style})
+        assert '<body data-card-style="%s" class="' % style in styled, (style, styled[styled.index("<body"):][:120])
+        assert 'selected>' in call(port, "GET", "/settings", headers={"Cookie": "cardStyle=" + style})[2]
+    assert "data-card-style" not in call(port, "GET", "/", headers={"Cookie": "cardStyle=tint"})[2]
+    assert "data-card-style" not in call(port, "GET", "/", headers={"Cookie": "cardStyle=nonsense"})[2]
+
     # -- gzip: text answers over 1 KB are compressed for a client that asks, the same bytes once unpacked ---------------
     import gzip, http.client
     def raw_get(path, enc):

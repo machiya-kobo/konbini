@@ -3,6 +3,12 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.20.0
+
+- **Cards are tinted by their column** instead of carrying a stripe: a fill and an outline in the status colour (Backlog slate, Ready blue, WIP orange, Blocked red, Done green). The column headings keep their colour.
+- **Settings → Card Style:** Tint (the default), Solid, Left Bar (the old stripe) and None, as Shiori's Result Style. It follows you to your other devices when signed in.
+- vaultkit 0.27.5: every accent can tint; the tint is mixed so that every text on it stays readable.
+
 ## 0.19.1
 
 - A pill under the pointer fills with 24% of its colour, its text and outline in a darker shade of it that stays readable on that fill in every theme (vaultkit 0.27.4).

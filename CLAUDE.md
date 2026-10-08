@@ -128,10 +128,13 @@ the workflow.
   phone's column tabs) is `modern.pills()` / `pill()`, outlined pills with the current one filled (`.pills.coltabs`, which
   `board.js` fills with `.on`). A state chip is `.chip` with `--chip` set in `board.css` (outlined, no fill: a fill of its
   own colour fails 4.5:1), a chip that opens something is `.chip.link`, a topic is `.tag`. A board card is the shared
-  `.card` (a step above the page, 14px corners) with the status stripe on its left edge, its parts `.title`, `.snippet` and
-  `.meta`; Now, Review and Search lay them out in `.cards`. Headings are Title Case as written, lanes and columns too
-  (`.lanename` is capitalised: it is a tag's name). Nothing is tinted: every list here is Konbini's own cards, and a card's
-  colour is the status stripe; a mixed list would tint the other rooms' items (`.tinted.is-note`). The browser-tab icon is
+  `.card.tinted` (a step above the page, 14px corners) tinted in its column's colour (`--tint` set per `.col-*` in
+  `board.css`: Backlog slate, Ready blue, WIP orange, Blocked red, Done green), its parts `.title`, `.snippet` and `.meta`;
+  Now, Review and Search lay them out in `.cards`. Settings → Card Style (Tint, Solid, Left Bar, None; the `cardStyle`
+  cookie and account key `konbini.card_style`) sets `<body data-card-style>` in `modern.page()` (no attribute is Tint), and
+  machiya.css draws the four styles; `tests/test_contrast.py` measures the card texts in all of them. Headings are Title Case as written, lanes and columns too
+  (`.lanename` is capitalised: it is a tag's name). A mixed list would tint the other rooms' items by their room (`.tinted.is-note`); here every
+  card is Konbini's own, so the tint is the card's status. The browser-tab icon is
   `static/icons/konbini-small.svg` (a 16 px grid) and `konbini.ico` (16/32/48 from it); `tests/test_pages.py` checks the files,
   `/favicon.ico` and that the header mark is `konbini.svg`.
 - **Speed** (`tests/test_perf.py`): a note is read and parsed once per change of the file (`Store.load`, keyed by mtime, size

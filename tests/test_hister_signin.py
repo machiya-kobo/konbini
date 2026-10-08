@@ -246,7 +246,7 @@ try:
     page_html = body.decode()
     assert 'class="theme-night palette-nord' in page_html and 'data-text="large"' in page_html, page_html[page_html.index("<body"):][:200]
     # the own settings that follow the person are declared for machiya.js (account keys konbini.group, konbini.done_cards)
-    assert 'name="machiya-app-prefs"' in page_html and "konbini.done_cards" in page_html and "konbini.group" in page_html
+    assert 'name="machiya-app-prefs"' in page_html and "konbini.done_cards" in page_html and "konbini.group" in page_html and "konbini.card_style" in page_html
     # /settings (vaultkit 0.23's order): Appearance (kept in the account), the board's own (with Offline Copies, this
     # device's only row), Account, About; no This Device section
     status, r, body = get(port, "/settings", dict(HTML, **SID))

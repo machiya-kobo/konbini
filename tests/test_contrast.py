@@ -70,6 +70,21 @@ try:
                                 failures.append("%s %s sheet: %s %.2f < %g" % (palette, theme, what, got, need))
                             page.keyboard.press("Escape")
                     ctx.close()
+                # Card Style (Settings): the board's cards are tinted by default; the other styles draw them on other surfaces
+                ctx = br.new_context(viewport={"width": 1280, "height": 900}, color_scheme=scheme, service_workers="block")
+                ctx.route("**/api/prefs", lambda route: route.abort())
+                page = ctx.new_page()
+                for style in ("solid", "bar", "none"):
+                    ctx.clear_cookies()
+                    ctx.add_cookies([{"name": n, "value": v, "url": BASE} for n, v in
+                                     (("theme", theme), ("palette", palette), ("cardStyle", style))])
+                    for path in ("/", "/now", "/review", "/p/lantern"):
+                        page.goto(BASE + path)
+                        page.wait_for_timeout(150)
+                        assert page.evaluate("document.body.dataset.cardStyle") == style, (path, style)
+                        for what, got, need in page.evaluate(AUDIT):
+                            failures.append("%s %s card style %s %s: %s %.2f < %g" % (palette, theme, style, path, what, got, need))
+                ctx.close()
         br.close()
     if failures:
         print("\n".join(sorted(set(failures))))

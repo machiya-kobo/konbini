@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.20.1
+
+- Each release is built for amd64 and arm64 by a GitHub Actions workflow and published as `ghcr.io/machiya-kobo/konbini:<version>`, signed with cosign (keyless); the workflow builds only a tag signed by a release key. The install guide says how to use and verify it.
+- The images' base images (`python:3.13-slim` and the Hister CLI stage) are pinned by digest, so a rebuild gets the image that was tested.
+
 ## 0.20.0
 
 - **Cards are tinted by their column** instead of carrying a stripe: a fill and an outline in the status colour (Backlog slate, Ready blue, WIP orange, Blocked red, Done green). The column headings keep their colour.

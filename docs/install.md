@@ -38,6 +38,16 @@ docker run -d --init --name konbini-demo -p 127.0.0.1:8081:8081 -u "$(id -u):$(i
   -v "$PWD/demo-vault":/repo -v "$PWD/demo-data":/data -e KANBAN_AUTH=open -e KANBAN_REPO_SUBDIR=personal konbini
 ```
 
+*The published image.* Each release is also built for amd64 and arm64 and published as
+`ghcr.io/machiya-kobo/konbini:<version>` (and `:latest`), signed with cosign. Use it instead of building: in the `run`
+command above, leave out the `build` line and put the image's name where `konbini` ends the command. Check the signature with:
+
+```sh
+cosign verify ghcr.io/machiya-kobo/konbini:<version> \
+  --certificate-identity-regexp '^https://github.com/machiya-kobo/konbini/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## Natively on the BSDs
 
 Python 3.11 or later and `pyyaml` 6+ from packages; `markdown` 3.11+ in a virtual environment (the packaged one is older, and

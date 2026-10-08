@@ -2,9 +2,9 @@
 # doesn't fetch). Keep this pinned to the Hister server's version. Hister is AGPL-3.0
 # (https://github.com/asciimoo/hister, tag below); Konbini runs it as a separate program.
 ARG HISTER_VERSION=v0.20.0
-FROM ghcr.io/asciimoo/hister:${HISTER_VERSION} AS hister
+FROM ghcr.io/asciimoo/hister:${HISTER_VERSION}@sha256:5ffd0a702482c71010a67db8e6b567344189844ed42072d1b4cdae511b2aa7bb AS hister
 
-FROM public.ecr.aws/docker/library/python:3.13-slim
+FROM public.ecr.aws/docker/library/python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client sqlite3 openssl \

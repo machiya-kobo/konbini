@@ -1,0 +1,84 @@
+# Public images on GitHub's registry: on each signed release tag (vX.Y.Z), build for amd64 and arm64, push
+# ghcr.io/machiya-kobo/konbini:<version> (and :latest), and sign it with cosign keyless (Sigstore). Verify with:
+#   cosign verify ghcr.io/machiya-kobo/konbini:<version> \
+#     --certificate-identity-regexp '^https://github.com/machiya-kobo/konbini/' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+# The tag must be signed by a key in Machiya's release/allowed_signers, or nothing is built.
+name: images
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing release tag to build again (for example v1.2.3)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write          # cosign keyless: the workflow's identity signs the image
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Version
+        id: v
+        run: |
+          version=${TAG#v}
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$TAG is not a vX.Y.Z release tag"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: The tag is signed by a release key
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/allowed_signers" https://raw.githubusercontent.com/machiya-kobo/machiya/main/release/allowed_signers
+          git fetch --no-tags --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
+          git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_signers" tag -v "$TAG"
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130   # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f   # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9   # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8   # v6.19.2
+        with:
+          context: app
+          file: app/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ghcr.io/machiya-kobo/konbini:${{ steps.v.outputs.version }}
+            ghcr.io/machiya-kobo/konbini:latest
+          labels: |
+            org.opencontainers.image.title=konbini
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/machiya-kobo/konbini
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac   # v3.9.1
+      - name: Sign the image (cosign keyless)
+        env:
+          IMAGE: ghcr.io/machiya-kobo/konbini@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"

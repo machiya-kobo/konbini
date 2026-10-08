@@ -3,6 +3,13 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.18.0
+
+Shiori's look, shared with every Machiya app (the style guide, vaultkit 0.26.2):
+- **Filter pills.** Group By (Area, Stream (Project), Family) and Area are pills above the board, with counts, always visible (also on a phone); the current one is filled. The phone's column tabs, the Plan nav, the review's section jumps, Posts' Show row, the Timeline's range and Group By, and the calendar's and roundup's month and period rows are the same pills. Topic, machine, claimed, effort and stream stay selects in the filter form: they have too many values for a row.
+- **Chips.** Priorities, statuses, due dates, claims and counts are the shared state chips, outlined in their colour; a stream, a goal, an active filter, and the card page's Kura, Obsidian and Niwa links are link chips; topics are neutral tags.
+- **Icons.** The browser tab uses `konbini-small.svg` (the icon with the fine detail dropped, so it reads at 16 px) and `konbini.ico` (16, 32 and 48 px from it); `/favicon.ico` answers with it too. The home-screen, manifest and header icons are the full drawing, as before.
+
 ## 0.17.0
 
 - **`KANBAN_TRUSTED_PROXIES`** (addresses or CIDRs, comma-separated): an identity header (`Tailscale-User-Login` and Tailscale's others, `Remote-User`, `KANBAN_AUTH_HEADER`) counts only on a connection from one of them. From any other peer it is dropped before the board reads it, so the request is anonymous. Without it a peer on the same network as the board could claim to be anyone.

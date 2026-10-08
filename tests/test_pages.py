@@ -2,7 +2,7 @@
 every HTML page carries vaultkit's security headers, and the shared pieces (titles, 404, offline, the 401 page,
 icons, the manifest, preferences) are wired in. Each board runs in its own process (settings are read at import) on
 127.0.0.1, serving a throwaway vault, and is talked to over HTTP."""
-import json, os, re, socket, subprocess, sys, tempfile, textwrap, time, urllib.error, urllib.request
+import base64, json, os, re, socket, subprocess, sys, tempfile, textwrap, time, urllib.error, urllib.request
 
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
 sys.path.insert(0, APP)
@@ -141,10 +141,38 @@ try:
 
     # -- icons are named after the room key; the old kanban-* names answer 301 --------------------------------------
     st, h, body = call(port, "GET", "/")
-    assert 'href="/static/icons/konbini.svg"' in body and 'href="/static/icons/konbini-apple-180.png"' in body
-    for name in ("konbini.svg", "konbini-apple-180.png", "konbini-192.png", "konbini-512.png", "konbini-maskable-512.png"):
+    assert 'href="/static/icons/konbini-small.svg"' in body and 'href="/static/icons/konbini.ico"' in body
+    assert 'href="/static/icons/konbini-apple-180.png"' in body
+    # the favicon is the small variant of the icon (it reads at 16 px); favicon.ico holds 16, 32 and 48 px of it, and the
+    # root /favicon.ico answers with the same file; the header mark (machiya.css) is the full drawing, the same as konbini.svg
+    icons_dir = os.path.join(APP, "static", "icons")
+    with open(os.path.join(icons_dir, "konbini.ico"), "rb") as f:
+        ico = f.read()
+    assert ico[:4] == b"\0\0\1\0" and ico[4] == 3 and sorted((ico[6 + 16 * i], ico[7 + 16 * i]) for i in range(3)) == [(16, 16), (32, 32), (48, 48)], ico[:48]
+    st, h, _ = call(port, "GET", "/favicon.ico")
+    assert st == 200 and h["Content-Type"] == "image/x-icon" and "attachment" not in (h.get("Content-Disposition") or ""), (st, dict(h))
+    with open(os.path.join(icons_dir, "konbini.svg"), "rb") as f:
+        full = f.read()
+    css = call(port, "GET", re.search(r'href="(/static/machiya\.css[^"]*)"', body).group(1))[2]
+    mark = re.search(r'\.seal\.icon\[data-room="konbini"\] \{ background-image: url\("data:image/svg\+xml;base64,([^"]+)"\)', css)
+    assert mark and base64.b64decode(mark.group(1)).strip() == full.strip(), "the header mark is not Konbini's icon"
+    with open(os.path.join(icons_dir, "konbini-small.svg"), "rb") as f:
+        assert b"viewBox=\"0 0 512 512\"" in f.read()
+    for name, px in (("konbini-apple-180.png", 180), ("konbini-192.png", 192), ("konbini-512.png", 512), ("konbini-maskable-512.png", 512)):
+        with open(os.path.join(icons_dir, name), "rb") as f:
+            head = f.read(24)
+        assert head[:8] == b"\x89PNG\r\n\x1a\n" and int.from_bytes(head[16:20], "big") == px == int.from_bytes(head[20:24], "big"), name
+    for name in ("konbini.svg", "konbini-small.svg", "konbini.ico", "konbini-apple-180.png", "konbini-192.png", "konbini-512.png", "konbini-maskable-512.png"):
         st, h, _ = call(port, "GET", "/static/icons/" + name)
         assert st == 200 and h["Content-Type"].startswith("image/"), (name, st)
+    # -- the shared pills (machiya.css): Group By, Area, the phone's column tabs, the Plan nav; state and link chips -----
+    assert 'aria-label="Group By"' in body and 'class="pill" href="/?group=area" aria-current="true"' in body, body[:300]
+    assert 'class="pills coltabs"' in body and 'class="pill col-ready"' in body and 'class="count">' in body
+    assert 'class="topic"' not in body and "fchip" not in body and "filterbar" in body
+    st, h, grouped = call(port, "GET", "/?group=stream&area=crafts")
+    assert 'href="/?area=crafts&amp;group=stream" aria-current="true">Stream (Project)' in grouped.replace('group=stream&amp;area=crafts', 'area=crafts&amp;group=stream'), grouped[:200]
+    st, h, plan = call(port, "GET", "/goals")
+    assert 'class="pill" href="/goals" aria-current="page">Goals' in plan and 'class="subnav"' not in plan.replace("pills subnav", ""), plan[:200]
     for old in ("kanban.svg", "kanban-192.png", "kanban-apple-180.png", "kanban-maskable-512.png"):
         st, h, _ = call(port, "GET", "/static/icons/" + old)
         assert (st, h["Location"]) == (301, "/static/icons/konbini" + old[len("kanban"):]), (old, st, h["Location"])
@@ -213,7 +241,7 @@ try:
     assert 'data-kura="https://kura.example/n/Projects/Kura"' in kura_card and "data-garden" not in kura_card, kura_card
     assert 'data-garden="https://niwa.example/n/Projects/Lantern"' in lantern_card, lantern_card
     body = call(port6, "GET", "/p/kura")[2]
-    assert ">View in Kura</a>" in body and ">Open in Obsidian</a>" in body and "Edit in Obsidian" not in body
+    assert ">Kura</a>" in body and ">Obsidian</a>" in body and "Edit in Obsidian" not in body
 
     # -- an empty column says so ---------------------------------------------------------------------------------
     body = call(port, "GET", "/")[2]
@@ -241,7 +269,7 @@ try:
     # it precaches the icons pages and the installed app really ask for, and every one of them answers
     icons = [u for u in sw["precache"] if u.startswith("/static/icons/")]
     assert sorted(icons) == ["/static/icons/konbini-192.png", "/static/icons/konbini-apple-180.png",
-                             "/static/icons/konbini.svg"], icons
+                             "/static/icons/konbini-small.svg", "/static/icons/konbini.ico"], icons
     for u in sw["precache"]:
         assert call(port, "GET", u)[0] == 200, u
     # board.js loads Sortable from the versioned URL the worker precached

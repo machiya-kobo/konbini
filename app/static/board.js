@@ -224,7 +224,7 @@ function recount() {
   for (const [b, n] of Object.entries(totals)) {
     const s = $(".stat.col-" + b + " b");
     if (s) s.textContent = n;
-    const t = $(".coltabs button[data-col=" + b + "] .n");
+    const t = $(".coltabs button[data-col=" + b + "] .count");
     if (t) t.textContent = n;
   }
 }
@@ -640,11 +640,11 @@ if (board) {
     const select = (col, save) => {
       if (!phone.matches) {
         delete document.body.dataset.col;
-        buttons.forEach((b) => b.setAttribute("aria-selected", "false"));
+        buttons.forEach((b) => { b.setAttribute("aria-selected", "false"); b.classList.remove("on"); });
         return;
       }
       document.body.dataset.col = col;
-      buttons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.col === col)));
+      buttons.forEach((b) => { const on = b.dataset.col === col; b.setAttribute("aria-selected", String(on)); b.classList.toggle("on", on); });
       if (save) store("konbini.col", col);
     };
     buttons.forEach((b) => b.addEventListener("click", () => { current = b.dataset.col; select(current, true); }));

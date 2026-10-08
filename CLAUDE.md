@@ -122,6 +122,13 @@ the workflow.
   writing kit quotes the note; both go
   through `vaultkit.sanitize.clean`. Every HTML answer carries `shell.security_headers()` (`script-src 'self'`): no
   inline `<script>` and no `on…=` attribute in the board's markup; behaviour goes in `board.js`.
+- **The style guide's pieces** (Machiya `docs/style-guide.md`, `machiya.css`): `modern.pill()`/`pills()` are the filter pills
+  (Group By, Area, the Plan nav, review jumps, Posts, timeline and month rows; `.pills.coltabs` is the phone's column tabs,
+  which `board.js` fills with `.on`); a state chip is `.chip` with `--chip` set in `board.css` (outlined, no fill: a fill
+  of its own colour fails 4.5:1), a chip that opens something is `.chip.link`, a topic is `.tag`. Nothing is tinted: every
+  list here is Konbini's own cards, and a card's colour is the status stripe. A mixed list would tint the other rooms' items
+  (`.tinted.is-note`). The browser-tab icon is `static/icons/konbini-small.svg` (a 16 px grid) and `konbini.ico`
+  (16/32/48 from it); `tests/test_pages.py` checks the files, `/favicon.ico` and that the header mark is `konbini.svg`.
 - Titles are `shell.title(ROOM, what)` with the nav's page names; a 404 is `shell.not_found` inside the header and
   tabs; `/offline` is `shell.offline`. `tests/test_pages.py` covers these, the headers, icons, manifest and prefs.
 - **Colours on raised surfaces** (vaultkit 0.25): board.css's first rule gives Konbini's own panels (lanes, chips,

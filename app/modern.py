@@ -20,7 +20,7 @@ from common import (COLUMN_COLOR, KIND_MARK, PRIORITY_COLOR, SHOWN, collapse_his
 ROOM = "konbini"
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 ICON_DIR = os.path.join(STATIC_DIR, "icons")
-ICONS = set(n for n in os.listdir(ICON_DIR) if n.endswith((".png", ".svg"))) if os.path.isdir(ICON_DIR) else set()
+ICONS = set(n for n in os.listdir(ICON_DIR) if n.endswith((".png", ".svg", ".ico"))) if os.path.isdir(ICON_DIR) else set()
 BOARD_URL = ""        # app.py sets KANBAN_BOARD_URL
 GARDEN_URL = ""       # Niwa (machiya-kobo/niwa); app.py sets it from KANBAN_NIWA_URL; empty = no garden links
 KURA_URL = ""         # Kura (machiya-kobo/kura); app.py sets it from KANBAN_KURA_URL; empty = no "View in Kura"
@@ -80,9 +80,10 @@ def icon_url(suffix=""):
 
 def shell_urls():
     """What the service worker precaches: the shared UI, the board's own files, the icons every page and the
-    installed app ask for (shell.page's <room>.svg and <room>-apple-180.png, the manifest's 192) and /offline."""
+    installed app ask for (shell.page's <room>-small.svg, <room>.ico and <room>-apple-180.png, the manifest's 192) and /offline."""
     return [shell.ui_url("machiya.css"), shell.ui_url("machiya.js"), static_url("board.css"), static_url("board.js"),
-            static_url("outbox.js"), static_url("Sortable.min.js"), icon_url(".svg"), icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
+            static_url("outbox.js"), static_url("Sortable.min.js"), icon_url("-small.svg"), icon_url(".ico"),
+            icon_url("-apple-180.png"), icon_url("-192.png"), "/offline"]
 
 
 def manifest(theme, headers=None, palette=None):
@@ -240,7 +241,7 @@ def claim_badge(claim):
     import time
     mins = max(1, int((claim["expires"] - time.time()) / 60))
     who = claim["agent"] if claim["agent"] not in ("web", "api") else claim["actor"]
-    return '<span class="claim">%s %dm</span>' % (e(who), mins)
+    return '<span class="chip claim">%s %dm</span>' % (e(who), mins)
 
 
 def move_form(card):
@@ -269,10 +270,10 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
         lines.append('<p class="next" title="click to edit">next: %s</p>' % e(nxt))
     meta = chips(card, show_area)
     if card.get("stream"):
-        meta.insert(0, '<a class="chip stream" href="/streams/%s">%s</a>' % (quote(card["stream"], safe=""), e(card["stream"])))
+        meta.insert(0, '<a class="chip link stream" href="/streams/%s">%s</a>' % (quote(card["stream"], safe=""), e(card["stream"])))
     if card.get("goal"):
         meta.insert(1 if card.get("stream") else 0,
-                    '<a class="chip goal" href="/goals#g-%s">%s</a>' % (slugify(card["goal"]), e(card["goal"])))
+                    '<a class="chip link goal" href="/goals#g-%s">%s</a>' % (slugify(card["goal"]), e(card["goal"])))
     state = goalsmod.due_state(card)
     if state:
         d = goalsmod.due_date(card)
@@ -283,8 +284,8 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
     if claim:
         meta.append(claim_badge(claim))
     if card.get("checks_total"):
-        meta.append('<span class="checks">%d/%d</span>' % (card["checks_done"], card["checks_total"]))
-    meta += ['<span class="topic">%s</span>' % e(t) for t in card.get("topics", [])[:3]]
+        meta.append('<span class="chip checks">%d/%d</span>' % (card["checks_done"], card["checks_total"]))
+    meta += ['<span class="tag">%s</span>' % e(t) for t in card.get("topics", [])[:3]]
     if card.get("_stale"):
         meta.append('<span class="chip stale" title="untouched for %d days">stale %dd</span>' % (card["_stale"], card["_stale"]))
     if show_updated and card.get("updated"):
@@ -350,6 +351,23 @@ def stream_list(streams):
     return '<datalist id="streams">%s</datalist>' % "".join('<option value="%s">' % e(v) for v in streams)
 
 
+def pill(href, text, current=False, count=None, color="", page=False):
+    """One filter pill (machiya.css .pill, Shiori's look): outlined in its colour (the room's, unless the choice is a thing
+    with a colour of its own), the current one filled. A pill that changes the page you are on says aria-current="true";
+    a pill of a page nav says "page"."""
+    return '<a class="pill" href="%s"%s%s>%s%s</a>' % (
+        e(href), (' aria-current="%s"' % ("page" if page else "true")) if current else "",
+        (' style="--pill: %s"' % color) if color else "", e(text),
+        (' <span class="count">%d</span>' % count) if count is not None else "")
+
+
+def pills(label, items, cls="", title=""):
+    """A row of pills: one line that scrolls sideways, with no scrollbar and a fade at the edge, never wrapping.
+    title: a small label at the row's start."""
+    return '<nav class="pills%s" data-fade="end" aria-label="%s">%s%s</nav>' % (
+        (" " + cls) if cls else "", e(label), ('<span class="pillabel">%s</span>' % e(title)) if title else "", "".join(items))
+
+
 def filter_bar(query, cards, claims):
     f = facets(cards, claims)
 
@@ -358,23 +376,39 @@ def filter_bar(query, cards, claims):
             name, label or name, label or name, "".join(
                 '<option value="%s"%s>%s</option>' % (e(v), " selected" if qget(query, name) == v else "", e(v)) for v in opts))
     group = qget(query, "group")
-    active = [(k, qget(query, k)) for k in ("area", "topic", "machine", "agent", "effort", "stream", "q") if qget(query, k)]
+    keys = ("area", "topic", "machine", "agent", "effort", "stream", "q")
+    active = [(k, qget(query, k)) for k in keys if qget(query, k)]
+
+    def url(**change):
+        """The board with this filter and grouping changed (a value of None drops it)."""
+        keep = dict(active, **({"group": group} if group else {}))
+        keep.update(change)
+        pairs = [(k, v) for k, v in keep.items() if v]
+        return "/?" + "&".join("%s=%s" % (k, quote(v)) for k, v in pairs) if pairs else "/"
     chips = ""
     if active:
-        def without(k):
-            keep = [(a, b) for a, b in active if a != k] + ([("group", group)] if group else [])
-            return "/?" + "&".join("%s=%s" % (a, quote(b)) for a, b in keep) if keep else "/"
         chips = '<p class="activefilters">%s <a class="clear" href="%s">clear all</a></p>' % ("".join(
-            '<a class="fchip" href="%s">%s: %s &times;</a>' % (without(k), e(k), e(v)) for k, v in active), "/?group=family" if group else "/")
+            '<a class="chip link fchip" href="%s">%s: %s &times;</a>' % (url(**{k: None}), e(k), e(v)) for k, v in active),
+            "/?group=%s" % group if group else "/")
+    # Group By and Area are short, closed choices: pills (machiya.css), always visible, also on a phone; the facets with
+    # many values (topic, machine, claimed, effort, stream) stay selects in the filter form
+    board_cards = [c for c in filter_cards([c for c in cards if c["board"]], {k: v for k, v in (query or {}).items() if k != "area"}, claims)]
+    per_area = {a: sum(1 for c in board_cards if a in (c.get("areas") or [c["area"]])) for a in f["area"]}
+    rows = pills("Group By", [pill(url(group="area"), "Area", group not in ("stream", "family")),
+                              pill(url(group="stream"), "Stream (Project)", group == "stream"),
+                              pill(url(group="family"), "Family", group == "family")], title="Group By")
+    if len(f["area"]) > 1:
+        rows += pills("Area", [pill(url(area=None), "All", not qget(query, "area"), len(board_cards))] +
+                      [pill(url(area=a), a, qget(query, "area") == a, per_area[a]) for a in f["area"]], title="Area")
     # text search is the header's search field now (/search); a ?q= on the board still filters and shows as a chip
-    return ('<form class="filterbar" method="get" action="/">%s'
-            '%s%s%s%s%s%s<select name="group" aria-label="group by"><option value="">by area</option>'
-            '<option value="stream"%s>by stream (project)</option><option value="family"%s>by family</option></select>'
-            '<button type="submit" class="quiet">Filter</button></form>%s'
-            % (('<input type="hidden" name="q" value="%s">' % e(qget(query, "q"))) if qget(query, "q") else "", sel("area", f["area"]), sel("topic", f["topic"]), sel("machine", f["machine"]),
-               sel("agent", ["any"] + f["agent"], "claimed"), sel("effort", f["effort"]),
-               sel("stream", f["stream"]) if f["stream"] else "",
-               " selected" if group == "stream" else "", " selected" if group == "family" else "", chips))
+    return ('%s<form class="filterbar" method="get" action="/">%s%s'
+            '%s%s%s%s%s<button type="submit" class="quiet">Filter</button></form>%s'
+            % (rows, ('<input type="hidden" name="q" value="%s">' % e(qget(query, "q"))) if qget(query, "q") else "",
+               ('<input type="hidden" name="group" value="%s">' % e(group)) if group else "",
+               ('<input type="hidden" name="area" value="%s">' % e(qget(query, "area"))) if qget(query, "area") else "",
+               sel("topic", f["topic"]), sel("machine", f["machine"]),
+               sel("agent", ["any"] + f["agent"], "claimed"), sel("effort", f["effort"]) + (sel("stream", f["stream"]) if f["stream"] else ""),
+               chips))
 
 
 def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=None, activity=None, areas=()):
@@ -390,8 +424,8 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
     counts = counts_of(carded)
     lanes = sorted({c["area"] for c in carded if c["board"] in SHOWN})
     shown = [lane_filter] if lane_filter in lanes else lanes
-    coltabs = '<div class="coltabs" role="tablist" aria-label="Columns">%s</div>' % "".join(
-        '<button type="button" role="tab" data-col="%s" class="col-%s">%s<span class="n">%d</span></button>'
+    coltabs = '<div class="pills coltabs" data-fade="end" role="tablist" aria-label="Columns">%s</div>' % "".join(
+        '<button type="button" role="tab" data-col="%s" class="pill col-%s">%s <span class="count">%d</span></button>'
         % (col, col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
     parts = ['<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
              new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)), coltabs]
@@ -454,11 +488,10 @@ def deps_page(ctx, cards, graph, chart):
 def review(ctx, cards, data, claims=None, rev=""):
     """The weekly review (review.py): one section per question, each card once, the other reasons as chips."""
     claims = claims or {}
-    jump = "".join('<a href="#r-%s">%s <b>%d</b></a>' % (key, e(title), len(rows))
-                   for key, title, _, rows in data["sections"])
-    limits = "".join('<span class="lim%s" title="%d in WIP, limit %d">%s %d/%d</span>'
+    jump = [pill("#r-" + key, title, count=len(rows)) for key, title, _, rows in data["sections"]]
+    limits = "".join('<span class="chip lim%s" title="%d in WIP, limit %d">%s %d/%d</span>'
                      % (" over" if n > lim else "", n, lim, e(area), n, lim) for area, n, lim in data["areas"])
-    parts = ['<nav class="revjump" aria-label="Sections">%s<a href="/deps">Dependencies</a></nav>' % jump]
+    parts = [pills("Sections", jump + [pill("/deps", "Dependencies")], "revjump")]
     if limits:
         parts.append('<p class="limits">WIP by area %s</p>' % limits)
     for key, title, hint, rows in data["sections"]:
@@ -502,9 +535,7 @@ PLAN_TABS = [("/streams", "streams", "Streams"), ("/goals", "goals", "Goals"), (
 
 def plan_nav(current):
     """The Plan sub-nav: Streams · Goals · Timeline."""
-    return '<nav class="subnav" aria-label="Plan">%s</nav>' % "".join(
-        ('<b class="here" aria-current="page">%s</b>' % e(label)) if key == current else '<a href="%s">%s</a>' % (href, e(label))
-        for href, key, label in PLAN_TABS)
+    return pills("Plan", [pill(href, label, key == current, page=True) for href, key, label in PLAN_TABS], "subnav")
 
 
 def streams_page(ctx, cards, what="Plan"):
@@ -612,20 +643,19 @@ def timeline_page(ctx, cards, data, start, end, group):
             dates = "%s &rarr; %s" % (r["start"].strftime("%b %-d") if r["start"] else "&middot;",
                                       r["end"].strftime("%b %-d") if r["end"] else ("now" if r["start"] else "&middot;"))
             bars.append('<div class="grow"><a class="gname" href="/p/%s">%s</a><div class="gtrack">%s%s</div>'
-                        '<span class="gdates">%s <span class="col-badge col-%s">%s</span></span></div>'
+                        '<span class="gdates">%s <span class="chip col-badge col-%s">%s</span></span></div>'
                         % (quote(c["slug"]), e(c["title"]), todayline, inner, dates, c["board"], e(SHORT.get(c["board"], ""))))
         sections.append('<section class="tlgroup"><h2 class="sechead">%s <span class="colcount">%d</span></h2>'
                         '<div class="gantt">%s</div></section>' % (e(name), len(rows), "".join(bars)))
     shift = lambda n: (start.replace(day=1) + datetime.timedelta(days=31 * n)).replace(day=1)
     months_n = max(1, round(span / 30.4))
-    nav = ('<p class="tlnav"><a href="/timeline?from=%s&amp;months=%d&amp;by=%s">&larr; earlier</a> &middot; '
-           '<a href="/timeline?by=%s">now</a> &middot; <a href="/timeline?from=%s&amp;months=%d&amp;by=%s">later &rarr;</a>'
-           ' &middot; by <a href="/timeline?from=%s&amp;months=%d&amp;by=area"%s>area</a> / '
-           '<a href="/timeline?from=%s&amp;months=%d&amp;by=stream"%s>stream</a> &middot; '
-           '<span class="gmile inline"></span> Log milestone &middot; <span class="gdue inline"></span> due</p>'
-           % (shift(-3).strftime("%Y-%m"), months_n, group, group, shift(3).strftime("%Y-%m"), months_n, group,
-              start.strftime("%Y-%m"), months_n, ' class="here"' if group == "area" else "",
-              start.strftime("%Y-%m"), months_n, ' class="here"' if group == "stream" else ""))
+    ym = start.strftime("%Y-%m")
+    nav = (pills("Range", [pill("/timeline?from=%s&months=%d&by=%s" % (shift(-3).strftime("%Y-%m"), months_n, group), "Earlier"),
+                           pill("/timeline?by=" + group, "Now"),
+                           pill("/timeline?from=%s&months=%d&by=%s" % (shift(3).strftime("%Y-%m"), months_n, group), "Later")]) +
+           pills("Group By", [pill("/timeline?from=%s&months=%d&by=%s" % (ym, months_n, by), label, group == by)
+                              for by, label in (("area", "Area"), ("stream", "Stream"))], title="Group By") +
+           '<p class="tlnav"><span class="gmile inline"></span> Log milestone &middot; <span class="gdue inline"></span> due</p>')
     body = nav + ticks + ("".join(sections) or '<p class="none"><b>Nothing in This Range</b> No card was worked on or is due '
                                                  'in these months.</p>')
     title = "%s &ndash; %s" % (start.strftime("%b %Y"), (end - datetime.timedelta(days=1)).strftime("%b %Y"))
@@ -715,7 +745,7 @@ def reading_section(reading, query, search_url=""):
     rows = "".join(
         '<li><a href="%s">%s</a> <span class="when">%s%s</span> <a class="nlink" href="%s" title="Hister\'s copy">copy</a>%s</li>'
         % (e(r["url"]), e(r["title"]), e(r["domain"]), (" &middot; saved " + e(r["added"])) if r["added"] else "", e(r["copy"]),
-           (' <span class="topic">%s</span>' % e(r["why"])) if r["why"] else "")
+           (' <span class="chip">%s</span>' % e(r["why"])) if r["why"] else "")
         for r in reading)
     more = (' <a class="nlink" href="%s">search Hister for &ldquo;%s&rdquo;</a>' % (e(search_url), e(query))) if search_url else ""
     return ('<section class="readsec"><h3 class="sechead">Pages I&rsquo;ve read</h3>'
@@ -769,10 +799,10 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
     badges = ['<span class="chip col-%s colchip">%s</span>' % (col or "none", e(COLUMN_TITLES.get(col, "Unsorted")))]
     badges += chips(card, show_area=True)
     if card.get("stream"):
-        badges.append('<a class="chip stream" href="/streams/%s" title="Stream (project)">%s</a>'
+        badges.append('<a class="chip link stream" href="/streams/%s" title="Stream (project)">%s</a>'
                       % (quote(card["stream"], safe=""), e(card["stream"])))
     if card.get("goal"):
-        badges.append('<a class="chip goal" href="/goals#g-%s" title="Goal">%s</a>' % (slugify(card["goal"]), e(card["goal"])))
+        badges.append('<a class="chip link goal" href="/goals#g-%s" title="Goal">%s</a>' % (slugify(card["goal"]), e(card["goal"])))
     if card.get("due"):
         badges.append('<span class="chip due due-%s">due %s &middot; %s</span>'
                       % (goalsmod.due_state(card) or "done", e(card["due"]), e(ago_or_in(card["due"]))))
@@ -794,21 +824,21 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
          + (' <a class="nlink" href="/deps">graph</a>' if (dep or {}).get("waits_for") else "")),
         ("Unblocks", dep_links((dep or {}).get("unblocks", []))),
         ("Checklist", "%d/%d" % (card["checks_done"], card["checks_total"]) if card["checks_total"] else ""),
-        ("Topics", " ".join('<span class="topic">%s</span>' % e(t) for t in card.get("topics") or [])),
+        ("Topics", " ".join('<span class="tag">%s</span>' % e(t) for t in card.get("topics") or [])),
         ("Machines", e(" ".join(card.get("machines") or []))),
         ("Family", e(card.get("family"))),
         ("Repo", link_or_text(card["repo"]) if card.get("repo") else ""),
         ("Updated", '%s <span class="when">%s</span>' % (e(card.get("updated")), e(ago(card.get("updated"))))
          if card.get("updated") else ""),
-        ("Garden", ('<a href="%s/n/%s">%s</a>' % (e(GARDEN_URL), quote(note), "published" if card.get("publish") else "not published (preview, publish)"))
+        ("Garden", ('%s<a class="chip link niwa" href="%s/n/%s">Niwa</a>' % ("" if card.get("publish") else "not published (preview, publish) ", e(GARDEN_URL), quote(note)))
          if GARDEN_URL else ""),
         ("Post", post_cell(card) if (card.get("post") or "none") != "none" else ""),
         ("Writing kit", '<a href="/p/%s/kit">outline and facts</a> &middot; <a href="/p/%s/kit.md">markdown</a>'
          % (quote(card["slug"]), quote(card["slug"]))),
         # The note is read in Kura and edited in Obsidian; the board shows the card and its description.
         ("Note", '%s%s%s' % (
-            e(card["path"]), (' &middot; <a href="%s">View in Kura</a>' % e(kura_url(note))) if KURA_URL else "",
-            (' &middot; <a href="%s">Open in Obsidian</a>' % e(obsidian)) if obsidian else "")),
+            e(card["path"]), (' <a class="chip link kura" href="%s">Kura</a>' % e(kura_url(note))) if KURA_URL else "",
+            (' <a class="chip link obsidian" href="%s">Obsidian</a>' % e(obsidian)) if obsidian else "")),
     ]
     table = "".join('<tr><th>%s</th><td>%s</td></tr>' % (k, v) for k, v in rows if v)
     body = (
@@ -886,7 +916,7 @@ def edit_form(ctx, card, description="", areas=()):
 def tags_form(card, tagmsg="", pending=""):
     chips = "".join(
         '<form class="tagchip" method="post" action="/p/%s/tags"><input type="hidden" name="remove" value="%s">'
-        '<span class="topic">%s</span><button type="submit" class="x" aria-label="remove %s">&times;</button></form>'
+        '<span class="tag">%s</span><button type="submit" class="x" aria-label="remove %s">&times;</button></form>'
         % (quote(card["slug"]), e(t), e(t), e(t)) for t in card.get("tags") or [] if t.startswith(("topic/", "machine/", "effort/")))
     return ('<section class="tagsec"><h3 class="sechead">Tags</h3><div class="tagrow">%s'
             '<form class="tagadd" method="post" action="/p/%s/tags"><input type="text" name="add" placeholder="topic/x" value="%s">'
@@ -1029,7 +1059,7 @@ def calendar(ctx, month, cards):
         bars.append(
             '<div class="grow"><a class="gname" href="/p/%s">%s</a>'
             '<div class="gtrack">%s<div class="gbar col-%s%s" style="left:%.1f%%;width:%.1f%%" title="%s &rarr; %s">%s</div></div>'
-            '<span class="gdates">%s <span class="col-badge col-%s">%s</span></span></div>'
+            '<span class="gdates">%s <span class="chip col-badge col-%s">%s</span></span></div>'
             % (quote(c["slug"]), e(c["title"]),
                ('<span class="gtoday" style="left:%.1f%%"></span>' % ((today - start).days / days_in * 100)) if start <= today < month["end"] else "",
                c["board"] or "none", "" if en else " open", left, width, s.isoformat(), en.isoformat() if en else "ongoing", marks,
@@ -1076,10 +1106,10 @@ def calendar(ctx, month, cards):
              % ("".join('<b>%s</b>' % w for w in ("M", "T", "W", "T", "F", "S", "S")), "".join(mini),
                 "".join(daylist) or '<li class="none"><b>Nothing This Month</b></li>'))
     body = (
-        '<main class="calpage"><p class="monthnav"><a href="/calendar?month=%s">&lsaquo; %s</a>'
-        '<a href="/roundup?period=month&amp;date=%s">roundup for %s</a><a href="/calendar?month=%s">%s &rsaquo;</a></p>'
-        % (month["prev"].strftime("%Y-%m"), month["prev"].strftime("%b"), start.isoformat(),
-           start.strftime("%B"), month["next"].strftime("%Y-%m"), month["next"].strftime("%b")) +
+        '<main class="calpage">%s' % pills("Month", [
+            pill("/calendar?month=" + month["prev"].strftime("%Y-%m"), "\u2039 " + month["prev"].strftime("%b")),
+            pill("/roundup?period=month&date=" + start.isoformat(), "Roundup for " + start.strftime("%B")),
+            pill("/calendar?month=" + month["next"].strftime("%Y-%m"), month["next"].strftime("%b") + " \u203a")], "monthnav") +
         '<table class="cal"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(rows)) +
         phone +
         '<p class="legend">%s</p>' % legend +
@@ -1089,14 +1119,11 @@ def calendar(ctx, month, cards):
 
 
 def roundup(ctx, r, cards):
-    kinds = "".join(("<b>%s</b>" % k) if k == r["kind"] else
-                    '<a href="/roundup?period=%s&amp;date=%s">%s</a>' % (k, r["start"].isoformat(), k)
-                    for k in ("day", "week", "month", "year"))
-    navline = ('<p class="monthnav"><a href="/roundup?period=%s&amp;date=%s">&lsaquo; previous</a>%s'
-               '<a href="/roundup?period=%s&amp;date=%s">next &rsaquo;</a>'
-               '<a href="/roundup.md?period=%s&amp;date=%s">markdown</a></p>'
-               % (r["kind"], r["prev"].isoformat(), kinds, r["kind"], r["next"].isoformat(),
-                  r["kind"], r["start"].isoformat()))
+    navline = pills("Period", [pill("/roundup?period=%s&date=%s" % (r["kind"], r["prev"].isoformat()), "\u2039 Previous")] +
+                    [pill("/roundup?period=%s&date=%s" % (k, r["start"].isoformat()), k.title(), k == r["kind"], page=True)
+                     for k in ("day", "week", "month", "year")] +
+                    [pill("/roundup?period=%s&date=%s" % (r["kind"], r["next"].isoformat()), "Next \u203a"),
+                     pill("/roundup.md?period=%s&date=%s" % (r["kind"], r["start"].isoformat()), "Markdown")], "monthnav")
     parts = []
     for key, name, rows in r["sections"]:
         items = []
@@ -1204,11 +1231,10 @@ def posts(ctx, data, cards, show="ready"):
                 % (slug, e(c["title"]), status, when, e(c.get("summary") or ""), size_chips(entry["size"]), e(c.get("area") or ""),
                    exist, slug, slug, skip))
     tabs = [("ready", "Ready to write"), ("progress", "In progress"), ("skipped", "Skipped"), ("published", "Published")]
-    chips = "".join('<a href="/posts?show=%s"%s>%s <span class="n">%d</span></a>' % (k, ' class="here"' if k == show else "", label, len(data.get(k) or []))
-                    for k, label in tabs if data.get(k) or k in ("ready", show))
+    chips = [pill("/posts?show=" + k, label, k == show, len(data.get(k) or [])) for k, label in tabs if data.get(k) or k in ("ready", show)]
     parts = ['<main class="posts">',
              '<p class="none">Finished projects without a blog post. Write from the kit, then mark the card <b>published</b>.</p>',
-             '<p class="typechips">%s</p>' % chips]
+             pills("Show", chips)]
     if show == "ready":
         parts.append('<ul class="postlist">%s</ul>' % ("".join(row(x) for x in data["ready"]) or '<li class="none"><b>All Written Up</b> Every finished project has a post, or was skipped.</li>'))
     elif show == "progress":

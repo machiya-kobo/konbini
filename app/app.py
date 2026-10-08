@@ -635,7 +635,7 @@ def make_handler(listener):
         def public_asset(self, path):
             """The sign-in page's own look (the shared UI and the room's icons) answers before the gate when sign-in is
             on: vendored static files, no board data."""
-            return IDENTITY is not None and IDENTITY.signin and (path in SHARED_UI or path.startswith("/static/icons/"))
+            return IDENTITY is not None and IDENTITY.signin and (path in SHARED_UI or path.startswith("/static/icons/") or path == "/favicon.ico")
 
         def session_cookies(self):
             """Set-Cookie values for this response: a renewed session, or a bad one cleared (vaultkit.identity)."""
@@ -973,6 +973,8 @@ def make_handler(listener):
             if path == "/offline":
                 self.send(200, V(ctx).offline(ctx))
                 return
+            if path == "/favicon.ico":      # what a browser or a tool asks for first: the room's favicon.ico
+                path = modern.icon_url(".ico")
             if path.startswith("/static/icons/"):
                 name = path.rsplit("/", 1)[1]
                 rest = name[len("kanban"):] if name.startswith("kanban") else None
@@ -981,11 +983,12 @@ def make_handler(listener):
                     self.send(301, "", "text/plain", headers=[("Location", modern.icon_url(rest)),
                                                              ("Cache-Control", "public, max-age=604800")])
                 elif name in modern.ICONS:
-                    ctype = "image/svg+xml" if name.endswith(".svg") else "image/png"
+                    ctype = {".svg": "image/svg+xml", ".ico": "image/x-icon"}.get(name[-4:], "image/png")
                     with open(os.path.join(modern.ICON_DIR, name), "rb") as f:
                         # asset_headers: an SVG icon is sandboxed (it can't run script on the board's origin)
                         self.send(200, f.read(), ctype, headers=[("Cache-Control", "public, max-age=604800")]
-                                  + [h for h in websafe.asset_headers(name) if h[0] != "Content-Type"])
+                                  + [h for h in (websafe.base_headers() if name.endswith(".ico") else websafe.asset_headers(name))
+                                     if h[0] != "Content-Type"])
                 else:
                     self.send(404, "not found\n", "text/plain")
                 return

@@ -191,7 +191,7 @@ try:
     # Group By Stream: lanes are the projects
     lanes = re.findall(r'data-lane="([^"]*)"', page("/?group=stream"))
     assert "Lanterns" in lanes and "no stream" in lanes, lanes
-    assert "by stream (project)" in page("/") and "Stream (Project)" in page("/settings")
+    assert ">Stream (Project)<" in page("/") and "Stream (Project)" in page("/settings")
 
     # closing a card: Archive keeps it as finished work; Won't do records why, and stays out of Posts
     assert "Archive</button>" in page("/p/delta") and "Won&rsquo;t do" in page("/p/delta")

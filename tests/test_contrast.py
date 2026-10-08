@@ -31,6 +31,8 @@ env = dict(os.environ, KANBAN_REPO=work + "/vault", KANBAN_REPO_SUBDIR="personal
            KANBAN_AUTH="open", KANBAN_BIND="127.0.0.1", KANBAN_TAILNET_PORT=str(port), TZ="UTC", PYTHONDONTWRITEBYTECODE="1")
 for k in [k for k in env if k.startswith(("KANBAN_NIWA", "KANBAN_KURA", "KANBAN_HISTER", "MACHIYA_"))]:
     del env[k]
+env.update(KANBAN_KURA_URL="https://kura.example.ts.net", KANBAN_NIWA_URL="https://niwa.example.ts.net",
+           KANBAN_OBSIDIAN_VAULT="vault")        # the card page's link chips (Kura, Niwa, Obsidian) are measured too
 server = subprocess.Popen([sys.executable, os.path.join(ROOT, "app", "app.py")], env=env, start_new_session=True,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 BASE = "http://127.0.0.1:%d" % port

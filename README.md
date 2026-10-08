@@ -4,6 +4,8 @@
 
 Konbini (コンビニ, convenience store) is Machiya's project board. Turn your Obsidian notes into a fully featured kanban board. It's also a writing kit that lays out a finished project for its blog post.
 
+Agentically coded with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+
 <p align="center">
 <a href="https://machiya-kobo.github.io/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="docs/install.md">Install</a> · <a href="docs/settings.md">Settings</a> · <a href="docs/access.md">Access</a> · <a href="docs/vault-layout.md">Vault layout</a> · <a href="docs/pm.md">pm</a> · <a href="#license">License</a>
 </p>

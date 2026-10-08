@@ -120,7 +120,7 @@ def start(**extra):
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
     open(d + "/server.py", "w").write(SERVER)
     proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env_for(d, port, **extra),
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                            stdout=subprocess.DEVNULL, stderr=open(d + "/server.log", "w"))      # a file: an unread pipe fills up and stalls the board
     procs.append(proc)
     for _ in range(200):
         try:
@@ -128,7 +128,7 @@ def start(**extra):
             return port
         except OSError:
             time.sleep(0.05)
-    raise SystemExit("board did not start: " + proc.stderr.read().decode()[-500:])
+    raise SystemExit("board did not start: " + open(d + "/server.log").read()[-500:])
 
 
 def refused(**extra):

@@ -62,7 +62,7 @@ def start(identity_file=True, board_url=False, **extra):
     env.update(extra)
     open(d + "/server.py", "w").write(SERVER)
     proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                            stdout=subprocess.DEVNULL, stderr=open(d + "/server.log", "w"))      # a file: an unread pipe fills up and stalls the board
     for _ in range(200):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
@@ -72,7 +72,7 @@ def start(identity_file=True, board_url=False, **extra):
                 break
             time.sleep(0.05)
     proc.kill()
-    raise SystemExit("board did not start: " + proc.stderr.read().decode()[-500:])
+    raise SystemExit("board did not start: " + open(d + "/server.log").read()[-500:])
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -28,7 +28,7 @@ def start(**extra):
                KANBAN_BIND="127.0.0.1", PYTHONDONTWRITEBYTECODE="1", KANBAN_NIWA_URL="https://niwa.example")
     env.update(extra)
     open(d + "/server.py", "w").write(SERVER)
-    proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env, stdout=subprocess.DEVNULL, stderr=open(d + "/server.log", "w"))      # a file: an unread pipe fills up and stalls the board
     procs.append(proc)
     for _ in range(200):
         try:
@@ -36,7 +36,7 @@ def start(**extra):
             return port, d
         except OSError:
             time.sleep(0.05)
-    raise SystemExit("board did not start: " + proc.stderr.read().decode()[-500:])
+    raise SystemExit("board did not start: " + open(d + "/server.log").read()[-500:])
 
 
 def raw(port, method, target, body=None, headers=()):

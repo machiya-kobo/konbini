@@ -19,7 +19,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 
@@ -273,11 +275,27 @@ class Writer:
             return f.read()
 
     def write_file(self, rel, text):
+        """Write a note by making a new file beside it and renaming it over the note. The new file's name is made for
+        this write and created exclusively (O_EXCL), so a link planted at a predictable name can't send the write
+        elsewhere; it keeps the note's permissions; a failed write leaves no stray file."""
         path = self.full(rel)
-        tmp = path + ".kanban-tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix="." + os.path.basename(path) + ".", suffix=".kanban-tmp")
+        try:
+            try:
+                shutil.copymode(path, tmp)
+            except OSError:                             # a new note: the umask's default, not mkstemp's 0600
+                umask = os.umask(0)
+                os.umask(umask)
+                os.chmod(tmp, 0o666 & ~umask)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     # events
 
@@ -645,7 +663,7 @@ class Writer:
             msg = "board: %d change%s (%s)" % (len(self.pending), "" if len(self.pending) == 1 else "s",
                                               ", ".join(parts[:8]) + (", ..." if len(parts) > 8 else ""))
             self.ensure_gitattributes()
-            self.git("add", "-A", "--", GIT_SCOPE, ".board", ".gitattributes")
+            self.git("add", "-A", "--", GIT_SCOPE, ".board", ".gitattributes", ":(exclude,glob)**/*.kanban-tmp")   # never a write's leftover
             bad = self.conflicted()
             if bad:
                 # only the bad notes stay out of the commit: one note's text must not stop every other change from being

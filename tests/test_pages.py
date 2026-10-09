@@ -112,7 +112,7 @@ try:
         assert h["X-Content-Type-Options"] == "nosniff" and h["Referrer-Policy"] == "same-origin", (path, dict(h))
         assert len(h.get_all("X-Content-Type-Options")) == 1, (path, h.get_all("X-Content-Type-Options"))
         mine = body
-        assert not re.search(r"<script(?![^>]*\bsrc=)", mine), (path, re.findall(r"<script[^>]*>", mine))
+        assert not re.search(r"<script(?![^>]*\bsrc=)", mine, re.I), (path, re.findall(r"<script[^>]*>", mine))
         assert not re.search(r"<[^>]+\son[a-z]+\s*=", mine), (path, re.findall(r"<[^>]+\son[a-z]+\s*=[^>]*>", mine)[:3])
     st, h, body = call(port, "GET", "/api/cards")
     assert st == 200 and h["Content-Security-Policy"] is None       # JSON isn't a page

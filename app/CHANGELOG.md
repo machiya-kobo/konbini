@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.20.4
+
+- A note is written through a temporary file made for that write (created exclusively, beside the note, with the note's permissions) and renamed over it. Before, the temporary name was fixed (`<note>.md.kanban-tmp`), so a symlink planted at that name in the vault would have sent a board write outside it. A failed write leaves no temporary file, and the export never commits a leftover one.
+
 ## 0.20.3
 
 - vaultkit 0.29.0, the sign-in hardening: with `KANBAN_AUTH=hister` and its Tailscale fallback, the Tailscale login header is believed only from a peer in `KANBAN_TRUSTED_PROXIES` (the board passes the connection's address to vaultkit; it already dropped the header from other peers). A note's HTML keeps a `class` attribute only when every class is on vaultkit's allow-list (fenced code's `language-*` is, so diagrams and code render as before).

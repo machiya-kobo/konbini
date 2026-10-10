@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.20.5
+
+- Base images re-pinned to the current digests (security fixes in the base layers).
+
 ## 0.20.4
 
 - A note is written through a temporary file made for that write (created exclusively, beside the note, with the note's permissions) and renamed over it. Before, the temporary name was fixed (`<note>.md.kanban-tmp`), so a symlink planted at that name in the vault would have sent a board write outside it. A failed write leaves no temporary file, and the export never commits a leftover one.

@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.23.2
+
+- The New Card form is the first thing on the board page, above the Group By and Area menus and the filters. The Backlog to Done row stays just above the lanes.
+
 ## 0.23.1
 
 - On a phone, swiping a row of pills sideways (the column tabs, the Area pills) to see the rest of it no longer also switches the column. The swipe that changes the column now counts only when it starts over the lanes, not on a control (a row of pills, the Group By switch, the New Card form, the filters).

@@ -468,8 +468,8 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
     coltabs = '<div class="pills coltabs" data-fade="end" role="tablist" aria-label="Columns">%s</div>' % "".join(
         '<button type="button" role="tab" data-col="%s" class="pill col-%s">%s <span class="count">%d</span></button>'
         % (col, col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
-    parts = ['<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
-             new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)),
+    parts = [new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)),
+             '<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
              state_stats(counts, "stats bycol colbar") if shown else "", coltabs]
     if shown:       # board.js puts the lanes in this browser's saved order and lets the headings be dragged
         # a lane's colour is its place among all the board's lanes (not only those the filter shows); by area it is the colour

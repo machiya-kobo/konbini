@@ -196,8 +196,9 @@ try:
     # box board.js reorders
     board = page("/")
     assert board.count('<div class="lanes">') == 1 and 'class="lanegrip"' in board
-    # the state totals are a row between the New Card form and the lanes (not in the header), and each area has its own colour
-    assert board.index('class="newform"') < board.index('class="stats bycol colbar"') < board.index('class="lanes"'), "colbar"
+    # the New Card form comes first, then the menus and filters, then the state totals row over the lanes (not in the header), and each area has its own colour
+    assert board.index('class="newform"') < board.index('class="viewrow"') < board.index('class="stats bycol colbar"') \
+        < board.index('class="lanes"'), "New Card, then the menus and filters, then the state row, then the lanes"
     assert 'class="stat ' not in board[:board.index("<main")], "stats in the header"
     colours = re.findall(r'<a class="pill" href="[^"]*area=[^"]*" style="--pill: ([^"]+)"', board)
     assert len(colours) > 1 and len(set(colours)) == len(colours), colours

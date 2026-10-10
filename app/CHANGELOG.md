@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.20.6
+
+- The board page's sticky header lines its Backlog, Ready, WIP, Blocked and Done totals up over their columns, so the column you are looking at is named while you scroll through the lanes. The headings inside the lanes are hidden on wide screens (phones keep theirs and the column tabs).
+
 ## 0.20.5
 
 - Base images re-pinned to the current digests (security fixes in the base layers).

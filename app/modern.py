@@ -195,9 +195,10 @@ def counts_of(cards):
     return counts
 
 
-def board_header(ctx, counts, subtitle="", current="board"):
-    stats = '<div class="stats">%s</div>' % "".join(
-        '<span class="stat col-%s">%s <b>%d</b></span>' % (col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
+def board_header(ctx, counts, subtitle="", current="board", bycol=False):
+    """bycol: the board page's stats sit over their columns, so the sticky header names the column under it."""
+    stats = '<div class="stats%s">%s</div>' % (" bycol" if bycol else "", "".join(
+        '<span class="stat col-%s">%s <b>%d</b></span>' % (col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN))
     if ctx.alert:
         links = "".join(' <a class="nlink" href="%s">open %s</a>' % (e(h), e(l)) for l, h in getattr(ctx, "alert_links", []))
         stats += '<p class="alert" role="alert">Needs a look: %s%s</p>' % (e(ctx.alert), links)
@@ -458,7 +459,7 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
     parts.append('<p class="keys">Imported %s &middot; keys: j/k select, 1-5 move, / search, n new</p>' % e(imported))
     main = '<main id="board" class="board" data-rev="%s" data-sortable="%s">\n%s\n</main>' % (
         e(rev), e(static_url("Sortable.min.js")), "\n".join(parts))
-    return page(ctx, "", board_header(ctx, counts) + main, KANBAN_TABS, "board",
+    return page(ctx, "", board_header(ctx, counts, bycol=True) + main, KANBAN_TABS, "board",
                 foot=[("/archived", "Archived (%d)" % archived_n), ("/share", "Capture a Link"), ("/api/cards", "API")])
 
 

@@ -659,8 +659,20 @@ if (board) {
     buttons.forEach((b) => b.addEventListener("click", () => { current = b.dataset.col; select(current, true); }));
     select(current, false);
     phone.addEventListener("change", () => select(current, false));
+    // A swipe over the lanes switches the column. One that starts on a control (a row of pills that scrolls sideways, the
+    // New Card form, the filters) is that control's own: swiping the tabs to see the rest of them must not also pick one.
+    const controls = ".pills, .segmented, .viewrow, .filterbar, .filterbtn, .newform, select, input, textarea, button.lanetoggle, dialog";
+    const scrollsSideways = (el) => {
+      for (; el && el !== board; el = el.parentElement) {
+        if (el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)) return true;
+      }
+      return false;
+    };
     let x0 = null, y0 = null;
-    board.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    board.addEventListener("touchstart", (e) => {
+      const own = e.target.closest && (e.target.closest(controls) || scrollsSideways(e.target));
+      x0 = own ? null : e.touches[0].clientX; y0 = e.touches[0].clientY;
+    }, { passive: true });
     board.addEventListener("touchend", (e) => {
       if (x0 === null || dragging || !phone.matches) { x0 = null; return; }
       const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;

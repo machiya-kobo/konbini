@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.23.1
+
+- On a phone, swiping a row of pills sideways (the column tabs, the Area pills) to see the rest of it no longer also switches the column. The swipe that changes the column now counts only when it starts over the lanes, not on a control (a row of pills, the Group By switch, the New Card form, the filters).
+
 ## 0.23.0
 
 - Each area has its own color on the board: its Area pill and its lane heading, where every one was the room's pink. A lane group by stream or family gets colors the same way. A name's color is its place in the sorted list of all the names, so none share one until the palette (nine colors, the column colors last) is used up.

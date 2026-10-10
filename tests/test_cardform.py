@@ -196,6 +196,13 @@ try:
     # box board.js reorders
     board = page("/")
     assert board.count('<div class="lanes">') == 1 and 'class="lanegrip"' in board
+    # the state totals are a row between the New Card form and the lanes (not in the header), and each area has its own colour
+    assert board.index('class="newform"') < board.index('class="stats bycol colbar"') < board.index('class="lanes"'), "colbar"
+    assert 'class="stat ' not in board[:board.index("<main")], "stats in the header"
+    colours = re.findall(r'<a class="pill" href="[^"]*area=[^"]*" style="--pill: ([^"]+)"', board)
+    assert len(colours) > 1 and len(set(colours)) == len(colours), colours
+    lane_colours = re.findall(r'<span class="lanename" style="color: ([^"]+)">', board)
+    assert len(lane_colours) > 1 and len(set(lane_colours)) == len(lane_colours), lane_colours
     head = re.search(r'<section class="lane" data-lane="Lanterns">.*?</h2>', page("/?group=stream"), re.S).group(0)
     chips = re.findall(r'<span class="lanecount col-(\w+)" data-board="\w+" title="(\d+) (\w+)"[^>]*?( hidden)?>(\d+)</span>', head)
     assert [c[0] for c in chips] == ["backlog", "ready", "wip", "blocked", "done"], head

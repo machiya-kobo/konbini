@@ -26,6 +26,11 @@ except ImportError:
 
 work = tempfile.mkdtemp(prefix="konbini-contrast-", dir="/var/tmp" if os.path.isdir("/var/tmp") else None)
 subprocess.run([os.path.join(ROOT, "tools", "demo-vault"), work + "/vault"], check=True, capture_output=True)
+# a lane and an Area pill take the next of the palette's colors: more areas than colors, so every one is measured
+for i, name in enumerate(["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"]):
+    with open(os.path.join(work, "vault", "personal", "Projects", "Area %s.md" % name), "w") as f:
+        f.write("---\ntitle: Area %s\ncreated: 2026-09-01\ntags:\n  - type/project\n  - area/projects\n  - area/%s\n"
+                "project: area-%s\nstatus: %s\n---\n# Area %s\n" % (name, name, name, ["wip", "ready", "done", "blocked", "backlog"][i % 5], name))
 s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
 env = dict(os.environ, KANBAN_REPO=work + "/vault", KANBAN_REPO_SUBDIR="personal", KANBAN_DB=work + "/k.db",
            KANBAN_AUTH="open", KANBAN_BIND="127.0.0.1", KANBAN_TAILNET_PORT=str(port), TZ="UTC", PYTHONDONTWRITEBYTECODE="1")

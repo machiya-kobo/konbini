@@ -195,10 +195,14 @@ def counts_of(cards):
     return counts
 
 
-def board_header(ctx, counts, subtitle="", current="board", bycol=False):
-    """bycol: the board page's stats sit over their columns, so the sticky header names the column under it."""
-    stats = '<div class="stats%s">%s</div>' % (" bycol" if bycol else "", "".join(
+def state_stats(counts, cls="stats"):
+    return '<div class="%s">%s</div>' % (cls, "".join(
         '<span class="stat col-%s">%s <b>%d</b></span>' % (col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN))
+
+
+def board_header(ctx, counts, subtitle="", current="board", bycol=False):
+    """bycol: the board page shows its totals as a sticky row over the columns (colbar), not in the header."""
+    stats = "" if bycol else state_stats(counts)
     if ctx.alert:
         links = "".join(' <a class="nlink" href="%s">open %s</a>' % (e(h), e(l)) for l, h in getattr(ctx, "alert_links", []))
         stats += '<p class="alert" role="alert">Needs a look: %s%s</p>' % (e(ctx.alert), links)
@@ -308,7 +312,7 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
                move_form(card)))
 
 
-def lane_html(ctx, lane, cards, claims=None):
+def lane_html(ctx, lane, cards, claims=None, color=""):
     by_col = {c: sorted((x for x in cards if x["board"] == c), key=sort_key) for c in SHOWN}
     by_col["done"].sort(key=lambda x: x.get("updated") or "", reverse=True)
     done_limit = setting(ctx, "doneCards")
@@ -326,10 +330,10 @@ def lane_html(ctx, lane, cards, claims=None):
     counts = "".join('<span class="lanecount col-%s" data-board="%s" title="%d %s" aria-label="%d %s"%s>%d</span>'
                      % (col, col, len(by_col[col]), SHORT[col], len(by_col[col]), SHORT[col], "" if by_col[col] else " hidden",
                         len(by_col[col])) for col in SHOWN)
-    return ('<section class="lane" data-lane="%s"><h2 class="lanehead"><span class="lanename">%s</span>'
+    return ('<section class="lane" data-lane="%s"><h2 class="lanehead"><span class="lanename"%s>%s</span>'
             '<span class="lanecounts">%s</span><span class="lanegrip" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>'
             '</h2><div class="cols">%s</div></section>\n'
-            % (e(lane), e(lane), counts, "".join(cols)))
+            % (e(lane), (' style="color: %s"' % color) if color else "", e(lane), counts, "".join(cols)))
 
 
 def new_form(areas, streams=()):
@@ -357,6 +361,18 @@ def new_form(areas, streams=()):
 def stream_list(streams):
     """A datalist of the vault's streams for the forms' Stream fields (id "streams")."""
     return '<datalist id="streams">%s</datalist>' % "".join('<option value="%s">' % e(v) for v in streams)
+
+
+# One colour per area (or stream, or family) on the board's pills and lane headings. The theme's accents, the colours that
+# name a column (orange, blue, green, red) after the others so a lane is less often mistaken for a state; a name's colour
+# is its place in the sorted list of all of them, so no two share one until the palette is used up.
+HUES = ["var(--magenta)", "var(--cyan)", "var(--yellow)", "var(--teal)", "var(--orange)", "var(--blue)",
+        "color-mix(in srgb, var(--cyan) 50%, var(--green))", "var(--green)", "var(--red)"]
+
+
+def hues(names):
+    """{name: a CSS colour} for these names, by their place in the sorted list."""
+    return {n: HUES[i % len(HUES)] for i, n in enumerate(sorted(set(names), key=str.lower))}
 
 
 def pill(href, text, current=False, count=None, color="", page=False):
@@ -421,8 +437,9 @@ def filter_bar(query, cards, claims):
                                   segment(url(group="stream"), "Stream (Project)", group == "stream"),
                                   segment(url(group="family"), "Family", group == "family")], title="Group By")
     if len(f["area"]) > 1:
+        colors = hues(f["area"])
         rows += pills("Area", [pill(url(area=None), "All", not qget(query, "area"), len(board_cards))] +
-                      [pill(url(area=a), a, qget(query, "area") == a, per_area[a]) for a in f["area"]], title="Area")
+                      [pill(url(area=a), a, qget(query, "area") == a, per_area[a], colors[a]) for a in f["area"]], title="Area")
     rows = '<div class="viewrow">%s</div>' % rows
     # text search is the header's search field now (/search); a ?q= on the board still filters and shows as a chip
     return ('%s<form class="filterbar" method="get" action="/">%s%s'
@@ -452,10 +469,15 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
         '<button type="button" role="tab" data-col="%s" class="pill col-%s">%s <span class="count">%d</span></button>'
         % (col, col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
     parts = ['<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
-             new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)), coltabs]
+             new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)),
+             state_stats(counts, "stats bycol colbar") if shown else "", coltabs]
     if shown:       # board.js puts the lanes in this browser's saved order and lets the headings be dragged
+        # a lane's colour is its place among all the board's lanes (not only those the filter shows); by area it is the colour
+        # of its pill
+        names = facets(cards, claims)["area"] if group not in ("stream", "family") else {lane_of(c, group) for c in cards if c["board"] in SHOWN}
+        colors = hues(names)
         parts.append('<div class="lanes">%s</div>' % "".join(
-            lane_html(ctx, lane, [c for c in carded if c["area"] == lane], claims) for lane in shown))
+            lane_html(ctx, lane, [c for c in carded if c["area"] == lane], claims, colors.get(lane, "")) for lane in shown))
     if not shown:
         parts.append('<p class="none"><b>No Matching Cards</b> <a href="/">Clear the filters</a> to see the whole board.</p>')
     if unsorted and not lane_filter:

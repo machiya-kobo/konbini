@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.23.0
+
+- Each area has its own color on the board: its Area pill and its lane heading, where every one was the room's pink. A lane group by stream or family gets colors the same way. A name's color is its place in the sorted list of all the names, so none share one until the palette (nine colors, the column colors last) is used up.
+- The Backlog, Ready, WIP, Blocked and Done totals are a row under the New Card form, over the lanes, instead of in the header. The row still sticks under the header while the lanes scroll.
+
 ## 0.22.0
 
 - An agent that can write may create a new `topic/*` tag by naming it in a new `new_topics` field (names without the `topic/` prefix) on `POST /api/cards` or `PATCH /api/cards/<slug>`: no `confirm_new_tags` and no `areas` grant needed. The caller passes it only after the owner said yes, so each tag made this way is logged on the card as a `topic_created` event (tag, actor, agent) and shows in its history. A name the card doesn't use makes nothing, a name that already exists is a no-op, a malformed name or list is a 422, and everything else is as before: a new `area/*` and a new topic that isn't listed are still refused. An older Konbini ignores the field.

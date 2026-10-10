@@ -3,6 +3,12 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.21.0
+
+- A swimlane's heading counts its cards by state, one small number per state in the column's colour (Backlog, Ready, WIP, Blocked, Done; a state with no cards is left out), instead of one total. Hover or screen readers give the number with the state's name.
+- Swimlanes can be dragged by their heading (a long press on a touch screen) to put the ones you want to see first at the top. The order is saved in the browser, like which lanes are collapsed; a lane it doesn't know yet follows the others.
+- The collapse/expand arrow is larger, with a 32 px target.
+
 ## 0.20.6
 
 - The board page's sticky header lines its Backlog, Ready, WIP, Blocked and Done totals up over their columns, so the column you are looking at is named while you scroll through the lanes. The headings inside the lanes are hidden on wide screens (phones keep theirs and the column tabs).

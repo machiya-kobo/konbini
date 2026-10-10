@@ -192,6 +192,14 @@ try:
     lanes = re.findall(r'data-lane="([^"]*)"', page("/?group=stream"))
     assert "Lanterns" in lanes and "no stream" in lanes, lanes
     assert ">Stream (Project)<" in page("/") and "Stream (Project)" in page("/settings")
+    # a lane heading counts its cards by state, in the column colours (an empty state is hidden), and the lanes sit in one
+    # box board.js reorders
+    board = page("/")
+    assert board.count('<div class="lanes">') == 1 and 'class="lanegrip"' in board
+    head = re.search(r'<section class="lane" data-lane="Lanterns">.*?</h2>', page("/?group=stream"), re.S).group(0)
+    chips = re.findall(r'<span class="lanecount col-(\w+)" data-board="\w+" title="(\d+) (\w+)"[^>]*?( hidden)?>(\d+)</span>', head)
+    assert [c[0] for c in chips] == ["backlog", "ready", "wip", "blocked", "done"], head
+    assert all(c[1] == c[4] and (c[3] == " hidden") == (c[4] == "0") for c in chips), chips
 
     # closing a card: Archive keeps it as finished work; Won't do records why, and stays out of Posts
     assert "Archive</button>" in page("/p/delta") and "Won&rsquo;t do" in page("/p/delta")

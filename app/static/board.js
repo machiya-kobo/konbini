@@ -212,14 +212,15 @@ function recount() {
     const n = col.querySelectorAll(":scope > .card").length + (more ? +more.dataset.more || 0 : 0);
     const cc = col.querySelector(".colcount");
     if (cc) cc.textContent = n;
+    const lc = col.closest(".lane") && col.closest(".lane").querySelector('.lanecount[data-board="' + col.dataset.board + '"]');
+    if (lc) {       // the lane heading's count for this state
+      lc.textContent = n; lc.hidden = n === 0;
+      lc.title = n + " " + lc.title.replace(/^\d+ /, ""); lc.setAttribute("aria-label", lc.title);
+    }
     totals[col.dataset.board] = (totals[col.dataset.board] || 0) + n;
     const empty = col.querySelector(":scope > .colempty");
     if (n === 0 && !empty) { const p = document.createElement("p"); p.className = "colempty"; p.textContent = "No cards"; col.append(p); }
     if (n > 0 && empty) empty.remove();
-  }
-  for (const lane of $$("section.lane")) {
-    const lc = lane.querySelector(".lanecount");
-    if (lc) lc.textContent = lane.querySelectorAll(".card").length;
   }
   for (const [b, n] of Object.entries(totals)) {
     const s = $(".stat.col-" + b + " b");
@@ -717,6 +718,15 @@ if (board) {
     }
   });
 
+  // Lane order, remembered per browser like the collapsed lanes: saved by name, lanes it doesn't know stay in the
+  // board's order after the ones it does.
+  const lanesBox = $(".lanes");
+  if (lanesBox) {
+    const saved = stored("konbini.lanes", []);
+    const rank = (l) => { const i = saved.indexOf(l.dataset.lane); return i < 0 ? saved.length : i; };
+    for (const lane of $$("section.lane", lanesBox).sort((a, b) => rank(a) - rank(b))) lanesBox.append(lane);
+  }
+
   // Collapsible swimlanes, remembered per browser.
   const collapsed = new Set(stored("konbini.collapsed", []));
   for (const lane of $$("section.lane")) {
@@ -757,10 +767,31 @@ if (board) {
     }
   }
 
+  // Drag a lane by its heading (long press on touch) to put the ones you want first; saved in this browser.
+  if (lanesBox && $$("section.lane", lanesBox).length > 1) {
+    if (!window.Sortable) await load(board.dataset.sortable || "/static/Sortable.min.js");
+    window.Sortable.create(lanesBox, {
+      draggable: "section.lane",
+      handle: ".lanehead",
+      filter: ".lanetoggle",
+      preventOnFilter: false,
+      animation: 150,
+      ghostClass: "sortable-ghost",
+      delay: 150,
+      delayOnTouchOnly: true,
+      onStart() { dragging = true; },
+      onEnd() {
+        setTimeout(() => { dragging = false; }, 50);
+        const now = $$("section.lane", lanesBox).map((l) => l.dataset.lane);
+        store("konbini.lanes", [...now, ...stored("konbini.lanes", []).filter((n) => !now.includes(n))]);
+      },
+    });
+  }
+
   // Drag and drop within a swimlane (long press on touch); the drop sends the
   // column's new order and the server writes board + rank.
   if ($(".lane .col")) {
-    await load(board.dataset.sortable || "/static/Sortable.min.js");   // the versioned URL the worker precached
+    if (!window.Sortable) await load(board.dataset.sortable || "/static/Sortable.min.js");   // the versioned URL the worker precached
     for (const lane of $$("section.lane")) {
       for (const col of lane.querySelectorAll(".col")) {
         window.Sortable.create(col, {

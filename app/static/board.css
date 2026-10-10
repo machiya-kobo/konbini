@@ -22,11 +22,11 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
 }
 
 /* column colors, wherever a column is named; a state chip takes its colour from --chip (machiya.css .chip), a pill from --pill */
-.colhead.col-backlog, .stat.col-backlog, .mv.col-backlog:disabled, td.col-backlog { color: var(--muted); }
-.colhead.col-ready, .stat.col-ready, .mv.col-ready:disabled, td.col-ready { color: var(--blue); }
-.colhead.col-wip, .stat.col-wip, .mv.col-wip:disabled, td.col-wip { color: var(--orange); }
-.colhead.col-blocked, .stat.col-blocked, .mv.col-blocked:disabled, td.col-blocked { color: var(--red); }
-.colhead.col-done, .stat.col-done, .mv.col-done:disabled, td.col-done { color: var(--green); }
+.colhead.col-backlog, .stat.col-backlog, .lanecount.col-backlog, .mv.col-backlog:disabled, td.col-backlog { color: var(--muted); }
+.colhead.col-ready, .stat.col-ready, .lanecount.col-ready, .mv.col-ready:disabled, td.col-ready { color: var(--blue); }
+.colhead.col-wip, .stat.col-wip, .lanecount.col-wip, .mv.col-wip:disabled, td.col-wip { color: var(--orange); }
+.colhead.col-blocked, .stat.col-blocked, .lanecount.col-blocked, .mv.col-blocked:disabled, td.col-blocked { color: var(--red); }
+.colhead.col-done, .stat.col-done, .lanecount.col-done, .mv.col-done:disabled, td.col-done { color: var(--green); }
 .chip.col-backlog, .chip.col-none, .chip.col-archived, .pill.col-backlog { --chip: var(--muted); --pill: var(--muted); }
 .chip.col-ready, .pill.col-ready { --chip: var(--blue); --pill: var(--blue); }
 .chip.col-wip, .pill.col-wip { --chip: var(--orange); --pill: var(--orange); }
@@ -55,7 +55,14 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
   font-size: var(--fs-m); font-weight: 600; color: var(--magenta);     /* Title Case as written, as every section heading (v0.27) */
 }
 .lanename { text-transform: capitalize; }          /* a lane is named after a tag (area/crafts): written as a name */
-.lanetoggle { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 11px; padding: 0 2px 0 0; }
+.lanehead { cursor: grab; }                          /* the heading is the handle: board.js drags a lane by it */
+.lanetoggle { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 22px; line-height: 1;
+  min-width: 32px; min-height: 32px; margin: -6px 0; padding: 0; border-radius: 8px; }
+.lanetoggle:hover { background: var(--hl); color: var(--fg); }
+.lanecounts { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.lanecount[hidden] { display: none; }
+.lanegrip { margin-left: auto; padding: 0 4px; color: var(--muted); font-size: 18px; letter-spacing: -3px; line-height: 1; user-select: none; }
+.lane.sortable-ghost { opacity: .4; }
 .lanecount, .colcount {
   display: inline-block; padding: 0 7px; border-radius: 9px; background: var(--hl); color: var(--fg2);
   font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; line-height: 18px;

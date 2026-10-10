@@ -322,10 +322,14 @@ def lane_html(ctx, lane, cards, claims=None):
                      % (len(items) - len(shown), len(items) - len(shown)))
         cols.append('<div class="col col-%s" data-board="%s" data-col="%s"><h3 class="colhead col-%s">%s <span class="colcount">%d</span></h3>\n%s</div>'
                     % (col, col, e(SHORT[col]), col, e(SHORT[col]), len(items), body))
-    n = sum(1 for c in cards if c["board"] in SHOWN)
+    # the lane's heading counts its cards by state, in the column colours (board.js recount keeps them current)
+    counts = "".join('<span class="lanecount col-%s" data-board="%s" title="%d %s" aria-label="%d %s"%s>%d</span>'
+                     % (col, col, len(by_col[col]), SHORT[col], len(by_col[col]), SHORT[col], "" if by_col[col] else " hidden",
+                        len(by_col[col])) for col in SHOWN)
     return ('<section class="lane" data-lane="%s"><h2 class="lanehead"><span class="lanename">%s</span>'
-            '<span class="lanecount">%d</span></h2><div class="cols">%s</div></section>\n'
-            % (e(lane), e(lane), n, "".join(cols)))
+            '<span class="lanecounts">%s</span><span class="lanegrip" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>'
+            '</h2><div class="cols">%s</div></section>\n'
+            % (e(lane), e(lane), counts, "".join(cols)))
 
 
 def new_form(areas, streams=()):
@@ -449,7 +453,9 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
         % (col, col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
     parts = ['<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
              new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)), coltabs]
-    parts += [lane_html(ctx, lane, [c for c in carded if c["area"] == lane], claims) for lane in shown]
+    if shown:       # board.js puts the lanes in this browser's saved order and lets the headings be dragged
+        parts.append('<div class="lanes">%s</div>' % "".join(
+            lane_html(ctx, lane, [c for c in carded if c["area"] == lane], claims) for lane in shown))
     if not shown:
         parts.append('<p class="none"><b>No Matching Cards</b> <a href="/">Clear the filters</a> to see the whole board.</p>')
     if unsorted and not lane_filter:

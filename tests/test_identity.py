@@ -103,6 +103,11 @@ def front(d):
     return open(d + "/vault/Projects/Kura.md", encoding="utf-8").read().split("---")[1]
 
 
+def allnotes(d):
+    return "".join(open(os.path.join(d, "vault", "Projects", n), encoding="utf-8").read()
+                   for n in sorted(os.listdir(d + "/vault/Projects")) if n.endswith(".md"))
+
+
 OWNER = {"Tailscale-User-Login": "owner@example"}
 READER = {"Tailscale-User-Login": "reader@example"}
 API = {"X-Agent": "test"}           # the /api write rule: a caller that isn't the board's page names itself
@@ -171,6 +176,41 @@ try:
     st, _, body = call(port, "PATCH", "/api/cards/kura", dict(MCP, **same), {"tags_add": ["area/sneaky"]})
     assert st == 403, (st, body)            # same-origin and no X-Agent ("web") used to be the owner's power
     assert "area/brandnew" not in front(d) and "topic/novel" not in front(d) and "area/sneaky" not in front(d)
+    # new_topics: the one new tag an agent that can only write may create, named by the caller (the owner said yes)
+    def made():
+        return [(e["card"], e["tag"], e["actor"], e["agent"]) for e in events(d) if e["type"] == "topic_created"]
+    st, _, body = call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"tags_add": ["topic/newsblur"], "new_topics": ["newsblur"]})
+    assert st == 200 and "topic/newsblur" in front(d), (st, body)
+    assert made() == [("kura", "topic/newsblur", "mcp", "test")], made()
+    # it exists now, so naming it again changes nothing and logs nothing
+    assert call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"tags_add": ["topic/newsblur"], "new_topics": ["newsblur"]})[0] == 200
+    assert len(made()) == 1, made()
+    # a topic the caller didn't name stays refused, and so does anything else in the same write
+    st, _, body = call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"tags_add": ["topic/other"], "new_topics": ["newsblur"]})
+    assert st == 403 and json.loads(body)["tags"] == ["topic/other"], (st, body)
+    st, _, body = call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"tags_add": ["topic/one", "topic/two"], "new_topics": ["one"]})
+    assert st == 403 and "topic/one" not in front(d) and len(made()) == 1, (st, body)
+    # a name the card doesn't use creates nothing
+    st, _, body = call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"next": "unused", "new_topics": ["unused"]})
+    assert st == 200 and "topic/unused" not in front(d) and len(made()) == 1, (st, body)
+    # a new card works the same way (topics + new_topics), one event for its card
+    st, _, body = call(port, "POST", "/api/cards", dict(MCP, **API),
+                       {"title": "Topic card", "area": "tools", "topics": ["freshtopic"], "new_topics": ["freshtopic"]})
+    assert st == 201 and "topic/freshtopic" in allnotes(d), (st, body)
+    assert made()[-1][1:] == ("topic/freshtopic", "mcp", "test") and len(made()) == 2, made()
+    # an area is never made this way: no card, no topic, no lane
+    st, _, body = call(port, "POST", "/api/cards", dict(MCP, **API),
+                       {"title": "Lane two", "area": "brandnew2", "topics": ["freshlane"], "new_topics": ["freshlane"]})
+    assert st == 403 and json.loads(body)["tags"] == ["area/brandnew2"], (st, body)
+    assert "brandnew2" not in allnotes(d) and "topic/freshlane" not in allnotes(d) and len(made()) == 2
+    # the names are plain topic names: a prefix is fine, a lane or odd spelling is not
+    for bad in (["area/x"], ["Bad Name"], ["x" * 41], "newsblur", [1]):
+        st, _, body = call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"tags_add": ["topic/zzz"], "new_topics": bad})
+        assert st == 422, (bad, st, body)
+    assert call(port, "PATCH", "/api/cards/kura", dict(MCP, **API), {"tags_add": ["topic/prefixed"], "new_topics": ["topic/prefixed"]})[0] == 200
+    assert len(made()) == 3 and "topic/zzz" not in front(d)
+    # a reader still can't write at all
+    assert call(port, "PATCH", "/api/cards/kura", dict(READER, **API), {"tags_add": ["topic/rd"], "new_topics": ["rd"]})[0] == 403
     # an agent can still create a card in an existing lane
     st, _, body = call(port, "POST", "/api/cards", dict(MCP, **API), {"title": "Agent card", "area": "tools"})
     assert st == 201, (st, body)

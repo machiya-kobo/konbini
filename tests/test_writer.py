@@ -100,6 +100,16 @@ c = st.card("third-one"); assert c["board"] == "ready" and c["priority"] == 2, c
 w.update("third-one", {"board": "wip"}, "me", "test"); assert "status/" not in fm("Third One")
 try: w.update("third-one", {"tags_add": ["status/active"]}, "me", "test"); raise SystemExit("no error")
 except WriteError as e: assert e.status == 409 and e.extra.get("code") == "unknown_tag", (e.status, e.extra)
+# new_topics: a new topic/* the caller names is made without a confirm; nothing else is, and a name nothing uses makes nothing
+w.update("third-one", {"tags_add": ["topic/zeta"], "new_topics": ["zeta"]}, "me", "test"); assert "topic/zeta" in fm("Third One")
+evs = [e for e in st.events() if e["type"] == "topic_created"]
+assert [(e["card"], e["tag"], e["actor"], e["agent"]) for e in evs] == [("third-one", "topic/zeta", "me", "test")], evs
+w.update("third-one", {"tags_add": ["topic/zeta"], "new_topics": ["zeta"]}, "me", "test")           # already there: no second event
+w.update("third-one", {"next": "x", "new_topics": ["unused"]}, "me", "test"); assert "topic/unused" not in fm("Third One")
+for bad in ({"tags_add": ["topic/eta"], "new_topics": ["zeta"]}, {"tags_add": ["area/eta"], "new_topics": ["eta"]}):
+    try: w.update("third-one", bad, "me", "test"); raise SystemExit("no error")
+    except WriteError as e: assert e.status in (403, 409), (bad, e.status)
+assert len([e for e in st.events() if e["type"] == "topic_created"]) == 1
 # merge_note: a move takes the board's status, tags follow upstream
 from writer import merge_note
 base = "---\ntitle: M\ntags:\n  - type/project\nstatus: backlog\npriority: normal\n---\nbody\n"

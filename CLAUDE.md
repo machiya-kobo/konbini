@@ -43,7 +43,9 @@ Test against a throwaway vault, never a real one.
   next export), and never a note body except **the description**, the text under the note's title up to the next heading
   (`writer.lead_of` / `set_lead`). It can't contain a heading or an open code fence (422). The garden's fields (`publish`,
   `growth`, `confidence`, `garden_pin`) belong to Niwa; the board refuses `publish` (403). New `topic/*` and `area/*` tags
-  are the maintainer's to create; an agent write that would add one is refused.
+  are the maintainer's to create; an agent write that would add one is refused (409, or 403 without the `areas` grant). The one
+  exception is `new_topics` (`POST /api/cards`, `PATCH /api/cards/<slug>`): a new `topic/<name>` the caller lists there and
+  the card uses is made for any caller that can write, and logged as a `topic_created` event; a new `area/*` stays refused.
 - **The `/api/cards` and `/api/digest` contract is stable** (Niwa and Shiori read it): the card keeps `board`, `blocked_by`,
   an integer `priority` and an old-style `status` even though notes use `status`, `waiting` and `priority: high|normal|low`.
   The old field names are not read; such a note is logged and listed under `legacy_names` on `/api/status`.

@@ -145,6 +145,8 @@ def event_line(ev):
         what = "comment: " + ev.get("body", "")
     elif what == "create":
         what = "created in " + ev.get("board", "")
+    elif what == "topic_created":
+        what = "created the tag " + ev.get("tag", "")
     who = ev.get("agent") if ev.get("agent") not in (None, "web", "api") else ev.get("actor", "")
     return "%s &middot; %s &middot; %s" % (e(ev.get("ts", "")[:16].replace("T", " ")), e(who), e(what))
 

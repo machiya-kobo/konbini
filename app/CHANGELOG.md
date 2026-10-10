@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.22.0
+
+- An agent that can write may create a new `topic/*` tag by naming it in a new `new_topics` field (names without the `topic/` prefix) on `POST /api/cards` or `PATCH /api/cards/<slug>`: no `confirm_new_tags` and no `areas` grant needed. The caller passes it only after the owner said yes, so each tag made this way is logged on the card as a `topic_created` event (tag, actor, agent) and shows in its history. A name the card doesn't use makes nothing, a name that already exists is a no-op, a malformed name or list is a 422, and everything else is as before: a new `area/*` and a new topic that isn't listed are still refused. An older Konbini ignores the field.
+
 ## 0.21.0
 
 - A swimlane's heading counts its cards by state, one small number per state in the column's colour (Backlog, Ready, WIP, Blocked, Done; a state with no cards is left out), instead of one total. Hover or screen readers give the number with the state's name.

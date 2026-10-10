@@ -11,6 +11,9 @@ vault works as it is.
   their summary.
 - **Projects.** A card's `stream:` is its project: cards that share one group together (Plan → Streams, and Group By
   → Stream on the board). The swimlane is the `area/*` tag; the card page changes it to an area that exists.
+- **New topics.** A new `topic/*` tag is yours to create. An agent that can write may create one only by naming it in
+  `new_topics` when it adds the tag, which it does after you said yes. The card's history in `.board/events` records a
+  `topic_created` event with the tag, who and which agent. A new `area/*` tag (a new swimlane) stays yours to create.
 - **Closing a card.** `status: archived` takes a card off the board and keeps the note. Archive and Won't do both do
   that. Won't do also records why in `.board/events` (not in the note) and keeps the card out of Posts, the list of
   finished projects to write up. Move an archived card back to a column to reopen it.

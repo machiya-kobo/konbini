@@ -42,6 +42,21 @@ AUTHOR = (os.environ.get("KANBAN_GIT_AUTHOR_NAME", "").strip() or "konbini",
 SCALARS = ("board", "next", "blocked_by", "priority", "summary", "title", "rank", "updated", "post", "post_url")
 POST_STATES = ("none", "idea", "outlined", "drafting", "published", "skipped")
 TAG_RE = re.compile(r"^[a-z]+/[A-Za-z0-9][A-Za-z0-9._-]*$")
+TOPIC_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
+
+
+def new_topic_tags(fields):
+    """The topic/* tags a write may create (the `new_topics` field: names without the prefix) -> a set of tags."""
+    names = fields.get("new_topics")
+    if names is None:
+        return set()
+    if not isinstance(names, list) or len(names) > 20 or not all(isinstance(n, str) for n in names):
+        raise WriteError(422, "new_topics must be a list of topic names (without topic/)")
+    names = [n.strip().replace("topic/", "", 1) for n in names]
+    bad = [n for n in names if not TOPIC_NAME_RE.match(n)]
+    if bad:
+        raise WriteError(422, "malformed topic name(s): lower-case letters, digits, . _ -, up to 40", tags=bad)
+    return {"topic/" + n for n in names}
 LISTS = ("dependsOn",)          # list fields the board writes (a block list of quoted links)
 
 
@@ -323,15 +338,18 @@ class Writer:
 
     # tags
 
-    def check_tags(self, tags, confirm, agent, areas=None):
+    def check_tags(self, tags, confirm, agent, areas=None, new_topics=()):
         """New tags: a new area/* tag adds a swimlane and is the maintainer's. `areas` is the caller's konbini areas
         grant (Machiya's identity file): without it no new tag at all is created, confirmed or not. None (no identity
-        file): the maintainer is the board's own web UI (`agent == "web"`), as before."""
+        file): the maintainer is the board's own web UI (`agent == "web"`), as before.
+        `new_topics` (new_topic_tags) is the one exception: a new topic/* the caller names there is created for any
+        caller that can write, as the caller's statement that the owner said yes. Returns those tags that are new."""
         known = self.store.known_tags()
         bad = [t for t in tags if not TAG_RE.match(t)]
         if bad:
             raise WriteError(422, "malformed tag(s)", tags=bad)
-        new = [t for t in tags if t not in known]
+        made = [t for t in dict.fromkeys(tags) if t not in known and t in new_topics]
+        new = [t for t in tags if t not in known and t not in new_topics]
         new_areas = [t for t in new if t.startswith("area/")]
         if areas is False and new:
             raise WriteError(403, "new tags (and area/* swimlanes) need the konbini areas grant", tags=new)
@@ -341,6 +359,12 @@ class Writer:
         if new and not confirm:
             raise WriteError(409, "unknown tag(s); ask the user, then resend with confirm_new_tags: true",
                              code="unknown_tag", tags=new)
+        return made
+
+    def topics_made(self, slug, made, actor, agent):
+        """One topic_created event for each topic/* tag a write created through new_topics."""
+        for tag in made:
+            self.event(slug, "topic_created", actor, agent, tag=tag)
 
     # card updates
 
@@ -454,8 +478,9 @@ class Writer:
                 changes["description"] = [old_description[:120], description[:120]]
             add = [t for t in fields.get("tags_add") or [] if t not in new_tags]
             remove = set(fields.get("tags_remove") or [])
+            made = []
             if add:
-                self.check_tags(add, fields.get("confirm_new_tags"), agent, areas)
+                made = self.check_tags(add, fields.get("confirm_new_tags"), agent, areas, new_topic_tags(fields))
             new_tags = [t for t in new_tags if t not in remove] + add
 
             for key, value in scalars.items():
@@ -490,6 +515,7 @@ class Writer:
                 ev_changes["tags"] = {"add": add, "remove": sorted(remove)}
             if ev_changes:
                 self.event(slug, etype, actor, agent, changes=ev_changes, outcome=outcome, reason=reason)
+            self.topics_made(slug, made, actor, agent)
             summary = ("%s->%s" % (slug, changes["board"][1])) if "board" in changes else slug
             if ev_changes or "rank" in fields:
                 self.touch(slug, summary)
@@ -591,7 +617,8 @@ class Writer:
             tags += ["machine/" + m.replace("machine/", "") for m in fields.get("machines") or []]
             if fields.get("effort") in ("s", "m", "l"):
                 tags.append("effort/" + fields["effort"])
-            self.check_tags([t for t in tags if not t.startswith("type/")], fields.get("confirm_new_tags"), agent, areas)
+            made = self.check_tags([t for t in tags if not t.startswith("type/")], fields.get("confirm_new_tags"), agent, areas,
+                                   new_topic_tags(fields))
 
             # A stub is written in the new schema (the Machiya frontmatter schema): status:, created:,
             # priority as a word, no status/* tag.
@@ -615,6 +642,7 @@ class Writer:
             self.write_file(rel, set_lead(note_text, description) if description else note_text)
             card = self.reindex(rel, slug)
             self.event(slug, "create", actor, agent, path=rel, board=col, client_id=cid)
+            self.topics_made(slug, made, actor, agent)
             self.touch(slug, slug + " (new)")
             return card
 

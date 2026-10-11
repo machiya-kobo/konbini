@@ -182,8 +182,10 @@ def header(ctx, brand, brand_href, links, current, subtitle="", tools="", stats=
     # the room's one search field (vaultkit v0.17): in the top bar from 1100px, else a pill under it, results as you type
     # (machiya.js fetches /search?q= and swaps <main>); the query is only set on the search page
     bar = shell.search_bar(getattr(ctx, "q", ""), "/search", "Search Cards", "Search cards")
-    return shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""), search=bar,
-                        below=stats, cls=cls)
+    # New Card: a filled button after the tabs (vaultkit v0.31 puts the app's own tools there), its form in a dialog
+    newbtn = '<button type="button" class="newbtn" data-newcard>New Card</button>'
+    return (shell.header(ROOM, links, current, shell.rooms(), subtitle, newbtn + tools, who=getattr(ctx, "who", ""), search=bar,
+                         below=stats, cls=cls) + new_form(getattr(ctx, "areas", ()), getattr(ctx, "streams", ())))
 
 
 def counts_of(cards):
@@ -336,25 +338,28 @@ def lane_html(ctx, lane, cards, claims=None, color=""):
 
 
 def new_form(areas, streams=()):
-    """The vault's area/* names as a select; a vault with none yet gets a text box for its first one (a new area/* tag
-    is a maintainer's to create, so the form confirms it). "Details" holds what a card can start with besides a title."""
+    """The New Card dialog (board.js opens it from the header's button, or the n key): a title and an area, the least a
+    card needs. The vault's area/* names are a select; a vault with none yet gets a text box for its first one (a new area/*
+    tag is a maintainer's to create, so the form confirms it). "More" holds what a card can start with besides those."""
     if areas:
         field = '<select name="area">%s</select>' % "".join('<option value="%s">%s</option>' % (e(a), e(a)) for a in areas)
     else:
         field = ('<input type="text" name="area" maxlength="40" placeholder="first lane, e.g. tools" required> '
                  '<input type="hidden" name="confirm_new_tags" value="1">')
-    return ('<form class="newform" method="post" action="/new"><label>New card '
-            '<input type="text" name="title" maxlength="120" placeholder="title" required></label> '
-            '<label>area %s</label> '
-            '<button type="submit">Add to backlog</button>'
-            '<details class="newmore"><summary>Details</summary>'
+    return ('<dialog class="newdlg" aria-labelledby="newtitle"><form class="newform" method="post" action="/new">'
+            '<h2 id="newtitle">New Card</h2>'
+            '<label>Title <input type="text" name="title" maxlength="120" placeholder="What needs doing?" required></label>'
+            '<label>Area %s</label>'
+            '<details class="newmore"><summary>More</summary>'
             '<label>Summary <input type="text" name="summary" maxlength="500" placeholder="one line, shown on the card"></label>'
             '<label>Stream <input type="text" name="stream" maxlength="120" list="streams" placeholder="the project it belongs to">'
             '<small>A stream is a project: cards that share one group together.</small></label>'
             '<label>Priority <select name="priority"><option value="">-</option><option value="1">High</option>'
             '<option value="2">Normal</option><option value="3">Low</option></select></label>'
             '<label>Description <textarea name="description" rows="4" placeholder="What is this? Plain Markdown, no headings."></textarea></label>'
-            '</details>%s</form>' % (field, stream_list(streams)))
+            '</details>'
+            '<div class="newacts"><button type="button" class="quiet" data-close>Cancel</button>'
+            '<button type="submit">Add to Backlog</button></div>%s</form></dialog>' % (field, stream_list(streams)))
 
 
 def stream_list(streams):
@@ -467,8 +472,7 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
     coltabs = '<div class="pills coltabs" data-fade="end" role="tablist" aria-label="Columns">%s</div>' % "".join(
         '<button type="button" role="tab" data-col="%s" class="pill col-%s">%s <span class="count">%d</span></button>'
         % (col, col, e(SHORT[col]), counts.get(col, 0)) for col in SHOWN)
-    parts = [new_form(areas, sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower)),
-             '<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
+    parts = ['<button type="button" class="filterbtn quiet">Filters</button>', filter_bar(query, cards, claims),
              state_stats(counts, "stats bycol colbar") if shown else "", coltabs]
     if shown:       # board.js puts the lanes in this browser's saved order and lets the headings be dragged
         # a lane's colour is its place among all the board's lanes (not only those the filter shows); by area it is the colour
@@ -898,7 +902,7 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
         '<p class="foot"><a href="/">&larr; board</a> &middot; <a href="/api/cards/%s">json</a></p></main>'
         % (e(card["title"]), "".join(badges), closed_note(col, closeout), moves,
            closeout_forms(card) if col != "archived" else "", shown_description, table,
-           edit_form(ctx, card, description, areas) + stream_list(sorted({c["stream"] for c in cards if c.get("stream")}, key=str.lower))
+           edit_form(ctx, card, description, areas)
            + '<datalist id="goals">%s</datalist>' % "".join(
                '<option value="%s">' % e(v) for v in sorted({c["goal"] for c in cards if c.get("goal")}, key=str.lower)),
            tags_form(card, tagmsg, pending), reading,

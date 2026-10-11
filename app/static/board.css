@@ -11,7 +11,7 @@ main.msg { max-width: 640px; }
    uses its panel shade and muted text the menu's, so both stay 4.5:1. machiya.css does this for .card and the shared
    panels; tests/test_contrast.py measures every page in Chromium. */
 .lane, .card, .lanecount, .colcount,
-.moves .mv, table.detail, .editform, .newform, .postform, .tagsec, table.cal td.day, .daylist li,
+.moves .mv, table.detail, .editform, .newform, dialog.newdlg, .postform, .tagsec, table.cal td.day, .daylist li,
 .gtrack, dialog.sheet, .outboxbadge, .toast, .banner, .closed,
 .closeout summary, .newmore, .editform details.more,
 main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar input, button.quiet, .btn.quiet {
@@ -160,12 +160,29 @@ button:hover, input[type=submit]:hover { filter: brightness(1.08); }
 button.pill:hover { filter: none; }              /* a pill's hover is machiya.css's (a fill and a darker text), not a brighter button */
 button.quiet { background: var(--hl); color: var(--fg2); }
 button:disabled { opacity: .5; cursor: default; filter: none; }
-.newform {
-  margin: 4px 0 18px; padding: 10px 12px; background: var(--dark); border-radius: 12px;
-  display: inline-flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; color: var(--muted); font-size: 13px;
+/* New Card: a filled button in the header, after the tabs, in the room's colour (the menus are plain text and pills); its
+   form is a small dialog: a sheet from the bottom on phones. */
+.newbtn { background: var(--room); color: var(--bg); border-radius: 999px; padding: 7px 16px; font: 700 13px/1 system-ui, sans-serif; flex: none;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .25); }
+.newbtn::before { content: "+"; margin-right: 6px; font-weight: 800; }
+/* from 1100px the button sits right after the last tab and the free space goes after it, so the search field and the icons
+   stay where every room puts them; under 1280px it is only the plus, to leave the field its room */
+@media (min-width: 1100px) {
+  header.top .topbar > .nav { flex: 0 0 auto; }
+  .newbtn { margin-right: auto; }
 }
-.newform label { display: inline-flex; align-items: center; gap: 6px; }
-.newform input[type=text] { width: 240px; }
+@media (min-width: 1100px) and (max-width: 1279px) {
+  .newbtn { width: 34px; height: 34px; padding: 0; font-size: 0; display: inline-grid; place-items: center; }
+  .newbtn::before { margin: 0; font-size: 20px; line-height: 1; }
+}
+dialog.newdlg { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; border: 0; border-radius: 16px;
+  padding: 16px 18px 18px; background: var(--dark); color: var(--fg); box-shadow: var(--shadow); }
+dialog.newdlg::backdrop { background: rgba(0, 0, 0, .45); }
+.newform { display: grid; gap: 12px; color: var(--muted); font-size: 13px; }
+.newform h2 { margin: 0; font-size: 17px; color: var(--fg); }
+.newform label { display: grid; gap: 4px; }
+.newform input[type=text], .newform select { width: 100%; box-sizing: border-box; }
+.newform .newacts { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ---- now ---------------------------------------------------------------- */
 .now .nowsec { margin: 0 0 22px; }
@@ -520,8 +537,9 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
   .card .more { width: 34px; height: 34px; font-size: 18px; top: 4px; right: 4px; }
   input[type=text], select, textarea { font-size: 16px; padding: 8px 10px; }
   button, input[type=submit] { padding: 9px 16px; font-size: 14px; }
-  .newform { display: grid; width: 100%; }
-  .newform input[type=text] { width: 100%; }
+  dialog.newdlg { inset: auto 0 0 0; margin: 0 auto; width: 100%; max-width: 560px; border-radius: 16px 16px 0 0;
+    padding-bottom: calc(18px + var(--sab)); }
+  .newbtn { padding: 8px 14px; }
   .nowlist { grid-template-columns: 1fr; }
   table.cal, table.cal thead, table.cal tbody, table.cal tr, table.cal td { display: block; width: auto !important; }
   table.cal { margin: 0; }

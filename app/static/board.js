@@ -620,6 +620,39 @@ document.addEventListener("click", (ev) => {
   }
 });
 
+// New Card: the header's button (or the n key) opens the dialog every page carries, a title and an area; "More" holds the
+// rest. The area is the board's current Area filter, else the one used last in this browser.
+function openNewCard() {
+  const dlg = $("dialog.newdlg");
+  if (!dlg || dlg.open) return;
+  const area = dlg.querySelector("select[name=area]");
+  if (area) {
+    const want = [new URLSearchParams(location.search).get("area"), stored("konbini.newarea", "")];
+    for (const a of want) if (a && [...area.options].some((o) => o.value === a)) { area.value = a; break; }
+  }
+  dlg.showModal();
+  const title = dlg.querySelector("input[name=title]");
+  if (title) title.focus();
+}
+{
+  const dlg = $("dialog.newdlg");
+  if (dlg) {
+    document.addEventListener("click", (ev) => { if (ev.target.closest("[data-newcard]")) openNewCard(); });
+    dlg.addEventListener("click", (ev) => { if (ev.target === dlg || ev.target.closest("[data-close]")) dlg.close(); });
+    dlg.addEventListener("close", () => { sheetOpen = false; });
+    dlg.addEventListener("cancel", () => { sheetOpen = false; });
+    dlg.addEventListener("submit", () => { const a = dlg.querySelector("select[name=area]"); if (a) store("konbini.newarea", a.value); });
+    new MutationObserver(() => { sheetOpen = dlg.open; }).observe(dlg, { attributes: true, attributeFilter: ["open"] });
+    document.addEventListener("keydown", (k) => {
+      const t = k.target;
+      if (k.key !== "n" || k.metaKey || k.ctrlKey || k.altKey || sheetOpen) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      k.preventDefault();
+      openNewCard();
+    });
+  }
+}
+
 // The header's search pill (vaultkit 0.17) swaps <main> for live results and, when cleared, puts the page's own markup
 // back. The cards in results work through the delegated handlers above; a board that comes back has lost the lanes' and
 // columns' bindings (tabs, drag and drop, the filter sheet), so it reloads instead of binding twice.
@@ -653,7 +686,7 @@ if (board) {
     phone.addEventListener("change", () => select(current, false));
     // A swipe over the lanes switches the column. One that starts on a control (a row of pills that scrolls sideways, the
     // New Card form, the filters) is that control's own: swiping the tabs to see the rest of them must not also pick one.
-    const controls = ".pills, .segmented, .viewrow, .filterbar, .filterbtn, .newform, select, input, textarea, button.lanetoggle, dialog";
+    const controls = ".pills, .segmented, .viewrow, .filterbar, .filterbtn, select, input, textarea, button.lanetoggle, dialog";
     const scrollsSideways = (el) => {
       for (; el && el !== board; el = el.parentElement) {
         if (el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)) return true;
@@ -714,7 +747,6 @@ if (board) {
     if (k.metaKey || k.ctrlKey || k.altKey || sheetOpen) return;
     if (k.key === "j") { select(selected + 1); k.preventDefault(); }
     else if (k.key === "k") { select(selected - 1); k.preventDefault(); }
-    else if (k.key === "n") { const t2 = $(".newform input[name=title]"); if (t2) { t2.focus(); k.preventDefault(); } }
     else if (k.key === "Enter" && selected >= 0) { const c = visible()[selected]; if (c) location.href = "/p/" + encodeURIComponent(c.dataset.slug); }
     else if (k.key === "Escape") { for (const c of $$(".card.selected")) c.classList.remove("selected"); selected = -1; }
     else if (/^[1-5]$/.test(k.key) && selected >= 0) {

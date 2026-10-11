@@ -49,8 +49,8 @@ try:
         page.goto(BASE + "/?col=ready")
         page.wait_for_timeout(300)
         assert page.evaluate("document.body.dataset.col") == "ready"
-        # on the tabs, the Area pills, the Group By switch and the New Card form: nothing changes
-        for sel in (".coltabs", ".viewrow .pills", ".viewrow .segmented", ".newform", ".coltabs button[data-col=wip]"):
+        # on the tabs, the Area pills, the Group By switch and the New Card button: nothing changes
+        for sel in (".coltabs", ".viewrow .pills", ".viewrow .segmented", ".newbtn", ".coltabs button[data-col=wip]"):
             for dx in (-200, 200):
                 got = page.evaluate(SWIPE, [sel, dx])
                 assert got == "ready", (sel, dx, got)

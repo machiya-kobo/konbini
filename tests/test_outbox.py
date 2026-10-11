@@ -240,6 +240,7 @@ try:
         until("bravo queued", lambda: badge() == "2 waiting")
         sheet_move("charlie", "blocked")
         sheet_move("delta", "done")
+        page.click(".newbtn")
         page.fill(".newform input[name=title]", "Offline idea")
         page.click(".newform button[type=submit]")
         until("the stand-in card", lambda: page.query_selector('.col-backlog .card.queued[data-slug^="tmp-"]'))

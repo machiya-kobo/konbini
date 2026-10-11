@@ -74,6 +74,11 @@ try:
                             for what, got, need in page.evaluate(AUDIT):
                                 failures.append("%s %s sheet: %s %.2f < %g" % (palette, theme, what, got, need))
                             page.keyboard.press("Escape")
+                        if path == "/":                                         # the New Card dialog, in the room's button
+                            page.click(".newbtn")
+                            for what, got, need in page.evaluate(AUDIT):
+                                failures.append("%s %s %s new card: %s %.2f < %g" % (palette, theme, viewport["width"], what, got, need))
+                            page.keyboard.press("Escape")
                     ctx.close()
                 # Card Style (Settings): the board's cards are tinted by default; the other styles draw them on other surfaces
                 ctx = br.new_context(viewport={"width": 1280, "height": 900}, color_scheme=scheme, service_workers="block")

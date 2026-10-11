@@ -669,6 +669,7 @@ def make_handler(listener):
             c.alert = board_alert()
             c.prefs_url = "/api/prefs" if self.principal() else ""     # machiya.js syncs theme and text size
             c.who = self.signed_in()
+            c.areas, c.streams = known_areas(), known_streams()       # the New Card dialog every page carries
             c.alert_links = [(os.path.splitext(os.path.basename(r))[0], modern.obsidian_url(r[:-3]))
                              for r in store.phone_conflicts[:5]] if modern.OBSIDIAN_VAULT else []
             return c
@@ -1306,6 +1307,11 @@ def footer_status():
 def known_areas():
     """The vault's area/* names (every note's tags), sorted: the New-card form's choices."""
     return sorted(t[5:] for t in store.known_tags() if t.startswith("area/") and len(t) > 5)
+
+
+def known_streams():
+    """The vault's streams (cards' stream: field), sorted: the New Card dialog's suggestions."""
+    return sorted({c["stream"] for c in store.cards() if c.get("stream")}, key=str.lower)
 
 
 def board_alert():

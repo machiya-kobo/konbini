@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.24.0
+
+- vaultkit 0.30.1. From 1100 px wide the search field sits in the top bar between the tabs and the icons; below that, and on phones, it stays a row under the bar. The page's stats and alert row is passed to the header (`below=`) instead of being spliced into its markup, and the header's height comes from the shared `--hdr-h`, so the sticky Backlog to Done row sits right under it at every width.
+
 ## 0.23.2
 
 - The New Card form is the first thing on the board page, above the Group By and Area menus and the filters. The Backlog to Done row stays just above the lanes.

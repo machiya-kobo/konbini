@@ -38,7 +38,7 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
 .alert { margin: 0 0 10px; padding: 6px 10px; border-left: 3px solid var(--red); color: var(--red); font-size: 13px; overflow-wrap: anywhere; }
 .stat { white-space: nowrap; }
 /* on the board page the totals are the columns' headings, a row over the lanes that sticks under the header while they scroll
-   (.lane's border and padding, then .col's, put a column's text 11 + 9 px in; --hdr-h is the header's height, set by board.js) */
+   (.lane's border and padding, then .col's, put a column's text 11 + 9 px in; --hdr-h is the header's height, set by machiya.js) */
 @media (min-width: 761px) {
   .stats.bycol { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 6px 11px; }
   .stats.bycol .stat { padding-left: 9px; }

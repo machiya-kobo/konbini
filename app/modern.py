@@ -177,14 +177,13 @@ def page(ctx, what, body, tabs=(), current="", foot=()):
 
 
 def header(ctx, brand, brand_href, links, current, subtitle="", tools="", stats="", cls=""):
-    """The shell's header (the room's icon, wordmark, nav, the Rooms switcher, the settings gear) with the board's stats row."""
-    # the room's one search field (vaultkit v0.17): a pill under the header on every page, results as you type
+    """The shell's header (the room's icon, wordmark, nav, the Rooms switcher, the settings gear) with the page's stats and
+    alert row under the search."""
+    # the room's one search field (vaultkit v0.17): in the top bar from 1100px, else a pill under it, results as you type
     # (machiya.js fetches /search?q= and swaps <main>); the query is only set on the search page
     bar = shell.search_bar(getattr(ctx, "q", ""), "/search", "Search Cards", "Search cards")
-    top = shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""), search=bar)
-    if cls:
-        top = top.replace('<header class="top">', '<header class="top %s">' % e(cls), 1)
-    return top.replace("</div></header>", "</div>%s</header>" % stats, 1) if stats else top
+    return shell.header(ROOM, links, current, shell.rooms(), subtitle, tools, who=getattr(ctx, "who", ""), search=bar,
+                        below=stats, cls=cls)
 
 
 def counts_of(cards):

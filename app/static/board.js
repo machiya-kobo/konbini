@@ -14,14 +14,6 @@ let dragging = false;
 let editing = false;
 let sheetOpen = false;
 
-// The sticky header's height, for the column row that sticks under it (board.css .colbar).
-const topbar = $("header.top");
-if (topbar && window.ResizeObserver) {
-  const setHeight = () => document.documentElement.style.setProperty("--hdr-h", topbar.offsetHeight + "px");
-  setHeight();
-  new ResizeObserver(setHeight).observe(topbar);
-}
-
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch (e) { return fallback; }
 }

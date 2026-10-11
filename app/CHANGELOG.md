@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.24.3
+
+- vaultkit 0.31.4. From 1100 px wide the header's search field is narrower, 38 px tall with 15 px text, and has one focus ring; on a page too short to fill the window, the footer sits at the window's bottom.
+
 ## 0.24.2
 
 - vaultkit 0.31.1. Refreshing a page, plain or hard, now applies a waiting new version, as the "New Version · Reload" button does; before, the notice came back after every refresh. 0.24.1 (the one-row header) was tagged but never deployed; 0.24.2 includes it.

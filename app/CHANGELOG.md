@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.24.1
+
+- vaultkit 0.31.0. From 1100 px wide the header is one row: the brand and tabs on the left, then the search field, then the Rooms menu, your name and the settings gear. The field's width depends only on the window, so it and the icons sit at the same place in every Machiya app. Below 1100 px and on phones nothing changes.
+
 ## 0.24.0
 
 - vaultkit 0.30.1. From 1100 px wide the search field sits in the top bar between the tabs and the icons; below that, and on phones, it stays a row under the bar. The page's stats and alert row is passed to the header (`below=`) instead of being spliced into its markup, and the header's height comes from the shared `--hdr-h`, so the sticky Backlog to Done row sits right under it at every width.

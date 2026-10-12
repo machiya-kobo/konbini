@@ -10,7 +10,7 @@ Agentically coded with [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 <a href="https://machiya-kobo.github.io/">Machiya</a> · <a href="#quickstart">Quickstart</a> · <a href="docs/install.md">Install</a> · <a href="docs/settings.md">Settings</a> · <a href="docs/access.md">Access</a> · <a href="docs/vault-layout.md">Vault layout</a> · <a href="docs/pm.md">pm</a> · <a href="#license">License</a>
 </p>
 
-<p align="center"><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a><br>Manage your projects</p>
+<p align="center"><a href="docs/screenshots/konbini-board-dark.png"><img src="docs/screenshots/konbini-board-dark.png" alt="The board in the dark theme: the New Card button and search in the top bar, then swimlanes for Crafts and Home, each with Backlog, Ready, WIP, Blocked and Done columns of sample cards" width="100%"></a><br>Manage your projects</p>
 <table>
   <tr>
     <td align="center" width="33%"><a href="docs/screenshots/konbini-card-light.png"><img src="docs/screenshots/konbini-card-light.png" alt="A card's page in the light theme: column buttons, Archive and Won't do, its description and the editable fields" width="100%"></a><br>Open a card</td>

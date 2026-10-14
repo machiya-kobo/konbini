@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.25.1
+
+- vaultkit 0.31.5. On phones only one tab of the bar is lit at a time: while the Rooms sheet is open, only Rooms is lit and the page's own tab goes plain.
+
 ## 0.25.0
 
 - New Card is a button in the top bar, right after the last tab, in the room's color. It opens a small dialog (a sheet over the bottom on phones) with a title and an area; "More" holds the summary, stream, priority and description. The press of `n` opens it too. It starts on the board's Area filter, else the area you used last. The form no longer takes room on the board page, and every page has the button.

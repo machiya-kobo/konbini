@@ -3,6 +3,12 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.26.0
+
+- vaultkit 0.32.2. Every link to Settings, the gear and the "(Done Cards)" link included, opens Settings as a sheet over the page: ✕ Cancel, the title, ✓ Save. Changes show at once and are kept only on Save; Cancel, Esc and the backdrop put things back, and a board option the server draws (Card Style, Done Cards, Group By) reloads the page after Save. On phones the sheet is full screen, and the header and tab bar hide while any dialog is open, New Card included.
+- The board's own keys (n, j, k, 1 to 5) and its live reload leave an open dialog alone.
+- In the installed app the header is frosted again, its top fading out of the status bar's color; the 24 px drop under the status bar is gone.
+
 ## 0.25.1
 
 - vaultkit 0.31.5. On phones only one tab of the bar is lit at a time: while the Rooms sheet is open, only Rooms is lit and the page's own tab goes plain.

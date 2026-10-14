@@ -13,6 +13,8 @@ let rev = board ? board.dataset.rev : "";
 let dragging = false;
 let editing = false;
 let sheetOpen = false;
+// any of the board's sheets, or a dialog of the shared shell (the Settings sheet, vaultkit 0.32): keys and the live reload leave it be
+const dialogOpen = () => sheetOpen || !!document.querySelector("dialog[open]");
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch (e) { return fallback; }
@@ -553,7 +555,7 @@ async function flushNow() {
   if (r.signin) say.push("Sign in to send your changes.");
   if (say.length) toast(say.join(" "), 3500);
   const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-  if ((r.sent || fresh > 0) && !editing && !dragging && !sheetOpen && !typing) setTimeout(() => location.reload(), 1500);
+  if ((r.sent || fresh > 0) && !editing && !dragging && !dialogOpen() && !typing) setTimeout(() => location.reload(), 1500);
 }
 if (OB) {
   showOutbox().then(() => { if (navigator.onLine !== false) flushNow(); });
@@ -645,7 +647,7 @@ function openNewCard() {
     new MutationObserver(() => { sheetOpen = dlg.open; }).observe(dlg, { attributes: true, attributeFilter: ["open"] });
     document.addEventListener("keydown", (k) => {
       const t = k.target;
-      if (k.key !== "n" || k.metaKey || k.ctrlKey || k.altKey || sheetOpen) return;
+      if (k.key !== "n" || k.metaKey || k.ctrlKey || k.altKey || dialogOpen()) return;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       k.preventDefault();
       openNewCard();
@@ -744,7 +746,7 @@ if (board) {
       if (k.key === "Escape") t.blur();
       return;
     }
-    if (k.metaKey || k.ctrlKey || k.altKey || sheetOpen) return;
+    if (k.metaKey || k.ctrlKey || k.altKey || dialogOpen()) return;
     if (k.key === "j") { select(selected + 1); k.preventDefault(); }
     else if (k.key === "k") { select(selected - 1); k.preventDefault(); }
     else if (k.key === "Enter" && selected >= 0) { const c = visible()[selected]; if (c) location.href = "/p/" + encodeURIComponent(c.dataset.slug); }
@@ -890,7 +892,7 @@ if (board) {
   // Changes from agents and other devices: reload when the board's revision
   // moves. Server-sent events when they work; polling every 30 s otherwise.
   const maybeReload = (next) => {
-    if (next && next !== rev && !dragging && !editing && !sheetOpen && !document.hidden) location.reload();
+    if (next && next !== rev && !dragging && !editing && !dialogOpen() && !document.hidden) location.reload();
   };
   let streaming = false;
   if (window.EventSource) {

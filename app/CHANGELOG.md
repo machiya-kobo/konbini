@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.27.2
+
+- The header stays on one row at laptop widths on pages with a subtitle (Weekly review, a month, a roundup's period) now that it holds the New Card button: the subtitle is cut with an ellipsis sooner, and the search field gives up to 30 px between 1280 and 1320 px.
+
 ## 0.27.1
 
 - vaultkit 0.35.3. The phone tab bar wears the header's frost, and the app's icon artwork is the same size in it as in the other Machiya apps, kept a rounded tile.

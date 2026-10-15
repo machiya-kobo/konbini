@@ -84,6 +84,14 @@ try:
         ph.wait_for_selector("dialog.newdlg[open]", timeout=3000)
         d = ph.evaluate("() => { const r = document.querySelector('dialog.newdlg').getBoundingClientRect(); return [r.x, r.bottom, r.width, innerHeight]; }")
         assert abs(d[1] - d[3]) < 2 and d[2] >= 389, ("a bottom sheet", d)
+        # the header stays one row with the button and a subtitle (Weekly review, a month, a roundup's period)
+        for width in (1100, 1280, 1366):
+            wide = br.new_context(viewport={"width": width, "height": 800}, service_workers="block").new_page()
+            for path in ("/review", "/calendar", "/roundup?period=week"):
+                wide.goto(BASE + path)
+                gap = wide.evaluate("document.querySelector('header.top .gear').getBoundingClientRect().top"
+                                    " - document.querySelector('header.top .topbar > *').getBoundingClientRect().top")
+                assert gap < 20, ("the header wraps", width, path, gap)
         br.close()
     print("newcard tests: all passed")
 finally:

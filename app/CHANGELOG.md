@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.27.1
+
+- vaultkit 0.35.3. The phone tab bar wears the header's frost, and the app's icon artwork is the same size in it as in the other Machiya apps, kept a rounded tile.
+
 ## 0.27.0
 
 - vaultkit 0.35.1: one search field (44 px, 16 px text, on the card color) and one tab bar across the Machiya apps. The first tab is the app itself, its icon and name, linking to the board.

@@ -4,6 +4,8 @@
 #     --certificate-identity-regexp '^https://github.com/machiya-kobo/konbini/' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 # The tag must be signed by a key in Machiya's release/allowed_signers, or nothing is built.
+# Building again (workflow_dispatch) skips a version that is already built and signed; the build gets three attempts, each on
+# a fresh runner, because public.ecr.aws sometimes refuses a runner's address (429, toomanyrequests).
 name: images
 
 on:
@@ -24,6 +26,15 @@ concurrency:
 
 jobs:
   image:
+    # public.ecr.aws refuses some runners' addresses ("429 toomanyrequests: Data limit exceeded" on the base image), so
+    # the build gets three attempts, one after another, each on a fresh runner. An attempt that finds the version
+    # already built and signed stops there. Only the last attempt can fail the run.
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
+    continue-on-error: ${{ matrix.attempt < 3 }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,12 +43,25 @@ jobs:
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac   # v3.9.1
+      - name: Already built and signed?
+        id: done
+        run: |
+          if cosign verify "ghcr.io/machiya-kobo/konbini:${TAG#v}" \
+               --certificate-identity-regexp '^https://github.com/machiya-kobo/konbini/' \
+               --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null 2>&1; then
+            echo "::notice::konbini ${TAG#v} is already built and signed"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+        if: steps.done.outputs.skip != 'true'
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
 
       - name: Version
+        if: steps.done.outputs.skip != 'true'
         id: v
         run: |
           version=${TAG#v}
@@ -45,20 +69,25 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: The tag is signed by a release key
+        if: steps.done.outputs.skip != 'true'
         run: |
           curl -fsSL -o "$RUNNER_TEMP/allowed_signers" https://raw.githubusercontent.com/machiya-kobo/machiya/main/release/allowed_signers
           git fetch --no-tags --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
           git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_signers" tag -v "$TAG"
 
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130   # v3.7.0
+        if: steps.done.outputs.skip != 'true'
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f   # v3.12.0
+        if: steps.done.outputs.skip != 'true'
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9   # v3.7.0
+        if: steps.done.outputs.skip != 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: build
+        if: steps.done.outputs.skip != 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8   # v6.19.2
         with:
           context: app
@@ -77,8 +106,8 @@ jobs:
             org.opencontainers.image.source=https://github.com/machiya-kobo/konbini
             org.opencontainers.image.licenses=AGPL-3.0-or-later
 
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac   # v3.9.1
       - name: Sign the image (cosign keyless)
+        if: steps.done.outputs.skip != 'true'
         env:
           IMAGE: ghcr.io/machiya-kobo/konbini@${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE"

@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.26.1
+
+- vaultkit 0.33.0. The see-through status bar is back: pages carry `apple-mobile-web-app-status-bar-style` (black-translucent, or default for the Day theme). In the installed app the header is plain frost to the top edge with no fade, and on iOS its contents start 24 px lower so iOS 26's edge blur stays off the names. The theme color is the page's background.
+
 ## 0.26.0
 
 - vaultkit 0.32.2. Every link to Settings, the gear and the "(Done Cards)" link included, opens Settings as a sheet over the page: ✕ Cancel, the title, ✓ Save. Changes show at once and are kept only on Save; Cancel, Esc and the backdrop put things back, and a board option the server draws (Card Style, Done Cards, Group By) reloads the page after Save. On phones the sheet is full screen, and the header and tab bar hide while any dialog is open, New Card included.

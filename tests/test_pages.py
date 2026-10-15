@@ -235,7 +235,7 @@ try:
     # a light device gets a light splash screen (vaultkit 0.14); a theme chosen in Settings still wins
     st, h, body = call(port, "GET", "/manifest.webmanifest", {"Sec-CH-Prefers-Color-Scheme": "light"})
     light = json.loads(body)
-    assert (light["background_color"], light["theme_color"]) == ("#e1e2e7", "#d0d5e3"), light
+    assert (light["background_color"], light["theme_color"]) == ("#e1e2e7", "#e1e2e7"), light
     assert light["user_preferences"]["color_scheme_dark"]["background_color"] == "#1a1b26", light
     assert "Sec-CH-Prefers-Color-Scheme" in h["Vary"], h["Vary"]
     night = json.loads(call(port, "GET", "/manifest.webmanifest", {"Sec-CH-Prefers-Color-Scheme": "light",

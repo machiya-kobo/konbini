@@ -584,14 +584,18 @@ body.theme-day .tabbar { --tab-bg: var(--hl); --tab-on: var(--dark); }
   .tabbar .rooms .menu { top: auto; bottom: calc(100% + 14px); right: 0; }
 }
 
-/* The installed app's header (v0.32.2, owner 2026-10-14: annai's, "looks good"). Without black-translucent (v0.32) the
-   app sits under an opaque status bar in theme-color, the palette's --dark; a frosted header right under it made a hard,
-   square edge. So in the installed app the header is frosted at every width (the phones' solid one, v0.16.3, was against
-   iOS 26's edge blur, which is gone) and its top fades out of the status bar's colour, the blur showing through below. */
+/* The installed app's header. v0.33.0 (owner, 2026-10-14, after comparing with an installed Shiori that still had it:
+   "Yes, bring it back everywhere"): the see-through (black-translucent) status bar is back, so the installed app draws
+   under the clock and the header is plain frost to the top edge, annai's (--bg at 70%, saturate(180%) blur(20px)); the
+   v0.32.2/v0.32.3 fade out of an opaque bar is gone. iOS 26 lays its own edge blur over the top ~110 points of such an
+   app, so on iOS the header's contents start 24px lower, past most of it, and the names stay sharp (the owner chose
+   "names lower"; v0.16.8 did the same). -webkit-touch-callout limits the drop to iOS WebKit. */
 @media (display-mode: standalone) {
-  header.top { background: linear-gradient(to bottom, var(--dark) 0%, color-mix(in srgb, var(--dark) 0%, transparent) 70%),
-      color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  header.top { background: color-mix(in srgb, var(--bg) 70%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+}
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) { header.top { padding-top: calc(var(--sat) + 24px); } }
 }
 
 /* ---- chips and tags (Shiori, v0.26.2): outlined in their colour on no fill. Every accent is 4.5:1 on the page, a

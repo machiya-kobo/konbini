@@ -195,7 +195,7 @@ def security_headers(csp=CSP):
 COLOR_HINT = "Sec-CH-Prefers-Color-Scheme"
 def _colors(palette, mode):
     v = palettes.PALETTES.get(palette, palettes.PALETTES[palettes.DEFAULT])[3][mode]
-    return {"background_color": v["bg"], "theme_color": v["dark"]}
+    return {"background_color": v["bg"], "theme_color": v["bg"]}   # v0.32.3: the bar is the page's --bg (iOS paints it so anyway)
 
 
 NIGHT = _colors(palettes.DEFAULT, "dark")
@@ -457,11 +457,12 @@ def page(ctx, room, title, body, tabs=(), current="", links=None, head="", style
         '<link rel="alternate icon" href="/static/icons/%s.ico" sizes="16x16 32x32 48x48">\n'
         '<link rel="apple-touch-icon" href="/static/icons/%s-apple-180.png">\n'
         '<meta name="apple-mobile-web-app-capable" content="yes">\n<meta name="mobile-web-app-capable" content="yes">\n'
+        '<meta name="apple-mobile-web-app-status-bar-style" content="%s">\n'
         '<meta name="apple-mobile-web-app-title" content="%s">\n%s%s%s%s'
         '</head>\n<body class="theme-%s%s room-%s" data-room="%s" data-text="%s"%s>\n%s\n%s\n</body>\n</html>\n'
     ) % (e(title), scheme, colors,
          '<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">\n' if manifest else "",
-         room, room, room, e(name),
+         room, room, room, "default" if theme == "day" else "black-translucent", e(name),   # v0.33: back (owner)
          (prefs_meta(prefs_url) + app_prefs_meta(room)) if prefs_url else "", css, js, head, theme,
          "" if palette == palettes.DEFAULT else " palette-" + palette, room, room, e(text),
          (' data-cookie-domain="%s"' % e(COOKIE_DOMAIN)) if COOKIE_DOMAIN else "", body,

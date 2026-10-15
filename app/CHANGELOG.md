@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.26.3
+
+- vaultkit 0.34.1. On an iPhone, the installed app's header drops its name row: the search box starts below the status bar's blur, and New Card sits beside it. On an inner page the Back button stays, at the left of the box.
+
 ## 0.26.2
 
 - vaultkit 0.33.1. On iOS the installed app's header contents start 12 px lower, not 24.

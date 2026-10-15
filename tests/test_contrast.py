@@ -74,8 +74,8 @@ try:
                             for what, got, need in page.evaluate(AUDIT):
                                 failures.append("%s %s sheet: %s %.2f < %g" % (palette, theme, what, got, need))
                             page.keyboard.press("Escape")
-                        if path == "/":                                         # the New Card dialog, in the room's button
-                            page.click(".newbtn")
+                        if path == "/":                                         # the New Card dialog, from the room's button (a tab on phones)
+                            page.click(".newbtn" if viewport["width"] > 760 else ".tabbar button[data-newcard]")
                             for what, got, need in page.evaluate(AUDIT):
                                 failures.append("%s %s %s new card: %s %.2f < %g" % (palette, theme, viewport["width"], what, got, need))
                             page.keyboard.press("Escape")

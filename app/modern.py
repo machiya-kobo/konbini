@@ -143,8 +143,13 @@ ICON = {
 KANBAN_NAV = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"), ("/plan", "plan", "Plan"),
               ("/posts", "posts", "Posts"),
               ("/calendar", "calendar", "Calendar"), ("/roundup?period=week", "roundup", "Roundup")]
-KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), ("/review", "review", "Review"),
-               ("/roundup?period=week", "roundup", "Roundup")]
+# The phone's tab bar (vaultkit v0.35): the app itself first (its icon and name, to the board), Now, New (a button that opens the
+# New Card dialog, the one the header button opens on wide screens) and Roundup, then Rooms. Review is linked from Now.
+NEW_TAB = ('<button type="button" data-newcard>%s<span>New</span></button>'
+           % (_SVG % '<path d="M12 5v14M5 12h14"/>'))
+KANBAN_TABS = [("/", "board", "Board"), ("/now", "now", "Now"), NEW_TAB, ("/roundup?period=week", "roundup", "Roundup")]
+# a page with no New Card dialog (the offline page) keeps New off the bar
+KANBAN_LINK_TABS = [t for t in KANBAN_TABS if not isinstance(t, str)]
 
 
 def set_sisters():
@@ -503,13 +508,13 @@ def now(ctx, cards, claims=None, rev=""):
         sections.append((name, col, items))
     ready = sorted((c for c in cards if c["board"] == "ready"), key=lambda c: (c.get("priority") or 9, sort_key(c)))[:5]
     sections.append(("Up next", "ready", ready))
-    parts = []
+    parts = ['<p class="nowtop"><a class="chip link" href="/review">Weekly Review</a></p>']
     for name, col, items in sections:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'
         parts.append('<section class="nowsec"><h2 class="colhead col-%s">%s <span class="colcount">%d</span></h2>'
                      '<div class="cards nowlist">%s</div></section>' % (col, e(name), len(items), body))
-    parts.append('<p class="nowmore"><a href="/review">Weekly review</a> &middot; <a href="/plan">Plan</a> (<a href="/streams">streams</a>, '
+    parts.append('<p class="nowmore"><a href="/plan">Plan</a> (<a href="/streams">streams</a>, '
                  '<a href="/goals">goals</a>, <a href="/timeline">timeline</a>) &middot; '
                  '<a href="/posts">Posts</a> &middot; '
                  '<a href="/calendar">Calendar</a> &middot; <a href="/roundup?period=week">Roundup</a></p>')
@@ -552,7 +557,7 @@ def review(ctx, cards, data, claims=None, rev=""):
                      '<p class="hint">%s</p><div class="cards nowlist">%s</div></section>' % (key, e(title), len(rows), e(hint), body))
     main = '<main id="board" class="now review" data-rev="%s">%s</main>' % (e(rev), "\n".join(parts))
     return page(ctx, "Review", board_header(ctx, counts_of(cards), "Weekly review", "review") + main,
-                KANBAN_TABS, "review")
+                KANBAN_TABS, "now")     # reached from Now, so Now stays lit
 
 
 def stream_rollup(cards):
@@ -1048,7 +1053,7 @@ def offline(ctx):
     """The precached /offline (shell.offline): the header and tabs, but no search box, status line or anything else
     that would be stale when it's shown."""
     body = (shell.header(ROOM, KANBAN_NAV, "", shell.rooms()) + shell.offline(ROOM) + shell.footer(ROOM))
-    return shell.page(ctx, ROOM, shell.title(ROOM, "Offline"), body, KANBAN_TABS, "",
+    return shell.page(ctx, ROOM, shell.title(ROOM, "Offline"), body, KANBAN_LINK_TABS, "",
                       stylesheets=[static_url("board.css")], scripts=[static_url("outbox.js"), static_url("board.js")], icons=ICON)
 
 

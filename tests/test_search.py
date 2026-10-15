@@ -33,8 +33,11 @@ empty = modern.search_page(common.Ctx("night"), cards, "", {})
 assert "Search Cards" in empty and 'class="handoff"' not in empty                 # no hand-off without a query
 board = modern.board(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], query={})
 assert board.count('class="search searchbar"') == 1 and 'name="q" value="" placeholder="Search Cards"' in board      # the pill, empty, on every page
-# the phone tab bar: Board, Now, Review, Roundup; the desktop nav has no Search item either (the pill is the search)
-assert [k for _, k, _ in modern.KANBAN_TABS] == ["board", "now", "review", "roundup"]
+# the phone tab bar: Board (the app itself), Now, New (a button for the New Card dialog), Roundup; Review is linked from Now;
+# the desktop nav has no Search item either (the pill is the search)
+assert [t[1] if isinstance(t, tuple) else "new" for t in modern.KANBAN_TABS] == ["board", "now", "new", "roundup"]
+assert 'data-newcard' in modern.NEW_TAB and '<span>New</span>' in modern.NEW_TAB
 assert [k for _, k, _ in modern.KANBAN_NAV] == ["board", "now", "review", "plan", "posts", "calendar", "roundup"]
-assert 'class="revlink"' not in modern.now(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], {}, "1")
+now_html = modern.now(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], {}, "1")
+assert 'class="revlink"' not in now_html and 'href="/review">Weekly Review</a>' in now_html
 print("search tests: all passed")

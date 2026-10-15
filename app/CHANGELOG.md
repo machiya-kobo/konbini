@@ -3,6 +3,11 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.27.0
+
+- vaultkit 0.35.1: one search field (44 px, 16 px text, on the card color) and one tab bar across the Machiya apps. The first tab is the app itself, its icon and name, linking to the board.
+- Phone tabs: Konbini, Now, New, Roundup, Rooms. New opens the same New Card dialog as the button on wide screens, which the header no longer shows on phones. Review left the tab bar: the Now page links it (Weekly Review, at the top); Now stays lit on the review.
+
 ## 0.26.3
 
 - vaultkit 0.34.1. On an iPhone, the installed app's header drops its name row: the search box starts below the status bar's blur, and New Card sits beside it. On an inner page the Back button stays, at the left of the box.

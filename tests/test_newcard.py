@@ -69,11 +69,19 @@ try:
         page.click(".newbtn")
         assert page.input_value("select[name=area]") == areas[-1], "the area used last"
         page.keyboard.press("Escape")
-        # phones: the button is in the top bar, the dialog a sheet over the bottom
+        assert not page.is_visible(".tabbar button[data-newcard]"), "wide screens have no tab bar"
+        # phones: New is a tab in the tab bar (the header button is gone), the dialog a sheet over the bottom
         ph = br.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, service_workers="block").new_page()
         ph.goto(BASE + "/")
-        assert ph.is_visible(".newbtn")
-        ph.tap(".newbtn")
+        assert not ph.is_visible(".newbtn"), "no header button on phones"
+        tabs = ph.eval_on_selector_all(".tabbar > a > span:last-child, .tabbar > button > span:last-child",
+                                      "els => els.map(e => e.textContent.trim())")
+        assert tabs == ["Konbini", "Now", "New", "Roundup"], tabs     # then Rooms
+        assert ph.is_visible(".tabbar button[data-newcard]")
+        ph.goto(BASE + "/now")
+        assert ph.is_visible('main a[href="/review"]'), "the Now page links the weekly review"
+        ph.tap(".tabbar button[data-newcard]")
+        ph.wait_for_selector("dialog.newdlg[open]", timeout=3000)
         d = ph.evaluate("() => { const r = document.querySelector('dialog.newdlg').getBoundingClientRect(); return [r.x, r.bottom, r.width, innerHeight]; }")
         assert abs(d[1] - d[3]) < 2 and d[2] >= 389, ("a bottom sheet", d)
         br.close()

@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.27.3
+
+- The Now page and the weekly review match the board's dimensions: each section is a box like a lane (the same padding, heading size and count pill), so a card is as wide as on the board; card titles are 14 px/600 on both; and "Weekly Review" is a button the size of Filters, still a link to the review.
+
 ## 0.27.2
 
 - The header stays on one row at laptop widths on pages with a subtitle (Weekly review, a month, a roundup's period) now that it holds the New Card button: the subtitle is cut with an ellipsis sooner, and the search field gives up to 30 px between 1280 and 1320 px.

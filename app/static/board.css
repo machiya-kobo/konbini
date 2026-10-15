@@ -10,7 +10,7 @@ main.msg { max-width: 640px; }
 /* Konbini's own raised surfaces (vaultkit 0.25, docs/ui.md "Colours on raised panels"): on --dark or --hl an accent
    uses its panel shade and muted text the menu's, so both stay 4.5:1. machiya.css does this for .card and the shared
    panels; tests/test_contrast.py measures every page in Chromium. */
-.lane, .card, .lanecount, .colcount,
+.lane, .nowlane, .card, .lanecount, .colcount,
 .moves .mv, table.detail, .editform, .newform, dialog.newdlg, .postform, .tagsec, table.cal td.day, .daylist li,
 .gtrack, dialog.sheet, .outboxbadge, .toast, .banner, .closed,
 .closeout summary, .newmore, .editform details.more,
@@ -22,11 +22,11 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
 }
 
 /* column colors, wherever a column is named; a state chip takes its colour from --chip (machiya.css .chip), a pill from --pill */
-.colhead.col-backlog, .stat.col-backlog, .lanecount.col-backlog, .mv.col-backlog:disabled, td.col-backlog { color: var(--muted); }
-.colhead.col-ready, .stat.col-ready, .lanecount.col-ready, .mv.col-ready:disabled, td.col-ready { color: var(--blue); }
-.colhead.col-wip, .stat.col-wip, .lanecount.col-wip, .mv.col-wip:disabled, td.col-wip { color: var(--orange); }
-.colhead.col-blocked, .stat.col-blocked, .lanecount.col-blocked, .mv.col-blocked:disabled, td.col-blocked { color: var(--red); }
-.colhead.col-done, .stat.col-done, .lanecount.col-done, .mv.col-done:disabled, td.col-done { color: var(--green); }
+.colhead.col-backlog, .nowhead.col-backlog, .stat.col-backlog, .lanecount.col-backlog, .mv.col-backlog:disabled, td.col-backlog { color: var(--muted); }
+.colhead.col-ready, .nowhead.col-ready, .stat.col-ready, .lanecount.col-ready, .mv.col-ready:disabled, td.col-ready { color: var(--blue); }
+.colhead.col-wip, .nowhead.col-wip, .stat.col-wip, .lanecount.col-wip, .mv.col-wip:disabled, td.col-wip { color: var(--orange); }
+.colhead.col-blocked, .nowhead.col-blocked, .stat.col-blocked, .lanecount.col-blocked, .mv.col-blocked:disabled, td.col-blocked { color: var(--red); }
+.colhead.col-done, .nowhead.col-done, .stat.col-done, .lanecount.col-done, .mv.col-done:disabled, td.col-done { color: var(--green); }
 .chip.col-backlog, .chip.col-none, .chip.col-archived, .pill.col-backlog { --chip: var(--muted); --pill: var(--muted); }
 .chip.col-ready, .pill.col-ready { --chip: var(--blue); --pill: var(--blue); }
 .chip.col-wip, .pill.col-wip { --chip: var(--orange); --pill: var(--orange); }
@@ -51,8 +51,8 @@ main.deps pre, .nbody pre, .nbody code, .minigrid, .filterbar select, .filterbar
 
 /* ---- board -------------------------------------------------------------- */
 .coltabs { display: none; }
-.lane { margin: 0 0 16px; padding: 8px 10px 10px; border-radius: 14px; background: var(--dark); border: 1px solid var(--line); }
-.lanehead {
+.lane, .nowlane { margin: 0 0 16px; padding: 8px 10px 10px; border-radius: 14px; background: var(--dark); border: 1px solid var(--line); }
+.lanehead, .nowhead {
   display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 4px 10px;
   font-size: var(--fs-m); font-weight: 600; color: var(--magenta);     /* Title Case as written, as every section heading (v0.27) */
 }
@@ -100,7 +100,7 @@ section.lane ~ section.lane .colhead { display: none; }
 .card.tinted.col-done { --tint: var(--green); }
 /* cards wear Konbini's magenta wherever they appear (machiya.css: .is-card sets --thing); in the lanes, where five columns
    share the width, the title is a size down from the lists' 16px */
-.col .card .title { font-size: var(--fs-m); font-weight: 600; }
+.col .card .title, .nowlist .card .title { font-size: var(--fs-m); font-weight: 600; }
 .card .snippet {
   margin: 4px 0 0; font-size: var(--fs-s);
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
@@ -192,8 +192,10 @@ dialog.newdlg::backdrop { background: rgba(0, 0, 0, .45); }
 .newform .newacts { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ---- now ---------------------------------------------------------------- */
-.now .nowsec { margin: 0 0 22px; }
-.now h2.colhead { display: block; font-size: 12px; margin: 0 0 8px; }
+/* each section is a box like the board's lanes (.lane, .lanehead: the same size, padding, heading and count pill), so
+   a card is as wide here as there; the box and heading share the lane's rules above, and no board.js lane behaviour */
+.nowhead { color: var(--magenta); }                  /* the review's headings; Now's take their column's colour */
+.btn.nowreview { padding: 6px 14px; font: 600 13px/normal system-ui, sans-serif; }   /* the size of Filters, which is a button */
 .nowlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
 .nowlist .card { margin: 0; }
 
@@ -203,7 +205,7 @@ dialog.newdlg::backdrop { background: rgba(0, 0, 0, .45); }
 .limits { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; margin: 0 0 16px; }
 .chip.lim { font-variant-numeric: tabular-nums; }
 .chip.lim.over { --chip: var(--orange); }
-.revsec .hint { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+.revsec .hint { color: var(--muted); font-size: 13px; margin: -4px 4px 10px; }
 .revsec { scroll-margin-top: 80px; }
 .chip.why { --chip: var(--orange); }
 
@@ -531,15 +533,16 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
   section.lane ~ section.lane .colhead { display: block; }
   body[data-col] section.lane .colhead, body[data-col] section.lane ~ section.lane .colhead { display: none; }
   body[data-col] .col { background: transparent; padding: 0; box-shadow: none; border: 0; }
-  .lane { padding: 6px 8px 8px; }
+  .lane, .nowlane { padding: 6px 8px 8px; }
+  .btn.nowreview { padding: 9px 16px; font-size: 14px; }
   body[data-col=backlog] .col:not(.col-backlog), body[data-col=ready] .col:not(.col-ready),
   body[data-col=wip] .col:not(.col-wip), body[data-col=blocked] .col:not(.col-blocked),
   body[data-col=done] .col:not(.col-done) { display: none; }
   body[data-col=backlog] .lane:not(:has(.col-backlog > .card)), body[data-col=ready] .lane:not(:has(.col-ready > .card)),
   body[data-col=wip] .lane:not(:has(.col-wip > .card)), body[data-col=blocked] .lane:not(:has(.col-blocked > .card)),
   body[data-col=done] .lane:not(:has(.col-done > .card)) { display: none; }
-  .lane { margin-bottom: 18px; }
-  .lanehead { padding: 2px 2px 8px; }
+  .lane, .nowlane { margin-bottom: 18px; }
+  .lanehead, .nowhead { padding: 2px 2px 8px; }
   .card { padding: 10px 38px 11px 12px; }
   .card:hover { transform: none; box-shadow: none; }
   .card .more { width: 34px; height: 34px; font-size: 18px; top: 4px; right: 4px; }

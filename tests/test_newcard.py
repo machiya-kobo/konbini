@@ -78,7 +78,16 @@ try:
                                       "els => els.map(e => e.textContent.trim())")
         assert tabs == ["Konbini", "Now", "New", "Roundup"], tabs     # then Rooms
         assert ph.is_visible(".tabbar button[data-newcard]")
+        # Now has the board's dimensions: the same card width and title, lane-like sections, a button the size of Filters
+        DIM = """() => { const r = s => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect();
+                  const c = getComputedStyle(e); return [Math.round(b.width), Math.round(b.height), c.fontSize, c.fontWeight]; };
+                return {card: r('article.card'), title: r('article.card a.title'), top: r('.filterbtn, .nowreview'), head: r('h2.lanehead, h2.nowhead')}; }"""
+        home = ph.evaluate(DIM)
         ph.goto(BASE + "/now")
+        nowdim = ph.evaluate(DIM)
+        for key, keep in (("card", [0, 2, 3]), ("title", [0, 1, 2, 3]), ("top", [1, 2, 3]), ("head", [0, 1, 2, 3])):
+            same = lambda v: [v[key][i] for i in keep]       # a card's height and a button's width follow their content
+            assert same(nowdim) == same(home), ("Now matches the board", key, home[key], nowdim[key])
         assert ph.is_visible('main a[href="/review"]'), "the Now page links the weekly review"
         ph.tap(".tabbar button[data-newcard]")
         ph.wait_for_selector("dialog.newdlg[open]", timeout=3000)

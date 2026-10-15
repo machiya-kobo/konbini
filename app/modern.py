@@ -508,11 +508,11 @@ def now(ctx, cards, claims=None, rev=""):
         sections.append((name, col, items))
     ready = sorted((c for c in cards if c["board"] == "ready"), key=lambda c: (c.get("priority") or 9, sort_key(c)))[:5]
     sections.append(("Up next", "ready", ready))
-    parts = ['<p class="nowtop"><a class="chip link" href="/review">Weekly Review</a></p>']
+    parts = ['<p class="nowtop"><a class="btn quiet nowreview" href="/review">Weekly Review</a></p>']
     for name, col, items in sections:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'
-        parts.append('<section class="nowsec"><h2 class="colhead col-%s">%s <span class="colcount">%d</span></h2>'
+        parts.append('<section class="nowsec nowlane"><h2 class="nowhead col-%s">%s <span class="colcount">%d</span></h2>'
                      '<div class="cards nowlist">%s</div></section>' % (col, e(name), len(items), body))
     parts.append('<p class="nowmore"><a href="/plan">Plan</a> (<a href="/streams">streams</a>, '
                  '<a href="/goals">goals</a>, <a href="/timeline">timeline</a>) &middot; '
@@ -553,7 +553,7 @@ def review(ctx, cards, data, claims=None, rev=""):
     for key, title, hint, rows in data["sections"]:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True, why=why)
                          for c, why in rows) or '<p class="none"><b>All Clear</b></p>'
-        parts.append('<section class="nowsec revsec" id="r-%s"><h2 class="colhead">%s <span class="colcount">%d</span></h2>'
+        parts.append('<section class="nowsec revsec nowlane" id="r-%s"><h2 class="nowhead">%s <span class="colcount">%d</span></h2>'
                      '<p class="hint">%s</p><div class="cards nowlist">%s</div></section>' % (key, e(title), len(rows), e(hint), body))
     main = '<main id="board" class="now review" data-rev="%s">%s</main>' % (e(rev), "\n".join(parts))
     return page(ctx, "Review", board_header(ctx, counts_of(cards), "Weekly review", "review") + main,

@@ -4,7 +4,7 @@
 #     --certificate-identity-regexp '^https://github.com/machiya-kobo/konbini/' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 # The tag must be signed by a key in Machiya's release/allowed_signers, or nothing is built.
-# Building again (workflow_dispatch) skips a version that is already built and signed; the build gets three attempts, each on
+# Building again (workflow_dispatch) skips a version that is already built and signed; the build gets five attempts, each on
 # a fresh runner, because public.ecr.aws sometimes refuses a runner's address (429, toomanyrequests).
 name: images
 
@@ -27,14 +27,14 @@ concurrency:
 jobs:
   image:
     # public.ecr.aws refuses some runners' addresses ("429 toomanyrequests: Data limit exceeded" on the base image), so
-    # the build gets three attempts, one after another, each on a fresh runner. An attempt that finds the version
+    # the build gets five attempts, one after another, each on a fresh runner. An attempt that finds the version
     # already built and signed stops there. Only the last attempt can fail the run.
     strategy:
       max-parallel: 1
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3]
-    continue-on-error: ${{ matrix.attempt < 3 }}
+        attempt: [1, 2, 3, 4, 5]
+    continue-on-error: ${{ matrix.attempt < 5 }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,6 +53,12 @@ jobs:
             echo "::notice::konbini ${TAG#v} is already built and signed"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # A later attempt waits first, longer each time (2, 4, 6, then 8 minutes): ECR's cap is per address and per
+      # period, so a fresh runner after a pause is likelier to get through.
+      - name: Pause before a later attempt
+        if: steps.done.outputs.skip != 'true' && matrix.attempt > 1
+        run: sleep $(( (${{ matrix.attempt }} - 1) * 120 ))
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
         if: steps.done.outputs.skip != 'true'

@@ -46,8 +46,29 @@ def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+URL_SAFE = ":/?#[]@!$&'()*+,;=%~"
+
+
 def clean_url(u):
     return u.rstrip(".,;:!?…")
+
+
+def ascii_url(url):
+    """The URL as urllib can send it: non-ASCII characters in the path, query and fragment percent-encoded (UTF-8), an
+    international host name as IDNA (punycode). Done once, before any request; the stored link keeps its own spelling."""
+    if url.isascii():
+        return url
+    parts = urllib.parse.urlsplit(url)
+    netloc = parts.netloc
+    if not netloc.isascii():
+        userinfo, at, hostport = netloc.rpartition("@")
+        host, colon, port = hostport.rpartition(":") if not hostport.endswith("]") and ":" in hostport else (hostport, "", "")
+        try:
+            host = host.encode("idna").decode("ascii")
+        except UnicodeError:
+            host = urllib.parse.quote(host, safe="")      # a name IDNA refuses: the request fails there, and the link shows dead
+        netloc = userinfo + at + host + colon + port
+    return urllib.parse.urlunsplit((parts.scheme, netloc, *(urllib.parse.quote(x, safe=URL_SAFE) for x in parts[2:])))
 
 
 PRIVATE_SUFFIXES = (".local", ".lan", ".internal", ".localhost", ".home.arpa", ".intranet", ".corp", ".private")
@@ -94,7 +115,7 @@ class WaybackBackend:
 
     def lookup(self, url):
         # the availability API wants the URL without its scheme
-        q = "https://archive.org/wayback/available?url=" + urllib.parse.quote(url.split("://", 1)[-1], safe="/")
+        q = "https://archive.org/wayback/available?url=" + urllib.parse.quote(ascii_url(url).split("://", 1)[-1], safe="/")
         req = urllib.request.Request(q, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=20) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
@@ -106,7 +127,7 @@ class WaybackBackend:
         return None
 
     def save(self, url):
-        req = urllib.request.Request("https://web.archive.org/save/" + url, headers={"User-Agent": UA})
+        req = urllib.request.Request("https://web.archive.org/save/" + ascii_url(url), headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=60) as r:
             loc = r.headers.get("Content-Location") or ""
             final = r.geturl()
@@ -178,7 +199,7 @@ class HisterBackend:
     def final_url(self, url):
         """Where a URL redirects to: Hister stores the page under its final address."""
         try:
-            req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA})
+            req = urllib.request.Request(ascii_url(url), method="HEAD", headers={"User-Agent": UA})
             with OPENER.open(req, timeout=15) as r:
                 return r.geturl()
         except Exception:
@@ -248,7 +269,7 @@ class Links:
         """HTTP status of a link, or None when it can't be reached."""
         for method in ("HEAD", "GET"):
             try:
-                req = urllib.request.Request(url, method=method, headers={"User-Agent": UA, "Accept": "*/*"})
+                req = urllib.request.Request(ascii_url(url), method=method, headers={"User-Agent": UA, "Accept": "*/*"})
                 with OPENER.open(req, timeout=15) as r:
                     return r.status
             except websafe.Blocked:

@@ -29,6 +29,47 @@ for flag, calls in ((False, []), (True, ["https://example.org/a"])):
 b, st = Backend(("http://hister/copy", "2026-09-01")), Store()          # a copy Hister already holds is shown either way
 assert links.Links(st, None, hister=b).private_copy(rec) == "http://hister/copy" and b.saved == [] and st.fields["private_backend"] == "hister"
 assert links.Links(Store(), None).hister_save is False
+# a non-ASCII URL (a "…" a note cut a link short with, an international host) is percent-encoded / IDNA'd once, before
+# any request: urllib can't send it ("'ascii' codec can't encode"), so the link never got checked
+cut = "https://abc.plex.direct:32400/library/a…b?name=caf\u00e9&x=%E2%80%A6#fr\u00e4g"
+assert links.ascii_url(cut) == "https://abc.plex.direct:32400/library/a%E2%80%A6b?name=caf%C3%A9&x=%E2%80%A6#fr%C3%A4g", links.ascii_url(cut)
+assert links.ascii_url("https://b\u00fccher.example/p\u00e4th") == "https://xn--bcher-kva.example/p%C3%A4th"
+assert links.ascii_url("https://us\u00e9r:pw@b\u00fccher.example:8443/a") == "https://us\u00e9r:pw@xn--bcher-kva.example:8443/a"
+plain = "https://example.org/a%20b?q=1&r=(2)~#x"
+assert links.ascii_url(plain) is plain
+assert links.ascii_url("https://example.org/\u2026") == "https://example.org/%E2%80%A6"
+seen = []
+class Resp:
+    status = 200
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+class Opener:
+    def open(self, req, timeout=None):
+        seen.append(req.full_url)
+        req.full_url.encode("ascii")
+        return Resp()
+saved = links.OPENER
+links.OPENER = Opener()
+try:
+    for u in (cut, "https://b\u00fccher.example/\u2026"):
+        assert links.Links(None, None).probe(u) == 200
+    assert seen == [links.ascii_url(cut), "https://xn--bcher-kva.example/%E2%80%A6"], seen
+finally:
+    links.OPENER = saved
+urls = []
+class WbResp(Resp):
+    headers = {"Content-Location": "/web/20260101000000/x"}
+    def geturl(self): return ""
+orig = links.urllib.request.urlopen
+links.urllib.request.urlopen = lambda req, timeout=None: (urls.append(req.full_url), WbResp())[1]
+try:
+    assert links.WaybackBackend().save("https://b\u00fccher.example/\u2026")[0].endswith("/web/20260101000000/x")
+finally:
+    links.urllib.request.urlopen = orig
+assert urls == ["https://web.archive.org/save/https://xn--bcher-kva.example/%E2%80%A6"], urls
+# a dead non-ASCII link is dead, not an exception: the answer for it counts like any other
+assert links.Links(None, None).probe("https://example.invalid/\u2026") is None
+
 # KANBAN_HISTER_SAVE parsing: off unless 1, on or true
 assert [links.setting_on(v) for v in (None, "", "0", "off", "no", "yes", "1", "on", "true", " TRUE ")] == [False] * 6 + [True] * 4
 assert 'links_mod.setting_on(os.environ.get("KANBAN_HISTER_SAVE"))' in open(os.path.join(APP, "app.py")).read()

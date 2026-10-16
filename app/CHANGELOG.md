@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.27.4
+
+- The link checker handles a link with a non-ASCII character in it (a "…" where a note cut the address short, or an international host name): the address is percent-encoded, and the host converted to punycode, once before any request. It used to fail with "'ascii' codec can't encode character" and the link was never checked; now it is checked, and shows dead if it is dead.
+
 ## 0.27.3
 
 - The Now page and the weekly review match the board's dimensions: each section is a box like a lane (the same padding, heading size and count pill), so a card is as wide as on the board; card titles are 14 px/600 on both; and "Weekly Review" is a button the size of Filters, still a link to the review.

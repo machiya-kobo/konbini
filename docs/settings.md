@@ -27,7 +27,7 @@ Who may use the board and how it listens. [Who can use it](access.md) puts these
 
 ## Hister sign-in
 
-With `KANBAN_AUTH=hister`, Hister's users sign in through Machiya's hister-login helper.
+With `KANBAN_AUTH=hister`, Hister's users sign in through Machiya's [hister-login](https://github.com/machiya-kobo/machiya/blob/main/docs/services/hister-login.md) helper.
 
 | Setting | Default | |
 |---|---|---|

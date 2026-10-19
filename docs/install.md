@@ -51,7 +51,7 @@ cosign verify ghcr.io/machiya-kobo/konbini:<version> \
 ## Natively on the BSDs
 
 Python 3.11 or later and `pyyaml` 6+ from packages; `markdown` 3.11+ in a virtual environment (the packaged one is older, and
-vaultkit refuses it: one note could exhaust memory). Run the package lines as root or with `doas`/`sudo`. A fresh
+[vaultkit](https://github.com/machiya-kobo/machiya/blob/main/docs/vaultkit.md) refuses it: one note could exhaust memory). Run the package lines as root or with `doas`/`sudo`. A fresh
 OpenBSD has `doas` but no `/etc/doas.conf`; a fresh FreeBSD or NetBSD has no `sudo` (`pkg install sudo`,
 `pkg_add sudo`).
 
@@ -149,7 +149,7 @@ A native run stops with Ctrl-C.
 
 ## As part of the Machiya stack
 
-[Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, Kura (the notes app) and Niwa (the garden) around one
+[Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, [Kura](https://github.com/machiya-kobo/kura) (the notes app) and [Niwa](https://github.com/machiya-kobo/niwa) (the garden) around one
 vault, with Hister and SearXNG as optional search engines. Compared with the Quickstart:
 
 - **Start from Machiya's compose:** `compose/compose.yml`, profile `konbini` (plus `compose/mirror.yml` for a shared

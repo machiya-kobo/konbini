@@ -1,8 +1,8 @@
 # Konbini
 
-[Machiya](https://github.com/machiya-kobo/machiya) is a set of small self-hosted apps for finding what you've read: your pages ([Hister](https://github.com/asciimoo/hister)), the web ([SearXNG](https://github.com/searxng/searxng)), your notes ([Obsidian](https://obsidian.md)) and your code ([Forgejo](https://forgejo.org) or [GitHub](https://github.com)).
+Konbini (コンビニ, convenience store) turns your [Obsidian](https://obsidian.md) notes into a fully featured kanban board. It's also a writing kit that lays out a finished project for its blog post.
 
-Konbini (コンビニ, convenience store) is Machiya's project board. Turn your Obsidian notes into a fully featured kanban board. It's also a writing kit that lays out a finished project for its blog post.
+Konbini is one of [Machiya](https://github.com/machiya-kobo/machiya)'s small self-hosted apps, which share one vault of notes: [Kura](https://github.com/machiya-kobo/kura) to read them, [Niwa](https://github.com/machiya-kobo/niwa) for your digital garden and [Shiori](https://github.com/machiya-kobo/shiori) to search everything you've read.
 
 Agentically coded with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 

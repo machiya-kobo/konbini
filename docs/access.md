@@ -8,7 +8,7 @@ person or agent may do. Every setting named here is in [Settings](settings.md#ac
 - **People on your tailnet:** bind `127.0.0.1`, put `tailscale serve` in front (on another bind, such as a sidecar
   container, name the proxy in `KANBAN_TRUSTED_PROXIES`), and list their Tailscale logins in
   `KANBAN_TAILNET_USERS` (`KANBAN_AUTH=tailscale`, the default; unset means nobody).
-- **People, agents, sign-in or Shiori devices:** Machiya's identity file, off unless you set it.
+- **People, agents, sign-in or [Shiori](https://github.com/machiya-kobo/shiori) devices:** Machiya's identity file, off unless you set it.
   `cd app && python3 -m vaultkit.identity setup` (standard library only) prints each app's settings. See
   [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
 - **People signed in to Hister:** `KANBAN_AUTH=hister` with Machiya's hister-login helper (`KANBAN_AUTH_SIGNIN_URL`,
@@ -20,7 +20,7 @@ person or agent may do. Every setting named here is in [Settings](settings.md#ac
 
 ## Sign-in, pairing and preferences
 
-Sign-in and pairing exist only with `MACHIYA_IDENTITY_FILE` (vaultkit's `signin`); without the file they answer 404.
+Sign-in and pairing exist only with `MACHIYA_IDENTITY_FILE` ([vaultkit](https://github.com/machiya-kobo/machiya/blob/main/docs/vaultkit.md)'s `signin`); without the file they answer 404.
 Preferences work in every mode. Without the file they belong to whoever Konbini let in (the Tailscale login, or the
 owner in open mode), so theme and text size follow that person to another device.
 

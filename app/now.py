@@ -11,7 +11,9 @@ A card is working when something happened to it in the window (common.NOW_DAYS, 
 
 The line a card shows is the latest thing that happened: from its latest day, and on that day from the heaviest source,
 in that order (agents add Log rows in batches, so they count least). WIP cards with nothing in the window are quiet.
-Change-log rows in the window that link no card are listed by host, read-only: nothing here proposes a card.
+Change-log rows in the window that link no card are listed by host, read-only: nothing here proposes a card. Rows the
+triage agent wrote (the change text starts with the robot emoji) are left out of that list, since incidents track them;
+one that links a card still counts as that card's activity.
 """
 import datetime
 import os
@@ -25,6 +27,7 @@ from store import commit_filter, repo_name
 from timeline import LINK_RE, clean, log_rows, parse_date, system_host
 
 CHANGE_LOGS = "Systems/Change Logs/"
+TRIAGE_MARK = "\U0001F916"                     # the triage agent's rows start with the robot emoji
 WEIGHT = {"commit": 3, "event": 2, "claim": 2, "changelog": 1, "log": 0}
 COMMIT_RE = re.compile(r"^\s*[-*]\s+(\d{4}-\d{2}-\d{2}):\s+(.+?)\s*$")
 COLUMN = {"backlog": "Backlog", "ready": "Ready", "wip": "WIP", "blocked": "Blocked", "done": "Done", "archived": "Archived"}
@@ -178,7 +181,8 @@ def build(cards, notes, events, last_events, claims, resolve, today, tz, now=Non
         who = claim.get("agent") if claim.get("agent") not in (None, "", "web", "api") else ""
         seen(slug, now.astimezone(tz).date(), stamp, "claim", "Claimed by " + who if who else "Claimed")
 
-    # change-log rows: a row with a [[link]] to a card counts for that card; the others are listed by host
+    # change-log rows: a row with a [[link]] to a card counts for that card; the others are listed by host, except the triage
+    # agent's (incidents track those)
     uncarded = {}
     for rel, fm, text in notes:
         if not rel.startswith(CHANGE_LOGS):
@@ -192,7 +196,7 @@ def build(cards, notes, events, last_events, claims, resolve, today, tz, now=Non
                      if p in by_path}
             for slug in named:
                 seen(slug, d, d.isoformat(), "changelog", "%s: %s" % (host, change), -i)    # a change log is newest first
-            if not named and d >= start:
+            if not named and d >= start and not change.startswith(TRIAGE_MARK):
                 uncarded.setdefault(host, []).append({"date": d.isoformat(), "change": change, "path": rel})
 
     # the card's own Log rows

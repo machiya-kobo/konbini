@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.29.1
+
+- **No Card Yet leaves out the triage agent's rows.** A change-log row whose change text starts with the robot emoji (🤖, after any leading whitespace) no longer shows on the Now page or in `uncarded` on `GET /api/now`, since incidents already track those rows; the per-host counts follow. Working on is unchanged: such a row that links a card still counts as that card's activity.
+
 ## 0.29.0
 
 - **Now shows real work.** Working on lists the cards with something in the last 7 days, newest first, each with the latest thing that happened and when: commits on the card's repos, board moves and notes, claims, change-log rows (`Systems/Change Logs/`) that link the card, and the card's Log rows. The line comes from the latest day, and on that day from the first of those that has one. Any column counts, so a card in Ready that got work shows too.

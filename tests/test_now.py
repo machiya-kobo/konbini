@@ -35,6 +35,7 @@ NOTES = {
     "Projects/Row Out.md": project("Row Out", "wip", log=[("2026-11-13", "the day before"), ("2026-11-21", "tomorrow")]),
     "Projects/Bench.md": project("Bench", "wip", "repos:\n  - Bench-Tools\n  - bench-tools\n",
                                  log=[("2026-11-19", "bench log row")]),
+    "Projects/Lid.md": project("Lid", "wip"),                     # active only through a triage agent's change-log row
     "Projects/Kit.md": project("Kit", "ready"),                   # active only through a change-log row
     "Projects/Old.md": project("Old", "wip", "repo: https://git.example.com/user/old-thing.git\n",
                                log=[("2026-10-01", "long ago")]),
@@ -50,6 +51,9 @@ NOTES = {
         ("2026-11-17", "Glue gun swapped", ""),
         ("2026-11-15", "Lights rewired", "see [[Notes/Wiring]]"),        # links a note that isn't a card
         ("2026-11-10", "Swept", ""),                                     # before the window
+        ("2026-11-19", "\U0001F916 triage agent: disk at 91%", ""),       # the triage agent's, no card: left out
+        ("2026-11-19", "  \U0001F916 triage agent: loose lid", ""),        # leading whitespace: still left out
+        ("2026-11-19", "\U0001F916 triage agent: lid still open", "For [[Projects/Lid\\|the lid]]"),   # links a card: counts
     ]),
     "Systems/Change Logs/garage 2026-11.md": changelog("garage", [("2026-11-19", "Dehumidifier at 45%", "")]),
     "Systems/Change Logs/attic 2026-11.md": changelog("attic", [("2026-11-16", "Boxes moved", "")]),
@@ -115,7 +119,9 @@ assert (k["source"], k["board"], k["line"]) == ("changelog", "ready", "shop: Pac
 
 # -- ordering: newest first (day, then weight, then time) ---------------------------------------------------------
 order = [w["slug"] for w in data["working"]]
-assert order == ["bench", "kit", "edge-in", "row-in"], order
+assert order == ["bench", "lid", "kit", "edge-in", "row-in"], order
+l = work["lid"]                                         # a triage agent's row that links a card still counts for it
+assert (l["source"], l["at"], l["line"]) == ("changelog", "2026-11-19", "shop: \U0001F916 triage agent: lid still open"), l
 
 # -- quiet vs working: WIP with nothing in the window, oldest first, never first ----------------------------------
 assert [q["slug"] for q in data["quiet"]] == ["never", "reordered", "old", "row-out", "edge-out"], data["quiet"]
@@ -129,6 +135,12 @@ assert data["uncarded"] == [
                               {"date": "2026-11-15", "change": "Lights rewired", "path": "Systems/Change Logs/shop 2026-11.md"}]},
     {"host": "attic", "rows": [{"date": "2026-11-16", "change": "Boxes moved", "path": "Systems/Change Logs/attic 2026-11.md"}]},
 ], data["uncarded"]
+assert "\U0001F916" not in json.dumps(data["uncarded"], ensure_ascii=False), "the triage agent's rows stay out of No card yet"
+only = build(notes={k: v for k, v in NOTES.items() if not k.startswith("Systems/Change Logs/") or "shop" in k})
+assert all(r["change"][0] != "\U0001F916" for h in only["uncarded"] for r in h["rows"])
+solo = build(notes={**{k: v for k, v in NOTES.items() if not k.startswith("Systems/Change Logs/")},
+                    "Systems/Change Logs/ward 2026-11.md": changelog("ward", [("2026-11-19", "\U0001F916 triage agent: x", "")])})
+assert solo["uncarded"] == [], "a host with only triage rows is not listed"
 
 # -- claims count, a backlog card included; older events only set last_at -------------------------------------------
 d2 = build(claims={"claimed": {"actor": "user@example.com", "agent": "kura", "expires": 0}},

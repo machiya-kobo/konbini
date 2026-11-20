@@ -316,7 +316,7 @@ try:
     assert r.status == 201 and out["actor"] == "owner", (r.status, out)
 
     # start-up refusals: no usernames, a *, no board address, an identity file too
-    assert "KANBAN_HISTER_USERS" in refused(KANBAN_HISTER_USERS=None)
+    assert "KANBAN_NOGON_USERS" in refused(KANBAN_HISTER_USERS=None)     # 0.28.0: the message names the new setting
     assert "'*' is refused" in refused(KANBAN_HISTER_USERS="*")
     assert "KANBAN_BOARD_URL" in refused(KANBAN_BOARD_URL=None)
     assert "KANBAN_AUTH_SIGNIN_URL" in refused(KANBAN_AUTH_SIGNIN_URL=None)

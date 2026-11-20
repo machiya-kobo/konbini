@@ -56,6 +56,7 @@ import goals
 from vaultkit import shell
 from vaultkit import changelog
 from vaultkit import histerauth
+from vaultkit import names
 from vaultkit import identity
 from vaultkit import signin
 from vaultkit import websafe
@@ -81,7 +82,7 @@ def auth_mode(value, identity_file=""):
     file), "open" (no identity check, for localhost or a trusted LAN), "hister" (Hister's users are the sign-in, with
     the tailnet as the fallback; vaultkit.histerauth, never with an identity file), or with an identity file "header"
     (a trusted proxy's login header, KANBAN_AUTH_HEADER). Anything else refuses to start rather than guess."""
-    value = (value or "tailscale").strip().lower()
+    value = names.auth_mode(value) or "tailscale"        # 0.28.0: nogon is the same as hister (the rename's stage 1)
     allowed = ("tailscale", "open", "hister", "header") if identity_file else ("tailscale", "open", "hister")
     if value not in allowed:
         raise SystemExit("konbini: KANBAN_AUTH must be %s, not %r" % (" or ".join(allowed), value))
@@ -238,13 +239,15 @@ if _warn:
     print("startup: WARNING: " + _warn, flush=True)
 backends = [WaybackBackend()] if ARCHIVE == "wayback" else []
 # Hister (optional): private copies of links, vault search, pages I've read. Single-user and private.
-hister = Hister(os.environ["KANBAN_HISTER_URL"], os.environ.get("KANBAN_HISTER_PUBLIC", ""),
-                token_file=os.environ.get("KANBAN_HISTER_TOKEN_FILE", "")) \
-    if os.environ.get("KANBAN_HISTER_URL") else None
+# 0.28.0, the rename (Hister is now Nogon): KANBAN_NOGON_* first, KANBAN_HISTER_* still read (logged once) until stage 3.
+NOGON_URL = names.setting("KANBAN_NOGON_URL") or ""
+hister = Hister(NOGON_URL, names.setting("KANBAN_NOGON_PUBLIC") or "",
+                token_file=names.setting("KANBAN_NOGON_TOKEN_FILE") or "") \
+    if NOGON_URL else None
 cold = ColdArchive(os.environ["KANBAN_COLD_MAP"]) if os.environ.get("KANBAN_COLD_MAP") else None
 links = Links(store, garden, backends, enabled=ARCHIVE != "none", cold=cold,
               hister=HisterBackend(hister) if hister else None,
-              hister_save=links_mod.setting_on(os.environ.get("KANBAN_HISTER_SAVE")))
+              hister_save=links_mod.setting_on(names.setting("KANBAN_NOGON_SAVE")))
 kits = Kits(store, garden, timeline, blog, modern.BOARD_URL, links, hister, garden_url=modern.GARDEN_URL)
 # The built-in sign-in, Shiori's device pairing and per-user preferences (vaultkit.signin), only with an identity file.
 # Their same-origin checks take KANBAN_BOARD_URL's origin, the setting the session cookie's Secure flag already
@@ -1240,7 +1243,8 @@ def make_handler(listener):
             elif path in ("/api/health", "/api/status"):      # /api/status: the probe path every room answers
                 self.send_json(200, {"ok": True, "version": VERSION, "imported": store.meta("imported"), "head": store.meta("head"),
                                      "vaultkit": "v" + vaultkit.__version__, "cards": store.count(), "sync": writer.status(),
-                                     "hister": hister.status() if hister else "off",
+                                     "nogon": hister.status() if hister else "off",       # 0.28.0
+                                     "hister": hister.status() if hister else "off",      # until the rename's stage 3
                                      "livesync": {"status": livesync_status(), "problems": livesync_problems(),
                                                   "phone_conflicts": store.phone_conflicts},
                                      "auth": AUTH, "legacy_names": store.legacy})
@@ -1376,7 +1380,7 @@ def auth_banner():
         return lines
     if HISTERAUTH is not None:
         h = HISTERAUTH
-        lines.append("startup: KANBAN_AUTH=hister on %s: Hister users %s sign in through %s; when sign-in is unavailable: %s"
+        lines.append("startup: KANBAN_AUTH=nogon on %s: Nogon users %s sign in through %s; when sign-in is unavailable: %s"
                      % (where, ", ".join(sorted(h.users)), h.signin,
                         "the tailnet login in KANBAN_TAILNET_USERS (%d)" % len(h.fallback_users) if h.fallback == "tailscale"
                         else "nobody (503)"))

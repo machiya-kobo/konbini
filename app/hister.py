@@ -168,10 +168,14 @@ class Hister:
         Callers check find() first: --force on an existing document would
         replace its metadata (the imported tags and archive link)."""
         env = dict(os.environ)
-        env.pop("HISTER__APP__ACCESS_TOKEN", None)      # no token file, no token: nothing inherited either
+        for name in ("NOGON__APP__ACCESS_TOKEN", "HISTER__APP__ACCESS_TOKEN"):
+            env.pop(name, None)                          # no token file, no token: nothing inherited either
         token = self.token()
         if token:
-            env["HISTER__APP__ACCESS_TOKEN"] = token     # the CLI's own setting, in its environment only (not argv)
+            # the CLI's own setting, in its environment only (not argv). Nogon v0.22 reads NOGON__ first, and a set
+            # NOGON__ wins even when empty, so both are set; a v0.20 CLI reads only HISTER__ (0.28.0).
+            env["NOGON__APP__ACCESS_TOKEN"] = token
+            env["HISTER__APP__ACCESS_TOKEN"] = token
         try:
             r = subprocess.run([self.cli, "-u", self.api, "index", "--label", label, url],
                                capture_output=True, text=True, timeout=120, env=env)

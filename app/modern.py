@@ -803,13 +803,13 @@ def reading_section(reading, query, search_url=""):
     if not reading:
         return ""
     rows = "".join(
-        '<li><a href="%s">%s</a> <span class="when">%s%s</span> <a class="nlink" href="%s" title="Hister\'s copy">copy</a>%s</li>'
+        '<li><a href="%s">%s</a> <span class="when">%s%s</span> <a class="nlink" href="%s" title="Nogon\'s copy">copy</a>%s</li>'
         % (e(r["url"]), e(r["title"]), e(r["domain"]), (" &middot; saved " + e(r["added"])) if r["added"] else "", e(r["copy"]),
            (' <span class="chip">%s</span>' % e(r["why"])) if r["why"] else "")
         for r in reading)
-    more = (' <a class="nlink" href="%s">search Hister for &ldquo;%s&rdquo;</a>' % (e(search_url), e(query))) if search_url else ""
+    more = (' <a class="nlink" href="%s">search Nogon for &ldquo;%s&rdquo;</a>' % (e(search_url), e(query))) if search_url else ""
     return ('<section class="readsec"><h3 class="sechead">Pages I&rsquo;ve read</h3>'
-            '<ul class="garden-list plain readlist">%s</ul><p class="none">From Hister, private.%s</p></section>' % (rows, more))
+            '<ul class="garden-list plain readlist">%s</ul><p class="none">From Nogon, private.%s</p></section>' % (rows, more))
 
 
 def dep_links(items):

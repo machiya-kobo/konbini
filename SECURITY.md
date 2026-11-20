@@ -40,7 +40,7 @@ Know this before you deploy it:
   or `Referer`, so a page you browse can't write the board as you (CSRF).
 - **`GET /healthz`** is deliberately open and returns only `ok`.
 - **Outbound.** The link checker visits the links in card notes. It contacts the Wayback Machine only with
-  `KANBAN_ARCHIVE=wayback`, and indexes pages into Hister only with `KANBAN_HISTER_SAVE=1`.
+  `KANBAN_ARCHIVE=wayback`, and indexes pages into Nogon only with `KANBAN_NOGON_SAVE=1`.
 
 ## Supported versions
 

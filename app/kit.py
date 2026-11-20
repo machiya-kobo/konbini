@@ -604,7 +604,7 @@ class Kits:
                 line += " \u2014 archived: " + l["archive"]
             L.append(line)
         if k.get("reading"):
-            L += ["", "### Pages I've read (%d, from Hister)" % len(k["reading"]), ""]
+            L += ["", "### Pages I've read (%d, from Nogon)" % len(k["reading"]), ""]
             L += ["- [%s](%s) (%s%s%s)" % (r["title"].replace("]", ")"), r["url"], r["domain"],
                                          ", saved " + r["added"] if r["added"] else "", "; " + r["why"] if r["why"] else "")
                   for r in k["reading"]]

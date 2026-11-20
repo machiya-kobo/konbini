@@ -3,6 +3,14 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.28.0
+
+- **Hister is now Nogon** (the owner, 2026-11-19: rename everything Machiya calls Hister; this first stage was made by the Machiya lead this once). What a person reads says Nogon: "Pages I've read … From Nogon", "search Nogon for …", a link's "Nogon's copy", and the writing kit's "from Nogon".
+- **Both names work.** `KANBAN_NOGON_URL`, `KANBAN_NOGON_PUBLIC`, `KANBAN_NOGON_SAVE`, `KANBAN_NOGON_TOKEN_FILE` and `KANBAN_NOGON_USERS` are read first. The `KANBAN_HISTER_*` names still work, each logged once, until the rename's last stage; a `KANBAN_NOGON_*` that is set wins, even when empty. `KANBAN_AUTH=nogon` is the same as `hister`. A link's stored copy named `nogon` is read like `hister` (still written as `hister`).
+- `/api/status` and the link stats report Nogon as `nogon`, and as `hister` too until the last stage.
+- The image's `hister` command is now Nogon v0.22.0's CLI (`ghcr.io/asciimoo/nogon`, `NOGON_VERSION` in app/Dockerfile), matching the Nogon server. Same flags (`-u`, `index --label`). It gets the token as `NOGON__APP__ACCESS_TOKEN` and `HISTER__APP__ACCESS_TOKEN`.
+- vaultkit 0.35.3 → 0.38.0; the Python base re-pinned to today's digest.
+
 ## 0.27.4
 
 - The link checker handles a link with a non-ASCII character in it (a "…" where a note cut the address short, or an international host name): the address is percent-encoded, and the host converted to punycode, once before any request. It used to fail with "'ascii' codec can't encode character" and the link was never checked; now it is checked, and shows dead if it is dead.

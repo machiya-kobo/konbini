@@ -3,8 +3,8 @@
 `tools/pm` is one file of Python 3, standard library only: put it on your `PATH` or run it in place. It talks to
 `KANBAN_URL` (default `http://127.0.0.1:8081`) and signs its changes with `X-Agent` (`pm@<host>`, or `KANBAN_AGENT`).
 
-On a `KANBAN_AUTH=hister` board, `KANBAN_TOKEN_FILE` names a file with a room token (`mht_…`, minted for Konbini and
-[Niwa](https://github.com/machiya-kobo/niwa) by the [hister-login](https://github.com/machiya-kobo/machiya/blob/main/docs/services/hister-login.md) helper; the owner's Hister token also works). Keep it in your password store, never in an
+On a `KANBAN_AUTH=nogon` board, `KANBAN_TOKEN_FILE` names a file with a room token (`mht_…`, minted for Konbini and
+[Niwa](https://github.com/machiya-kobo/niwa) by the [nogon-login](https://github.com/machiya-kobo/machiya/blob/main/docs/services/nogon-login.md) helper; the owner's Nogon token also works). Keep it in your password store, never in an
 argument or a note. pm sends it only to the board and Niwa, as `Authorization: Bearer`, over https (http only to this
 machine), and follows no redirects meanwhile. An address without a scheme is https.
 

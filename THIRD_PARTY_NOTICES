@@ -67,14 +67,15 @@ Their license notices are kept in the bundle's "Bundled license information"
 comment in app/static/mermaid.min.js.
 
 --------------------------------------------------------------------------------
-Hister (the `hister` command in the container image)
-https://github.com/asciimoo/hister
+Nogon, formerly Hister (the `hister` command in the container image)
+https://github.com/asciimoo/nogon
 --------------------------------------------------------------------------------
 
-The Docker image copies the hister CLI from ghcr.io/asciimoo/hister (the
-version is HISTER_VERSION in app/Dockerfile). Hister is licensed under the GNU
-Affero General Public License v3.0; Konbini runs it as a separate program.
-Its source is at the upstream tag named by HISTER_VERSION.
+The Docker image copies the Nogon CLI (/usr/local/bin/nogon, installed as
+`hister`) from ghcr.io/asciimoo/nogon (the version is NOGON_VERSION in
+app/Dockerfile). Nogon is licensed under the GNU Affero General Public License
+v3.0; Konbini runs it as a separate program. Its source is at the upstream tag
+named by NOGON_VERSION.
 
 --------------------------------------------------------------------------------
 vaultkit (app/vaultkit/)

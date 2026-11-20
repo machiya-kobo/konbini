@@ -11,8 +11,8 @@ person or agent may do. Every setting named here is in [Settings](settings.md#ac
 - **People, agents, sign-in or [Shiori](https://github.com/machiya-kobo/shiori) devices:** Machiya's identity file, off unless you set it.
   `cd app && python3 -m vaultkit.identity setup` (standard library only) prints each app's settings. See
   [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
-- **People signed in to Hister:** `KANBAN_AUTH=hister` with Machiya's [hister-login](https://github.com/machiya-kobo/machiya/blob/main/docs/services/hister-login.md) helper (`KANBAN_AUTH_SIGNIN_URL`,
-  `KANBAN_AUTH_URL`, `KANBAN_HISTER_USERS`, `KANBAN_BOARD_URL`; see
+- **People signed in to Nogon:** `KANBAN_AUTH=nogon` with Machiya's [nogon-login](https://github.com/machiya-kobo/machiya/blob/main/docs/services/nogon-login.md) helper (`KANBAN_AUTH_SIGNIN_URL`,
+  `KANBAN_AUTH_URL`, `KANBAN_NOGON_USERS`, `KANBAN_BOARD_URL`; see
   [Machiya's Hister sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#hister-sign-in-authhister)).
   Not with an identity file.
 - The identity settings are `MACHIYA_IDENTITY_FILE`, `KANBAN_SIGNIN`, `KANBAN_AUTH_HEADER`,

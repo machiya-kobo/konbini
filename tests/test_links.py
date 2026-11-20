@@ -70,9 +70,9 @@ assert urls == ["https://web.archive.org/save/https://xn--bcher-kva.example/%E2%
 # a dead non-ASCII link is dead, not an exception: the answer for it counts like any other
 assert links.Links(None, None).probe("https://example.invalid/\u2026") is None
 
-# KANBAN_HISTER_SAVE parsing: off unless 1, on or true
+# KANBAN_NOGON_SAVE (KANBAN_HISTER_SAVE until stage 3) parsing: off unless 1, on or true
 assert [links.setting_on(v) for v in (None, "", "0", "off", "no", "yes", "1", "on", "true", " TRUE ")] == [False] * 6 + [True] * 4
-assert 'links_mod.setting_on(os.environ.get("KANBAN_HISTER_SAVE"))' in open(os.path.join(APP, "app.py")).read()
+assert 'links_mod.setting_on(names.setting("KANBAN_NOGON_SAVE"))' in open(os.path.join(APP, "app.py")).read()
 
 # commit subjects left out of the calendar and kits: built in `board: ` and merges, plus comma-separated prefixes from the settings
 import store

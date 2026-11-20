@@ -62,7 +62,7 @@ Test against a throwaway vault, never a real one.
   `vaultkit.sanitize.clean`. Every HTML answer carries a CSP with `script-src 'self'`: no inline `<script>` and no `on…=`
   attribute; behaviour goes in `board.js`.
 - **Hister is optional and single-user:** every call sends `Origin: hister://`, and never `hister index --force` a URL it
-  already has. Saving into Hister is off unless `KANBAN_HISTER_SAVE`; the Wayback lookup unless `KANBAN_ARCHIVE=wayback`.
+  already has. Saving into Nogon is off unless `KANBAN_NOGON_SAVE`; the Wayback lookup unless `KANBAN_ARCHIVE=wayback`.
 - **Stack mode** (optional): `KANBAN_REPO_REFERENCE` borrows another clone's objects, `KANBAN_REPO_SPARSE` checks out only
   what the board reads and writes.
 - **Speed** (`tests/test_perf.py`): a note is read and parsed once per change (`Store.load`, `Timeline.read_changed`). Don't

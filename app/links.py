@@ -389,7 +389,7 @@ class Links:
         for r in self.for_note(rel):
             out.add(r["url"])
             p = r.get("private_url") or ""
-            if r.get("private_backend") == "hister" and "/preview?id=" in p:
+            if r.get("private_backend") in ("hister", "nogon") and "/preview?id=" in p:   # nogon read too (0.28.0)
                 out.add(urllib.parse.unquote(p.split("/preview?id=", 1)[1]))
         return out
 
@@ -430,4 +430,5 @@ class Links:
                 "archived": sum(1 for r in rows if r.get("archive_url")),
                 "private": sum(1 for r in rows if r.get("private_url")), "last_run": self.last_run,
                 "cold": (self.cold.error or "%d snapshots" % len(self.cold.urls)) if self.cold else "off",
-                "hister": (self.hister.h.error or "ok") if self.hister else "off"}
+                "nogon": (self.hister.h.error or "ok") if self.hister else "off",       # 0.28.0
+                "hister": (self.hister.h.error or "ok") if self.hister else "off"}      # until the rename's stage 3

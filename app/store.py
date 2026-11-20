@@ -159,6 +159,7 @@ def parse_note(text, rel, fm=None):
         "tags": tags,
         "family": _unlink(fm.get("family")),
         "repo": _str(fm.get("repo")),
+        "repos": repos_of(fm),
         "publish": bool(fm.get("publish")),
         "growth": _str(fm.get("growth")),
         "updated": _str(fm.get("updated") or fm.get("last_activity") or fm.get("created")),
@@ -195,6 +196,35 @@ def legacy_names(fm, tags):
         out.append("priority")
     if any(t.startswith("status/") for t in tags):
         out.append("status/*")
+    return out
+
+
+REPO_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+
+
+def repo_name(value):
+    """A repo name or URL -> the name it is compared by: a URL's last segment with `.git` dropped; "" when that isn't
+    1-100 characters of [A-Za-z0-9._-] (the frontmatter schema's `repos`)."""
+    name = _str(value).strip().rstrip("/").split("/")[-1].split(":")[-1]
+    if name.lower().endswith(".git"):
+        name = name[:-4]
+    return name if REPO_NAME_RE.match(name) else ""
+
+
+def repos_of(fm):
+    """The repos a card covers: `repos:` (a list, or one string of names separated by commas) when present, else `repo:`
+    as a one-entry list. Names as repo_name gives them, deduplicated case-insensitively (the first spelling kept)."""
+    if fm.get("repos") not in (None, "", []):
+        value = fm["repos"]
+        items = value if isinstance(value, list) else _str(value).split(",")
+    else:
+        items = [fm.get("repo")]
+    out, seen = [], set()
+    for item in items:
+        name = repo_name(item)
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            out.append(name)
     return out
 
 

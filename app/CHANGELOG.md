@@ -3,6 +3,10 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.28.1
+
+- vaultkit 0.38.0 → 0.40.0: an extra room in the Rooms menu can say what it is (`MACHIYA_EXTRA_ROOMS`' sixth field; Techō shows "agents", owner 2026-11-20).
+
 ## 0.28.0
 
 - **Hister is now Nogon** (the owner, 2026-11-19: rename everything Machiya calls Hister; this first stage was made by the Machiya lead this once). What a person reads says Nogon: "Pages I've read … From Nogon", "search Nogon for …", a link's "Nogon's copy", and the writing kit's "from Nogon".

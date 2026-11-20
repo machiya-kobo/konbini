@@ -3,6 +3,14 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.29.0
+
+- **Now shows real work.** Working on lists the cards with something in the last 7 days, newest first, each with the latest thing that happened and when: commits on the card's repos, board moves and notes, claims, change-log rows (`Systems/Change Logs/`) that link the card, and the card's Log rows. The line comes from the latest day, and on that day from the first of those that has one. Any column counts, so a card in Ready that got work shows too.
+- **Quiet WIP** folds under Working on: WIP cards with nothing in the 7 days, oldest first, with when they last saw activity.
+- **No Card Yet** lists the change-log rows from the 7 days that link no card, by host. Read-only: the page never proposes a card.
+- **`GET /api/now`**: `days`, `since`, `working`, `quiet`, `uncarded` and `live` (empty until the bus's presence comes in). The rule is `NOW_DAYS = 7` in `app/common.py`, counted in the board's days (`TZ`); the weekly review's `STALE_DAYS` stays 14.
+- A card's repos are read from `repos:` (a list, or names separated by commas), else `repo:`. `/api/cards` rows carry the merged list as `repos`. A repo's commits come from its checkout under `KANBAN_REPOS` when there is one, else from the "Recent commits" lines of its note in the vault (`<name>.git.md`).
+
 ## 0.28.1
 
 - vaultkit 0.38.0 → 0.40.0: an extra room in the Rooms menu can say what it is (`MACHIYA_EXTRA_ROOMS`' sixth field; Techō shows "agents", owner 2026-11-20).

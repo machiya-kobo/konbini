@@ -27,9 +27,10 @@ Test against a throwaway vault, never a real one.
 
 - `app/`: the server. `app.py` routes and listener; `store.py` import, index, events, claims; `writer.py` frontmatter edits
   and the batched git export; `modern.py` the pages (HTML5, on the shared Machiya shell) and `/settings`; `common.py`
-  filters and helpers; `deps.py`, `goals.py`, `review.py`, `timeline.py`, `digest.py`, `kit.py` (writing kits), `blog.py`,
-  `links.py` (link rot), `hister.py`, `garden.py` (the vault index, a thin vaultkit `Vault`), `urlnorm.py` (the URL rule;
-  an identical copy lives in Niwa: keep them in step); `static/` is `board.css`, `board.js`, `outbox.js` and the icons.
+  filters and helpers; `deps.py`, `goals.py`, `review.py`, `now.py` (the Now page and `/api/now`; the rule is `NOW_DAYS`
+  in `common.py`, its one home), `timeline.py`, `digest.py`, `kit.py` (writing kits), `blog.py`, `links.py` (link rot),
+  `hister.py`, `garden.py` (the vault index, a thin vaultkit `Vault`), `urlnorm.py` (the URL rule; an identical copy
+  lives in Niwa: keep them in step); `static/` is `board.css`, `board.js`, `outbox.js` and the icons.
 - `app/vaultkit/` is the shared vault core, **vendored** from the Machiya repository. **Never edit it**: the build runs
   `python3 -m vaultkit.verify` and fails on drift. Change it upstream, then `VAULTKIT_REPO=<machiya checkout>
   tools/vendor-vaultkit <tag>`.

@@ -64,15 +64,17 @@ import vaultkit
 import digest
 import review
 from blog import Blog
+import kit as kit_mod
 from kit import Kits
 from hister import Hister
 import links as links_mod
 from links import ColdArchive, HisterBackend, Links, WaybackBackend
 import modern
 import common
+import now as now_mod
 from garden import Garden
 from store import Store
-from timeline import Timeline, today
+from timeline import TZ, Timeline, today
 from writer import WriteError, Writer, client_id
 
 TAILNET_PORT = int(os.environ.get("KANBAN_TAILNET_PORT", "8081"))
@@ -300,6 +302,18 @@ def cards_with_deps():
     cards = store.cards()
     graph = dep_graph(cards)
     return deps.decorate(cards, graph), graph
+
+
+checkouts = now_mod.Checkouts(kit_mod.LOCAL_REPOS)     # the writing kit's read-only checkouts: commits for the Now page
+
+
+def now_data(cards):
+    """GET /api/now and /now (now.py): what's being worked on, in the board's days."""
+    day = today()
+    since = common.now_since(day, TZ).astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    garden.index()
+    return now_mod.build(cards, timeline.notes(), store.events(since=since, limit=100000), store.last_activity(),
+                         store.claims(), garden.resolve, day, TZ, checkouts=checkouts)
 
 
 def cards_by_path():
@@ -1032,7 +1046,11 @@ def make_handler(listener):
                 self.send(302, "", "text/plain", headers=[("Location", self.to_niwa(path))])
                 return
             if path == "/now":
-                self.send(200, V(ctx).now(ctx, cards_with_deps()[0], store.claims(), store.meta("rev")))
+                cards = cards_with_deps()[0]
+                self.send(200, V(ctx).now(ctx, cards, store.claims(), store.meta("rev"), now_data(cards)))
+                return
+            if path == "/api/now":
+                self.send_json(200, now_data(store.cards()))
                 return
             if path == "/search":
                 ctx.q = (query.get("q") or [""])[0][:200]

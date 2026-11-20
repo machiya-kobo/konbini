@@ -69,7 +69,7 @@ Where a kit finds your blog and your code.
 | Setting | Default | |
 |---|---|---|
 | `KANBAN_BLOG`, `KANBAN_BLOG_URL`, `KANBAN_BLOG_PERMALINK` | `/blog`, —, `/{year}/{slug}/` | optional: a Jekyll blog checkout (posts in `_posts/` as `YYYY-MM-DD-slug.md` or `.html`, optional `tag/<tag>.md` pages), its address, and the path of a post's page under that address (`{year}` and `{slug}`), for the writing kits' "already written?" links |
-| `KANBAN_REPOS` | `/repos` | optional: read-only checkouts of project repos, for the writing kits' commit lists |
+| `KANBAN_REPOS` | `/repos` | optional: read-only checkouts of project repos, one folder per repo name, for the writing kits' commit lists and the Now page's commits |
 
 ## Links and Nogon
 

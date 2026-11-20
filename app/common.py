@@ -9,6 +9,15 @@ from store import COLUMNS
 SHOWN = [c for c in COLUMNS if c != "archived"]
 FILTERS = ("area", "topic", "machine", "agent", "effort", "stream", "q")
 STALE_DAYS = 14
+# The Now page's rule, in this one place (GET /api/now; Oyakata reads its `quiet` list, never its own copy): a card is
+# being worked on when something happened to it today or in the NOW_DAYS - 1 days before, in the board's days (TZ)
+NOW_DAYS = 7
+
+
+def now_since(today, tz):
+    """The start of the Now window: midnight, in the board's time zone, NOW_DAYS - 1 days before today."""
+    day = today - datetime.timedelta(days=NOW_DAYS - 1)
+    return datetime.datetime.combine(day, datetime.time(), tzinfo=tz)
 
 
 def qget(query, key):

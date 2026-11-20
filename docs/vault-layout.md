@@ -25,6 +25,12 @@ vault works as it is.
 - **Commits.** A card's note may hold a generated block between `<!-- project-sync:start -->` and
   `<!-- project-sync:end -->`. Its `- YYYY-MM-DD: commit subject` bullets stand in for the repository's recent commits
   when the kit can't fetch them.
+- **Now.** The Now page lists the cards with something in the last 7 days: commits on the card's repos, board events
+  and claims, change-log rows that link the card's note (`[[Projects/<Title>]]`), and its own dated rows. A card's
+  repos are its `repos:` list, else its `repo:`. A repo's commits come from its checkout under `KANBAN_REPOS`, else
+  from its note `<name>.git.md` (anywhere in the vault): the note's `- YYYY-MM-DD: subject` bullets and
+  `last_commit:`, matched by the note's name or the last segment of its `forgejo:` or `github:` URL. Change-log rows
+  under `Systems/Change Logs/` that link no card are listed by host.
 - **Blog tags.** An optional `.board/kit.json` maps a card's topics and area onto your blog's tags and categories
   (`tag_synonyms`, `area_category`, `default_category`, `ignore_tags`, `ignore_categories`). Without it, the blog's own
   tags and categories drive the kit.

@@ -266,7 +266,7 @@ def move_form(card):
             '<noscript><button type="submit">Move</button></noscript></form>' % (e(card["slug"]), opts))
 
 
-def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()):
+def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=(), line=None):
     note = card["path"][:-3] if card["path"].endswith(".md") else card["path"]
     lines = ['<a class="title" href="/p/%s">%s</a>' % (quote(card["slug"]), e(card["title"]))]
     text = card.get("summary") or ""
@@ -282,6 +282,8 @@ def card_html(ctx, card, claim=None, show_area=False, show_updated=False, why=()
     elif card.get("next"):
         nxt = card["next"] if len(card["next"]) <= 140 else card["next"][:137].rstrip() + "..."
         lines.append('<p class="next" title="click to edit">next: %s</p>' % e(nxt))
+    if line:                    # the Now page: (what happened last, when)
+        lines.append('<p class="nowline">%s%s</p>' % (('<span class="when">%s</span> ' % e(line[1])) if line[1] else "", e(line[0])))
     meta = chips(card, show_area)
     if card.get("stream"):
         meta.insert(0, '<a class="chip link stream" href="/streams/%s">%s</a>' % (quote(card["stream"], safe=""), e(card["stream"])))
@@ -499,16 +501,53 @@ def board(ctx, cards, lane_filter=None, imported="", claims=None, rev="", query=
                 foot=[("/archived", "Archived (%d)" % archived_n), ("/share", "Capture a Link"), ("/api/cards", "API")])
 
 
-def now(ctx, cards, claims=None, rev=""):
+def local_ago(at):
+    """ago() for a Now timestamp: a UTC time is counted in the board's days (TZ), a date as it is."""
+    if at and len(at) > 10:
+        try:
+            at = datetime.datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone().date().isoformat()
+        except ValueError:
+            pass
+    return ago(at)
+
+
+def now_lists(ctx, cards, claims, data):
+    """Working on (cards with something in the last NOW_DAYS, newest first, each with its latest line), Quiet WIP folded
+    under it, and the change-log rows that link no card, by host (read-only: nothing here proposes a card)."""
+    by_slug = {c["slug"]: c for c in cards}
+    working = [(by_slug[w["slug"]], w) for w in data["working"] if w["slug"] in by_slug]
+    quiet = [(by_slug[q["slug"]], q) for q in data["quiet"] if q["slug"] in by_slug]
+    body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, line=(w["line"], local_ago(w["at"])))
+                     for c, w in working) or '<p class="none"><b>Nothing This Week</b></p>'
+    fold = ""
+    if quiet:
+        fold = ('<details class="nowquiet"><summary>Quiet WIP <span class="colcount">%d</span> '
+                '<span class="hint">nothing in %d days</span></summary><div class="cards nowlist">%s</div></details>'
+                % (len(quiet), data["days"], "\n".join(
+                    card_html(ctx, c, claims.get(c["slug"]), show_area=True,
+                              line=("Last activity " + local_ago(q["last_at"]) if q["last_at"] else "No activity yet", ""))
+                    for c, q in quiet)))
+    parts = ['<section class="nowsec nowlane" id="n-working"><h2 class="nowhead col-wip">Working on <span class="colcount">%d</span></h2>'
+             '<div class="cards nowlist">%s</div>%s</section>' % (len(working), body, fold)]
+    if data["uncarded"]:
+        hosts = "".join('<details class="nowhost"><summary>%s <span class="colcount">%d</span></summary><ul class="nowrows">%s</ul>'
+                        '</details>' % (e(h["host"]), len(h["rows"]), "".join(
+                            '<li><span class="when">%s</span> %s</li>' % (e(local_ago(r["date"])), e(r["change"])) for r in h["rows"]))
+                        for h in data["uncarded"])
+        parts.append('<section class="nowsec nowlane" id="n-uncarded"><h2 class="nowhead">No Card Yet <span class="colcount">%d</span>'
+                     '</h2><p class="hint">Change-log rows from the last %d days that link no card.</p>%s</section>'
+                     % (sum(len(h["rows"]) for h in data["uncarded"]), data["days"], hosts))
+    return parts
+
+
+def now(ctx, cards, claims, rev, data):
+    """/now: what's being worked on (data: now.build), then Blocked and the top of Ready."""
     counts = counts_of(cards)
     claims = claims or {}
-    sections = []
-    for col, name, key in (("wip", "Working on", None), ("blocked", "Blocked", None)):
-        items = sorted((c for c in cards if c["board"] == col), key=sort_key)
-        sections.append((name, col, items))
+    sections = [("Blocked", "blocked", sorted((c for c in cards if c["board"] == "blocked"), key=sort_key))]
     ready = sorted((c for c in cards if c["board"] == "ready"), key=lambda c: (c.get("priority") or 9, sort_key(c)))[:5]
     sections.append(("Up next", "ready", ready))
-    parts = ['<p class="nowtop"><a class="btn quiet nowreview" href="/review">Weekly Review</a></p>']
+    parts = ['<p class="nowtop"><a class="btn quiet nowreview" href="/review">Weekly Review</a></p>'] + now_lists(ctx, cards, claims, data)
     for name, col, items in sections:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'

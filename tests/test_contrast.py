@@ -4,7 +4,7 @@ shared parts are vaultkit's and tested there; this covers Konbini's own surfaces
 the action sheet, the outbox badge), where an accent on a raised panel must use its panel shade (vaultkit 0.25).
 Needs Playwright for Python with its Chromium; it says so and skips otherwise. KONBINI_CONTRAST_PALETTES=all checks
 all ten palettes (the default is two: Tokyo Night and Solarized)."""
-import os, signal, socket, subprocess, sys, tempfile, time, urllib.request
+import datetime, os, signal, socket, subprocess, sys, tempfile, time, urllib.request
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, os.path.join(ROOT, "app"))
@@ -31,6 +31,12 @@ for i, name in enumerate(["alpha", "bravo", "charlie", "delta", "echo", "foxtrot
     with open(os.path.join(work, "vault", "personal", "Projects", "Area %s.md" % name), "w") as f:
         f.write("---\ntitle: Area %s\ncreated: 2026-09-01\ntags:\n  - type/project\n  - area/projects\n  - area/%s\n"
                 "project: area-%s\nstatus: %s\n---\n# Area %s\n" % (name, name, name, ["wip", "ready", "done", "blocked", "backlog"][i % 5], name))
+# a change log dated today: Now's Working on line (a row that links a card) and No Card Yet (one that links none)
+os.makedirs(os.path.join(work, "vault", "personal", "Systems", "Change Logs"))
+with open(os.path.join(work, "vault", "personal", "Systems", "Change Logs", "workbench.md"), "w") as f:
+    f.write("---\ntitle: workbench\nhost: workbench\n---\n# workbench\n\n| Date | Category | Change | Details |\n|---|---|---|---|\n"
+            "| {0} | config | Paste mixed | for [[Projects/Lantern]] |\n| {0} | config | Glue gun swapped | |\n"
+            .format(datetime.datetime.now(datetime.timezone.utc).date().isoformat()))
 s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
 env = dict(os.environ, KANBAN_REPO=work + "/vault", KANBAN_REPO_SUBDIR="personal", KANBAN_DB=work + "/k.db",
            KANBAN_AUTH="open", KANBAN_BIND="127.0.0.1", KANBAN_TAILNET_PORT=str(port), TZ="UTC", PYTHONDONTWRITEBYTECODE="1")

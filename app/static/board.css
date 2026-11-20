@@ -198,6 +198,17 @@ dialog.newdlg::backdrop { background: rgba(0, 0, 0, .45); }
 .btn.nowreview { padding: 6px 14px; font: 600 13px/normal system-ui, sans-serif; }   /* the size of Filters, which is a button */
 .nowlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
 .nowlist .card { margin: 0; }
+.card .nowline { margin: 4px 0 0; font-size: 13px; color: var(--fg2); overflow-wrap: anywhere; }
+.card .nowline .when { color: var(--muted); margin-right: 4px; }
+/* Quiet WIP folds under Working on; No Card Yet folds each host's change-log rows */
+.nowquiet, .nowhost { margin: 10px 2px 0; }
+.nowquiet > summary, .nowhost > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; color: var(--fg); }
+.nowquiet > summary .hint { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
+.nowquiet[open] > summary { margin-bottom: 8px; }
+.nowsec > .hint { color: var(--muted); font-size: 13px; margin: -4px 4px 6px; }
+ul.nowrows { list-style: none; margin: 4px 0 6px; padding: 0 0 0 4px; display: grid; gap: 4px; font-size: 13px; overflow-wrap: anywhere;
+             color: var(--fg); }
+ul.nowrows .when { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
 
 /* ---- weekly review ------------------------------------------------------ */
 .revjump { margin: 0 0 12px; }

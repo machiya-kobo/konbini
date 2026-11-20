@@ -38,6 +38,7 @@ assert board.count('class="search searchbar"') == 1 and 'name="q" value="" place
 assert [t[1] if isinstance(t, tuple) else "new" for t in modern.KANBAN_TABS] == ["board", "now", "new", "roundup"]
 assert 'data-newcard' in modern.NEW_TAB and '<span>New</span>' in modern.NEW_TAB
 assert [k for _, k, _ in modern.KANBAN_NAV] == ["board", "now", "review", "plan", "posts", "calendar", "roundup"]
-now_html = modern.now(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], {}, "1")
+now_html = modern.now(common.Ctx("night"), [c for c in cards if c["board"] != "archived"], {}, "1",
+                      {"days": 7, "since": "", "working": [], "quiet": [], "uncarded": [], "live": []})
 assert 'class="revlink"' not in now_html and 'href="/review">Weekly Review</a>' in now_html
 print("search tests: all passed")

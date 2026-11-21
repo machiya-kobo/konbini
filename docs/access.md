@@ -13,7 +13,7 @@ person or agent may do. Every setting named here is in [Settings](settings.md#ac
   [Machiya's identity guide](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md).
 - **People signed in to Nogon:** `KANBAN_AUTH=nogon` with Machiya's [nogon-login](https://github.com/machiya-kobo/machiya/blob/main/docs/services/nogon-login.md) helper (`KANBAN_AUTH_SIGNIN_URL`,
   `KANBAN_AUTH_URL`, `KANBAN_NOGON_USERS`, `KANBAN_BOARD_URL`; see
-  [Machiya's Hister sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#hister-sign-in-authhister)).
+  [Machiya's Nogon sign-in](https://github.com/machiya-kobo/machiya/blob/main/docs/identity.md#nogon-sign-in-authnogon)).
   Not with an identity file.
 - The identity settings are `MACHIYA_IDENTITY_FILE`, `KANBAN_SIGNIN`, `KANBAN_AUTH_HEADER`,
   `KANBAN_BIND_BEHIND_PROXY`, `KANBAN_ACCEPT_APP_CAPS` and `KANBAN_BOARD_URL`, in [Settings](settings.md#access).

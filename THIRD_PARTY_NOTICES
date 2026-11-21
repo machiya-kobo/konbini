@@ -67,12 +67,12 @@ Their license notices are kept in the bundle's "Bundled license information"
 comment in app/static/mermaid.min.js.
 
 --------------------------------------------------------------------------------
-Nogon, formerly Hister (the `hister` command in the container image)
+Nogon, formerly Hister (the `nogon` command in the container image)
 https://github.com/asciimoo/nogon
 --------------------------------------------------------------------------------
 
 The Docker image copies the Nogon CLI (/usr/local/bin/nogon, installed as
-`hister`) from ghcr.io/asciimoo/nogon (the version is NOGON_VERSION in
+`nogon`) from ghcr.io/asciimoo/nogon (the version is NOGON_VERSION in
 app/Dockerfile). Nogon is licensed under the GNU Affero General Public License
 v3.0; Konbini runs it as a separate program. Its source is at the upstream tag
 named by NOGON_VERSION.

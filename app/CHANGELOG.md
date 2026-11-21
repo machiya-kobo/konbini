@@ -3,6 +3,17 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.30.0
+
+Hister is now Nogon: the rename's stage 3 (the owner, 2026-11-19: rename everything Machiya calls Hister). Konbini reads only the new names now.
+
+- **Old settings stop the board at start.** `KANBAN_HISTER_URL`, `KANBAN_HISTER_PUBLIC`, `KANBAN_HISTER_SAVE`, `KANBAN_HISTER_TOKEN_FILE` and `KANBAN_HISTER_USERS` are no longer read. Set on its own, an old name stops the board with a message naming the new one. Set beside its `KANBAN_NOGON_*` twin, it is ignored and noted once in the log. `KANBAN_AUTH=hister` stops the board too: use `KANBAN_AUTH=nogon`.
+- **Status:** `/api/status` and the link stats report `nogon` only. The `hister` twin is gone.
+- **Calls to Nogon** send `Origin: nogon://` (Nogon v0.22 and later). The bundled CLI is installed as `nogon` and gets the owner's token as `NOGON__APP__ACCESS_TOKEN` only. Its error texts say "nogon unreachable", "nogon index", "nogon token file".
+- **Settings:** signed in by the Nogon cookie, Account still shows who you are and the Sign Out row.
+- **Kept:** the link store's stored `private_backend` value stays `hister`, and its column names stay (stored names stay); a stored `nogon` reads the same.
+- vaultkit 0.40.0 → 0.41.0: the sign-in is `nogonauth`, the room id is `nogon` (a saved `hister` still reads as `nogon`), and the old names refuse to start.
+
 ## 0.29.1
 
 - **No Card Yet leaves out the triage agent's rows.** A change-log row whose change text starts with the robot emoji (🤖, after any leading whitespace) no longer shows on the Now page or in `uncarded` on `GET /api/now`, since incidents already track those rows; the per-host counts follow. Working on is unchanged: such a row that links a card still counts as that card's activity.

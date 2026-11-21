@@ -1,4 +1,4 @@
-"""Link checker defaults: no Wayback unless asked, Hister is read-only unless KANBAN_HISTER_SAVE, and the kit's related
+"""Link checker defaults: no Wayback unless asked, Nogon is read-only unless KANBAN_NOGON_SAVE, and the kit's related
 notes come out in a fixed order (they were built from sets, so the order and the cut changed per process)."""
 import json, os, socket, subprocess, sys, tempfile, textwrap
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
@@ -13,7 +13,7 @@ for v in ("WayBack", "archive.org", "1"):
     mode, warn = links.archive_mode(v)
     assert mode == "none" and "stay off" in warn and repr(v) in warn, (v, mode, warn)
 
-# Hister: the lookup always, the save only with hister_save
+# Nogon: the lookup always, the save only with nogon_save
 class Backend:
     def __init__(self, held=None): self.held, self.saved = held, []
     def lookup(self, url): return self.held
@@ -24,11 +24,11 @@ class Store:
 rec = {"url": "https://example.org/a", "status": "live"}
 for flag, calls in ((False, []), (True, ["https://example.org/a"])):
     b, st = Backend(), Store()
-    out = links.Links(st, None, hister=b, hister_save=flag).private_copy(rec)
+    out = links.Links(st, None, nogon=b, nogon_save=flag).private_copy(rec)
     assert b.saved == calls and (out is not None) == flag, (flag, b.saved, out)
-b, st = Backend(("http://hister/copy", "2026-09-01")), Store()          # a copy Hister already holds is shown either way
-assert links.Links(st, None, hister=b).private_copy(rec) == "http://hister/copy" and b.saved == [] and st.fields["private_backend"] == "hister"
-assert links.Links(Store(), None).hister_save is False
+b, st = Backend(("http://hister/copy", "2026-09-01")), Store()          # a copy Nogon already holds is shown either way
+assert links.Links(st, None, nogon=b).private_copy(rec) == "http://hister/copy" and b.saved == [] and st.fields["private_backend"] == "hister"    # the stored value stays
+assert links.Links(Store(), None).nogon_save is False
 # a non-ASCII URL (a "…" a note cut a link short with, an international host) is percent-encoded / IDNA'd once, before
 # any request: urllib can't send it ("'ascii' codec can't encode"), so the link never got checked
 cut = "https://abc.plex.direct:32400/library/a…b?name=caf\u00e9&x=%E2%80%A6#fr\u00e4g"
@@ -70,9 +70,9 @@ assert urls == ["https://web.archive.org/save/https://xn--bcher-kva.example/%E2%
 # a dead non-ASCII link is dead, not an exception: the answer for it counts like any other
 assert links.Links(None, None).probe("https://example.invalid/\u2026") is None
 
-# KANBAN_NOGON_SAVE (KANBAN_HISTER_SAVE until stage 3) parsing: off unless 1, on or true
+# KANBAN_NOGON_SAVE parsing: off unless 1, on or true
 assert [links.setting_on(v) for v in (None, "", "0", "off", "no", "yes", "1", "on", "true", " TRUE ")] == [False] * 6 + [True] * 4
-assert 'links_mod.setting_on(names.setting("KANBAN_NOGON_SAVE"))' in open(os.path.join(APP, "app.py")).read()
+assert 'links_mod.setting_on(nogon_setting("KANBAN_NOGON_SAVE"))' in open(os.path.join(APP, "app.py")).read()
 
 # commit subjects left out of the calendar and kits: built in `board: ` and merges, plus comma-separated prefixes from the settings
 import store

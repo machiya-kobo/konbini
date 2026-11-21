@@ -86,13 +86,13 @@ src = open(PM).read()
 import re
 assert not re.search(r"\.ts\.net\b|/home/|\b\d{1,3}(\.\d{1,3}){3}\b", src.replace("127.0.0.1:8081", "")), "pm names a host, an address or a home path"
 r = subprocess.run([sys.executable, PM, "--help"], capture_output=True, text=True); assert "KANBAN_URL" in r.stdout and "pm move" in r.stdout, r.stdout[:300]
-# KANBAN_TOKEN_FILE: the owner's Hister token as a Bearer token, to the board only; none unset; a bad file stops pm
+# KANBAN_TOKEN_FILE: a room token (or the owner's Nogon token) as a Bearer token, to the board only; none unset; a bad file stops pm
 import tempfile
-tok = os.path.join(tempfile.mkdtemp(), "token"); open(tok, "w").write("hister-token-xyz\n")
+tok = os.path.join(tempfile.mkdtemp(), "token"); open(tok, "w").write("nogon-token-xyz\n")
 r = pm("ls"); assert r.returncode == 0 and auths == [None], auths                                  # unset: nothing sent
-r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert r.returncode == 0 and auths == ["Bearer hister-token-xyz"], (r, auths)
-assert "hister-token-xyz" not in r.stdout + r.stderr
-r = pm("move", "one", "done", env={"KANBAN_TOKEN_FILE": tok}); assert auths == ["Bearer hister-token-xyz"], auths
+r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert r.returncode == 0 and auths == ["Bearer nogon-token-xyz"], (r, auths)
+assert "nogon-token-xyz" not in r.stdout + r.stderr
+r = pm("move", "one", "done", env={"KANBAN_TOKEN_FILE": tok}); assert auths == ["Bearer nogon-token-xyz"], auths
 r = pm("ls", env={"KANBAN_TOKEN_FILE": tok + ".missing"}); assert r.returncode != 0 and (tok + ".missing") in r.stderr and "KANBAN_TOKEN_FILE" in r.stderr, r
 open(tok, "w").write("\n"); r = pm("ls", env={"KANBAN_TOKEN_FILE": tok}); assert r.returncode != 0 and "empty" in r.stderr, r
 # the sweep's KONB-10: the token never goes over plain http to a host that isn't this machine, a redirect isn't followed while

@@ -1,8 +1,8 @@
-"""KANBAN_AUTH=hister (vaultkit.histerauth): the board asks the hister-login helper who is calling. A fake helper answers
+"""KANBAN_AUTH=nogon (vaultkit.nogonauth): the board asks the nogon-login helper who is calling. A fake helper answers
 /v1/check, /healthz and /v1/signout; each board runs in its own process (settings are read at import) on 127.0.0.1.
 Mirrors the design's gate 0: a signed-out page goes to the helper once (the loop guard), an API call gets 401 JSON with
-the sign-in address, a Hister token or a session id signs in, a bad one is 401 and never passed over, a Hister user
-outside KANBAN_HISTER_USERS is 403, signed out never falls back to the tailnet but an unreachable helper does (with the
+the sign-in address, a Nogon token or a session id signs in, a bad one is 401 and never passed over, a Nogon user
+outside KANBAN_NOGON_USERS is 403, signed out never falls back to the tailnet but an unreachable helper does (with the
 banner; without a listed login it is 503), the probes (/api/health, /api/changelog) answer without a sign-in, sign-out
 is same-origin and ends the session, writes keep the CSRF rules, and the start-up refusals. Default modes are untouched
 (test_auth)."""
@@ -11,11 +11,11 @@ from urllib.parse import parse_qs, urlsplit
 
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
 BOARD = "https://board.example.test"
-SIGNIN = "https://hister.example.test/machiya/signin"
+SIGNIN = "https://nogon.example.test/machiya/signin"
 OWNER_SID = "mhs_" + "A" * 43
 STRANGER_SID = "mhs_" + "B" * 43
 DEAD_SID = "mhs_" + "C" * 43
-TOKEN = "owner-hister-token-123"
+TOKEN = "owner-nogon-token-123"
 signouts = []
 ROOM_SID = "mhr_" + "R" * 43              # a room session of this board (vaultkit 0.22: the room's own host-only cookie)
 OTHER_ROOM_SID = "mhr_" + "S" * 43        # one of another room's: refused here
@@ -96,8 +96,8 @@ procs = []
 
 def env_for(d, port, **extra):
     env = dict(os.environ, KANBAN_REPO=d, KANBAN_DB=d + "/db/k.db", KANBAN_TAILNET_PORT=str(port), KANBAN_BIND="127.0.0.1",
-               PYTHONDONTWRITEBYTECODE="1", KANBAN_AUTH="hister", KANBAN_AUTH_URL=HELPER, KANBAN_AUTH_SIGNIN_URL=SIGNIN,
-               KANBAN_HISTER_USERS="owner", KANBAN_BOARD_URL=BOARD, KANBAN_TAILNET_USERS="owner@example.com")
+               PYTHONDONTWRITEBYTECODE="1", KANBAN_AUTH="nogon", KANBAN_AUTH_URL=HELPER, KANBAN_AUTH_SIGNIN_URL=SIGNIN,
+               KANBAN_NOGON_USERS="owner", KANBAN_BOARD_URL=BOARD, KANBAN_TAILNET_USERS="owner@example.com")
     for k in ("MACHIYA_IDENTITY_FILE", "KANBAN_AUTH_FALLBACK", "MACHIYA_COOKIE_DOMAIN", "KANBAN_BIND_BEHIND_PROXY"):
         env.pop(k, None)
     env.update({k: v for k, v in extra.items() if v is not None})
@@ -174,17 +174,17 @@ try:
     data = json.loads(body)
     assert status == 401 and data["error"] == "sign in" and data["signin"].startswith(SIGNIN), (status, data)
     assert get(port, "/api/cards", {"Accept": "*/*", "X-Machiya-Live": "1"})[0] == 401      # the live search's fetch
-    # a Hister sign-in (the shared cookie) opens pages and the API; the page opts in to machiya.js's sign-in handling
+    # a Nogon sign-in (the shared cookie) opens pages and the API; the page opts in to machiya.js's sign-in handling
     status, r, body = get(port, "/now", dict(HTML, **SID))
     assert status == 200 and b'name="machiya-signin" content="/signout"' in body and b"machiya-banner" not in body, status
     status, r, body = get(port, "/api/cards", SID)
     assert status == 200 and b'"kura"' in body, (status, body[:80])
-    # the owner's Hister token: X-Access-Token or Bearer; a present but invalid one is 401 and never passed over
+    # the owner's Nogon token: X-Access-Token or Bearer; a present but invalid one is 401 and never passed over
     assert get(port, "/api/cards", {"X-Access-Token": TOKEN})[0] == 200
     assert get(port, "/api/cards", {"Authorization": "Bearer " + TOKEN})[0] == 200
     assert get(port, "/api/cards", dict(SID, **{"X-Access-Token": "wrong"}))[0] == 401           # the cookie isn't tried
-    assert get(port, "/api/cards", dict(SID, **{"Authorization": "Bearer mch_not_a_hister_token_x"}))[0] == 401
-    # a signed-in Hister user the board doesn't admit: 403 (never a fallback, never a redirect)
+    assert get(port, "/api/cards", dict(SID, **{"Authorization": "Bearer mch_not_a_nogon_token_xx"}))[0] == 401
+    # a signed-in Nogon user the board doesn't admit: 403 (never a fallback, never a redirect)
     status, r, body = get(port, "/now", dict(HTML, Cookie="machiya_sso=" + STRANGER_SID,
                                               **{"Tailscale-User-Login": "owner@example.com"}))
     assert status == 403 and r.getheader("Location") is None, status
@@ -196,8 +196,8 @@ try:
     # the probes answer without a sign-in: health with what a probe needs, the owner with everything; the changelog is open
     status, r, body = get(port, "/api/health")
     health = json.loads(body)
-    assert status == 200 and health["ok"] and health["auth"] == "hister" and health["vaultkit"].startswith("v0.") \
-        and "sync" not in health and "hister" not in health, health
+    assert status == 200 and health["ok"] and health["auth"] == "nogon" and health["vaultkit"].startswith("v0.") \
+        and "sync" not in health and "nogon" not in health and "hister" not in health, health
     assert "sync" in json.loads(get(port, "/api/health", SID)[2])
     assert get(port, "/api/status")[0] == 200
     status, r, body = get(port, "/api/changelog")
@@ -231,7 +231,7 @@ try:
     assert prefs_calls[-1][:3] == ("GET", OWNER_SID, None), prefs_calls[-1]                   # the cookie's id, never a user id
     assert get(port, "/api/prefs", dict(SID, **{"If-None-Match": '"3"'}))[0] == 304
     status, r, body = get(port, "/api/prefs", {"X-Access-Token": TOKEN})
-    assert status == 200 and prefs_calls[-1][:3] == ("GET", None, TOKEN), prefs_calls[-1]   # a Hister token goes as the token
+    assert status == 200 and prefs_calls[-1][:3] == ("GET", None, TOKEN), prefs_calls[-1]   # a Nogon token goes as the token
     assert get(port, "/api/prefs")[0] == 401                                                  # signed out
     put = json.dumps({"prefs": {"konbini.done_cards": "10"}})
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
@@ -256,6 +256,12 @@ try:
     assert 'data-prefs-state="account"' in html and "Saved to your account." in html and ">owner<" in html
     assert "follow you to your other devices when signed in" in html and "Offline Copies stay on this device" in html
     assert "Use This Device" in html and 'id="this-device"' not in html and 'id="shared"' not in html and 'id="apps"' not in html
+    # signed in by the cookie (via "nogon" since vaultkit 0.41): Account names the user and has the Sign Out row
+    account = html[html.index('id="account"'):html.index('id="about"')]
+    assert ">owner<" in account and 'action="/signout"' in account and "Sign Out" in account, account[:600]
+    # a token (pm, a script) is signed in too, but has no session to end here: no Sign Out row
+    status, r, body = get(port, "/settings", dict(HTML, **{"X-Access-Token": TOKEN}))
+    assert status == 200 and 'action="/signout"' not in body.decode(), status
 
     # vaultkit 0.22: each room has its own host-only cookie holding a room session; a trip to the helper comes back with a one-time
     # code that /machiya/callback trades (once, for this room, with this browser's nonce) for it
@@ -307,7 +313,7 @@ try:
     port = start(KANBAN_AUTH_URL=DOWN, KANBAN_AUTH_FALLBACK="none")
     assert get(port, "/now", dict(HTML, **{"Tailscale-User-Login": "owner@example.com"}))[0] == 503
 
-    # with two tailnet logins there is no single owner to keep: the Hister username is the actor
+    # with two tailnet logins there is no single owner to keep: the Nogon username is the actor
     port = start(KANBAN_TAILNET_USERS="owner@example.com,other@example.com")
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     c.request("POST", "/api/cards/kura/events", body=json.dumps({"body": "hi"}), headers={
@@ -316,12 +322,15 @@ try:
     assert r.status == 201 and out["actor"] == "owner", (r.status, out)
 
     # start-up refusals: no usernames, a *, no board address, an identity file too
-    assert "KANBAN_NOGON_USERS" in refused(KANBAN_HISTER_USERS=None)     # 0.28.0: the message names the new setting
-    assert "'*' is refused" in refused(KANBAN_HISTER_USERS="*")
+    assert "KANBAN_NOGON_USERS" in refused(KANBAN_NOGON_USERS=None)
+    assert "'*' is refused" in refused(KANBAN_NOGON_USERS="*")
+    # 0.30.0: the old names stop the board, naming the new ones
+    assert "use KANBAN_AUTH=nogon" in refused(KANBAN_AUTH="hister")
+    assert "rename it KANBAN_NOGON_USERS" in refused(KANBAN_NOGON_USERS=None, KANBAN_HISTER_USERS="owner")
     assert "KANBAN_BOARD_URL" in refused(KANBAN_BOARD_URL=None)
     assert "KANBAN_AUTH_SIGNIN_URL" in refused(KANBAN_AUTH_SIGNIN_URL=None)
     assert "identity file" in refused(MACHIYA_IDENTITY_FILE="/nonexistent/identity.toml")
 finally:
     for p in procs:
         p.kill()
-print("hister signin tests: all passed")
+print("nogon signin tests: all passed")

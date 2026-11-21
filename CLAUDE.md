@@ -29,13 +29,13 @@ Test against a throwaway vault, never a real one.
   and the batched git export; `modern.py` the pages (HTML5, on the shared Machiya shell) and `/settings`; `common.py`
   filters and helpers; `deps.py`, `goals.py`, `review.py`, `now.py` (the Now page and `/api/now`; the rule is `NOW_DAYS`
   in `common.py`, its one home), `timeline.py`, `digest.py`, `kit.py` (writing kits), `blog.py`, `links.py` (link rot),
-  `hister.py`, `garden.py` (the vault index, a thin vaultkit `Vault`), `urlnorm.py` (the URL rule; an identical copy
+  `nogon.py`, `garden.py` (the vault index, a thin vaultkit `Vault`), `urlnorm.py` (the URL rule; an identical copy
   lives in Niwa: keep them in step); `static/` is `board.css`, `board.js`, `outbox.js` and the icons.
 - `app/vaultkit/` is the shared vault core, **vendored** from the Machiya repository. **Never edit it**: the build runs
   `python3 -m vaultkit.verify` and fails on drift. Change it upstream, then `VAULTKIT_REPO=<machiya checkout>
   tools/vendor-vaultkit <tag>`.
 - `tests/`, and `tools/`: `pm` (the command line, a standard-library client of the HTTP API), `demo-vault`,
-  `vendor-vaultkit`, `quickstart-test`, `screenshots`, `Dockerfile.dev` (the image without the optional Hister stage),
+  `vendor-vaultkit`, `quickstart-test`, `screenshots`, `Dockerfile.dev` (the image without the optional Nogon stage),
   `tsproxy.py` (stands in for `tailscale serve`).
 
 ## What the code relies on
@@ -62,7 +62,7 @@ Test against a throwaway vault, never a real one.
 - **A note is data, never code.** Card pages render a card's description and writing kits quote the note, both through
   `vaultkit.sanitize.clean`. Every HTML answer carries a CSP with `script-src 'self'`: no inline `<script>` and no `on…=`
   attribute; behaviour goes in `board.js`.
-- **Hister is optional and single-user:** every call sends `Origin: hister://`, and never `hister index --force` a URL it
+- **Nogon (formerly Hister) is optional and single-user:** every call sends `Origin: nogon://`, and never `nogon index --force` a URL it
   already has. Saving into Nogon is off unless `KANBAN_NOGON_SAVE`; the Wayback lookup unless `KANBAN_ARCHIVE=wayback`.
 - **Stack mode** (optional): `KANBAN_REPO_REFERENCE` borrows another clone's objects, `KANBAN_REPO_SPARSE` checks out only
   what the board reads and writes.

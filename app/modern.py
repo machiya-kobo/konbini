@@ -164,7 +164,7 @@ def tabbar(tabs, current):
         for href, key, label in tabs)
 
 
-SIGNIN_META = ""      # app.py sets histerauth.signin_meta() with KANBAN_AUTH=hister: machiya.js then handles 401 and Sign Out
+SIGNIN_META = ""      # app.py sets nogonauth.signin_meta() with KANBAN_AUTH=nogon: machiya.js then handles 401 and Sign Out
 
 
 def page(ctx, what, body, tabs=(), current="", foot=()):
@@ -838,7 +838,7 @@ def settings(ctx, cards, version, vaultkit, status_text, account="", session=Fal
 # -- card page -----------------------------------------------------------------
 
 def reading_section(reading, query, search_url=""):
-    """Pages I've read, from Hister (private: the authenticated pages only)."""
+    """Pages I've read, from Nogon (private: the authenticated pages only)."""
     if not reading:
         return ""
     rows = "".join(

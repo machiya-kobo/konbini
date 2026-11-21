@@ -11,8 +11,8 @@ Two kinds of copy, kept apart on purpose:
 - archive_url: the public copy (Wayback Machine). Backends implement
   lookup(url) / save(url) -> (archive_url, when) or None.
 - private_url: the private copy. A cold archive's snapshot when there is one
-  (a urlmap.json), else Hister's copy; with KANBAN_HISTER_SAVE a live link
-  Hister doesn't have yet is indexed into it.
+  (a urlmap.json), else Nogon's copy; with KANBAN_NOGON_SAVE a live link
+  Nogon doesn't have yet is indexed into it.
 Public pages read only archive_url; private_url is for the board's own pages."""
 import datetime
 import json
@@ -167,7 +167,7 @@ class ColdArchive:
 
 
 def setting_on(value):
-    """A switch setting (KANBAN_HISTER_SAVE): `1`, `on` or `true` is on; anything else, or unset, is off."""
+    """A switch setting (KANBAN_NOGON_SAVE): `1`, `on` or `true` is on; anything else, or unset, is off."""
     return (value or "").strip().lower() in ("1", "true", "on")
 
 
@@ -182,22 +182,22 @@ def archive_mode(value):
     return "none", "KANBAN_ARCHIVE=%r is not `wayback`: Wayback lookups and saves stay off" % value
 
 
-class HisterBackend:
-    """Hister's copy of a page (hister.Hister). save() indexes only URLs that
-    Hister doesn't hold yet: re-indexing an existing document would replace
+class NogonBackend:
+    """Nogon's copy of a page (nogon.Nogon). save() indexes only URLs that
+    Nogon doesn't hold yet: re-indexing an existing document would replace
     its metadata (the imported tags and cold-archive link)."""
-    name = "hister"
+    name = "hister"     # the stored private_backend value: stored names stay (owner, 2026-11-19); readers take either
 
-    def __init__(self, hister):
-        self.h = hister
+    def __init__(self, nogon):
+        self.h = nogon
 
     def lookup(self, url):
-        from hister import ts_date
+        from nogon import ts_date
         d = self.h.find(url)
         return (self.h.preview_url(d["url"]), ts_date(d.get("updated") or d.get("added"))) if d else None
 
     def final_url(self, url):
-        """Where a URL redirects to: Hister stores the page under its final address."""
+        """Where a URL redirects to: Nogon stores the page under its final address."""
         try:
             req = urllib.request.Request(ascii_url(url), method="HEAD", headers={"User-Agent": UA})
             with OPENER.open(req, timeout=15) as r:
@@ -216,12 +216,12 @@ class HisterBackend:
                 return found
         try:
             parts = urllib.parse.urlsplit(url)
-            websafe.vet(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80))   # the hister command fetches it
+            websafe.vet(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80))   # the nogon command fetches it
         except (websafe.Blocked, ValueError):
             return None
         if not self.h.index(url):
             return None
-        for _ in range(4):  # Hister indexes in the background
+        for _ in range(4):  # Nogon indexes in the background
             time.sleep(2)
             found = self.lookup(url) or (self.lookup(final) if final != url else None)
             if found:
@@ -230,11 +230,11 @@ class HisterBackend:
 
 
 class Links:
-    def __init__(self, store, garden, backends=(), enabled=True, cold=None, hister=None, hister_save=False):
+    def __init__(self, store, garden, backends=(), enabled=True, cold=None, nogon=None, nogon_save=False):
         self.store, self.garden = store, garden
-        self.hister_save = hister_save   # KANBAN_HISTER_SAVE: index pages Hister lacks (off: only show Hister's copy)
+        self.nogon_save = nogon_save     # KANBAN_NOGON_SAVE: index pages Nogon lacks (off: only show Nogon's copy)
         self.backends = list(backends)
-        self.cold, self.hister = cold, hister  # private copies (single-user)
+        self.cold, self.nogon = cold, nogon  # private copies (single-user)
         self.enabled = enabled
         self.lock = threading.Lock()
         self.last_run = ""
@@ -322,21 +322,21 @@ class Links:
         return None
 
     def private_copy(self, rec):
-        """Fill private_url: the cold snapshot if there is one, else Hister's
-        copy (a read-only lookup). With KANBAN_HISTER_SAVE a live link Hister lacks is also indexed when there's no
+        """Fill private_url: the cold snapshot if there is one, else Nogon's
+        copy (a read-only lookup). With KANBAN_NOGON_SAVE a live link Nogon lacks is also indexed when there's no
         snapshot or the snapshot is over a year old (the old snapshot stays the answer)."""
         url, fields = rec["url"], {"private_checked": now_iso()}
         cold = hist = None
         try:
             cold = self.cold.lookup(url) if self.cold else None
-            if self.hister:
-                hist = self.hister.lookup(url)
+            if self.nogon:
+                hist = self.nogon.lookup(url)
                 stale = not cold or not cold[1] or (datetime.date.today() - datetime.date.fromisoformat(cold[1][:10])).days > 365
-                if not hist and stale and rec.get("status") == "live" and self.hister_save:
-                    hist = self.hister.save(url)
+                if not hist and stale and rec.get("status") == "live" and self.nogon_save:
+                    hist = self.nogon.save(url)
         except Exception as exc:
             print("links: private %s: %s" % (url[:80], str(exc)[:80]), flush=True)
-        best, name = (cold, "cold") if cold else ((hist, "hister") if hist else (None, None))
+        best, name = (cold, "cold") if cold else ((hist, NogonBackend.name) if hist else (None, None))
         if best:
             fields.update(private_url=best[0], private_at=best[1], private_backend=name)
         self.store.link_set(url, **fields)
@@ -358,7 +358,7 @@ class Links:
                 if self.archive(rec):
                     saved += 1
                 time.sleep(3)
-        if self.cold or self.hister:
+        if self.cold or self.nogon:
             week = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=CHECK_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
             for rec in self.store.links("private_url IS NULL AND status != 'unknown' AND "
                                         "(private_checked IS NULL OR private_checked < ?)", (week,), BATCH_PRIVATE):
@@ -383,7 +383,7 @@ class Links:
         return [r for r in self.store.links() if rel in (r.get("notes") or "").split("\n")]
 
     def own_urls(self, rel):
-        """A note's external links, plus the addresses Hister stored them under
+        """A note's external links, plus the addresses Nogon stored them under
         after a redirect (taken from private_url), to leave out of "pages I've read"."""
         out = set()
         for r in self.for_note(rel):
@@ -430,5 +430,4 @@ class Links:
                 "archived": sum(1 for r in rows if r.get("archive_url")),
                 "private": sum(1 for r in rows if r.get("private_url")), "last_run": self.last_run,
                 "cold": (self.cold.error or "%d snapshots" % len(self.cold.urls)) if self.cold else "off",
-                "nogon": (self.hister.h.error or "ok") if self.hister else "off",       # 0.28.0
-                "hister": (self.hister.h.error or "ok") if self.hister else "off"}      # until the rename's stage 3
+                "nogon": (self.nogon.h.error or "ok") if self.nogon else "off"}         # 0.30.0: no "hister" twin

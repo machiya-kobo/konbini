@@ -254,7 +254,7 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(links)")}
-        for col in ("private_url", "private_at", "private_backend", "private_checked"):  # added for Hister
+        for col in ("private_url", "private_at", "private_backend", "private_checked"):  # added for Hister (now Nogon); the column names stay
             if col not in have:
                 self.db.execute("ALTER TABLE links ADD COLUMN %s TEXT" % col)
         self.db.commit()

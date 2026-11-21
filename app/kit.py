@@ -135,11 +135,11 @@ def repo_api(url):
 
 
 class Kits:
-    def __init__(self, store, garden, timeline, blog, board_url, links=None, hister=None, garden_url=""):
+    def __init__(self, store, garden, timeline, blog, board_url, links=None, nogon=None, garden_url=""):
         self.store, self.garden, self.timeline, self.blog = store, garden, timeline, blog
         self.garden_url = (garden_url or board_url + "/garden").rstrip("/")   # Niwa (machiya-kobo/niwa)
         self.links = links
-        self.hister = hister  # pages I've read (private; the markdown lists original URLs only)
+        self.nogon = nogon  # pages I've read (private; the markdown lists original URLs only)
         self.board_url = board_url.rstrip("/")
         self._remote = {}
         self._lock = threading.Lock()
@@ -511,9 +511,9 @@ class Kits:
             "log": [{k: v for k, v in r.items() if k != "date_obj"} for r in log], "moves": moves, "notes": notes,
             "systems": systems, "vault_commits": vault_commits, "repo_commits": repo_commits, "repo_note": repo_note,
             "images": images, "links": links, "related": related,
-            "reading": self.hister.reading(card["title"], card.get("topics") or [],
+            "reading": self.nogon.reading(card["title"], card.get("topics") or [],
                                            exclude=[l["url"] for l in links] + list(self.links.own_urls(rel) if self.links else ())
-                                           )[0] if self.hister and remote else [],
+                                           )[0] if self.nogon and remote else [],
             "blog": {"available": blog_ok, "front": front, "filename": filename, "category": category,
                      "tags": matched, "new_tags": new_tags, "earlier": earlier, "existing": existing},
             "size": {"milestones": len(milestones), "images": len(images), "days": days,

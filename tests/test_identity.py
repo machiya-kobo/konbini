@@ -143,8 +143,8 @@ try:
     assert call(port, "GET", "/api/status")[0] == 401 and call(port, "GET", "/api/health")[0] == 401
     st, _, body = call(port, "GET", "/api/status", NIWA)
     assert st == 200 and json.loads(body)["auth"] == "tailscale", (st, body)
-    assert sorted(json.loads(body)) == ["auth", "cards", "error", "head", "ok", "vaultkit", "version"], body   # no hister, no sync
-    assert "hister" in json.loads(call(port, "GET", "/api/status", OWNER)[2])                     # the owner: in full
+    assert sorted(json.loads(body)) == ["auth", "cards", "error", "head", "ok", "vaultkit", "version"], body   # no nogon, no sync
+    assert "nogon" in json.loads(call(port, "GET", "/api/status", OWNER)[2])                      # the owner: in full
 
     # Niwa: a service token with konbini read reads the cards and the digest, and writes nothing
     assert call(port, "GET", "/api/digest?days=7", NIWA)[0] == 200
@@ -291,7 +291,7 @@ def boot(**extra):
 
 
 r = boot(KANBAN_AUTH="header", KANBAN_AUTH_HEADER="Remote-User", MACHIYA_IDENTITY_FILE="")
-assert r.returncode != 0 and "KANBAN_AUTH must be tailscale or open or hister, not 'header'" in r.stderr, r.stderr[-300:]
+assert r.returncode != 0 and "KANBAN_AUTH must be tailscale or open or nogon, not 'header'" in r.stderr, r.stderr[-300:]
 r = boot(KANBAN_AUTH="header")
 assert r.returncode != 0 and "konbini: identity: auth=header needs" in r.stderr, r.stderr[-300:]
 r = boot(KANBAN_BIND="0.0.0.0")

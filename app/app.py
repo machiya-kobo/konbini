@@ -55,7 +55,7 @@ import deps  # noqa: E402
 import goals
 from vaultkit import shell
 from vaultkit import changelog
-from vaultkit import histerauth
+from vaultkit import nogonauth
 from vaultkit import names
 from vaultkit import identity
 from vaultkit import signin
@@ -66,9 +66,9 @@ import review
 from blog import Blog
 import kit as kit_mod
 from kit import Kits
-from hister import Hister
+from nogon import Nogon
 import links as links_mod
-from links import ColdArchive, HisterBackend, Links, WaybackBackend
+from links import ColdArchive, Links, NogonBackend, WaybackBackend
 import modern
 import common
 import now as now_mod
@@ -81,11 +81,15 @@ TAILNET_PORT = int(os.environ.get("KANBAN_TAILNET_PORT", "8081"))
 TAILNET_USERS = set(filter(None, os.environ.get("KANBAN_TAILNET_USERS", "").split(",")))
 def auth_mode(value, identity_file=""):
     """KANBAN_AUTH: "tailscale" (the default: Tailscale-User-Login must be in KANBAN_TAILNET_USERS, or in the identity
-    file), "open" (no identity check, for localhost or a trusted LAN), "hister" (Hister's users are the sign-in, with
-    the tailnet as the fallback; vaultkit.histerauth, never with an identity file), or with an identity file "header"
-    (a trusted proxy's login header, KANBAN_AUTH_HEADER). Anything else refuses to start rather than guess."""
-    value = names.auth_mode(value) or "tailscale"        # 0.28.0: nogon is the same as hister (the rename's stage 1)
-    allowed = ("tailscale", "open", "hister", "header") if identity_file else ("tailscale", "open", "hister")
+    file), "open" (no identity check, for localhost or a trusted LAN), "nogon" (Nogon's users are the sign-in, with
+    the tailnet as the fallback; vaultkit.nogonauth, never with an identity file), or with an identity file "header"
+    (a trusted proxy's login header, KANBAN_AUTH_HEADER). Anything else refuses to start rather than guess, and so
+    does the old name "hister" (0.30.0: use nogon)."""
+    try:
+        value = names.auth_mode(value, "KANBAN_AUTH") or "tailscale"
+    except names.OldName as err:
+        raise SystemExit("konbini: %s" % err)
+    allowed = ("tailscale", "open", "nogon", "header") if identity_file else ("tailscale", "open", "nogon")
     if value not in allowed:
         raise SystemExit("konbini: KANBAN_AUTH must be %s, not %r" % (" or ".join(allowed), value))
     return value
@@ -101,18 +105,18 @@ OPEN_ACTOR = "local"            # open mode: who every event names
 # The session cookie's Secure flag and vaultkit's same-origin rule follow KANBAN_BOARD_URL's scheme (https unless it
 # says http://), with or without an identity file.
 SECURE = not os.environ.get("KANBAN_BOARD_URL", "").strip().startswith("http://")
-# KANBAN_AUTH=hister (vaultkit.histerauth, docs/identity.md "Hister sign-in"): the board asks the hister-login helper who
+# KANBAN_AUTH=nogon (vaultkit.nogonauth, docs/identity.md "Nogon sign-in"): the board asks the nogon-login helper who
 # is calling. None in every other mode, so nothing below changes for them. It is loaded before the identity file, which
 # it refuses to share a board with (not combined yet).
 try:
-    HISTERAUTH = histerauth.load_for("konbini", os.environ, bind=BIND, secure=SECURE)
+    NOGONAUTH = nogonauth.load_for("konbini", os.environ, bind=BIND, secure=SECURE)
 except identity.IdentityError as err:
-    raise SystemExit("konbini: hister sign-in: %s" % err)
+    raise SystemExit("konbini: nogon sign-in: %s" % err)
 try:
     IDENTITY = identity.load_for("konbini", os.environ, bind=BIND, secure=SECURE)
 except identity.IdentityError as err:
     raise SystemExit("konbini: identity: %s" % err)
-# Answered without a sign-in in hister mode, for the probes and the status page (they reach the rest only as the owner)
+# Answered without a sign-in in nogon mode, for the probes and the status page (they reach the rest only as the owner)
 PROBES = ("/api/health", "/api/status", "/api/changelog")
 
 
@@ -148,7 +152,7 @@ def check_trusted_proxies(headers_matter, bind, proxies):
     whoever can reach the port, unless the peers that may send it are named: refuse to start rather than guess."""
     if headers_matter and not proxies and not identity.is_loopback(bind):
         raise SystemExit(
-            "konbini: this mode trusts the Tailscale-User-Login header (KANBAN_AUTH=tailscale or header, or hister with its "
+            "konbini: this mode trusts the Tailscale-User-Login header (KANBAN_AUTH=tailscale or header, or nogon with its "
             "tailscale fallback), but the board listens on %s, so any peer that reaches the port could send it. Set "
             "KANBAN_TRUSTED_PROXIES to the address of the proxy in front of it (like 10.210.4.2/32; 0.0.0.0/0 trusts every "
             "peer), set KANBAN_AUTH_FALLBACK=none, or bind 127.0.0.1 behind `tailscale serve`." % bind)
@@ -162,8 +166,8 @@ IDENTITY_HEADERS = tuple(dict.fromkeys(h for h in (
     "Tailscale-User-Login", "Tailscale-User-Name", "Tailscale-User-Profile-Pic", "Tailscale-App-Capabilities",
     "Remote-User", os.environ.get("KANBAN_AUTH_HEADER", "").strip()) if h))
 check_trusted_proxies(
-    (HISTERAUTH is not None and HISTERAUTH.fallback == "tailscale")
-    or (HISTERAUTH is None and AUTH in ("tailscale", "header")),
+    (NOGONAUTH is not None and NOGONAUTH.fallback == "tailscale")
+    or (NOGONAUTH is None and AUTH in ("tailscale", "header")),
     BIND, TRUSTED_PROXIES)
 
 
@@ -240,22 +244,32 @@ ARCHIVE, _warn = links_mod.archive_mode(os.environ.get("KANBAN_ARCHIVE"))
 if _warn:
     print("startup: WARNING: " + _warn, flush=True)
 backends = [WaybackBackend()] if ARCHIVE == "wayback" else []
-# Hister (optional): private copies of links, vault search, pages I've read. Single-user and private.
-# 0.28.0, the rename (Hister is now Nogon): KANBAN_NOGON_* first, KANBAN_HISTER_* still read (logged once) until stage 3.
-NOGON_URL = names.setting("KANBAN_NOGON_URL") or ""
-hister = Hister(NOGON_URL, names.setting("KANBAN_NOGON_PUBLIC") or "",
-                token_file=names.setting("KANBAN_NOGON_TOKEN_FILE") or "") \
-    if NOGON_URL else None
+# Nogon (optional): private copies of links, vault search, pages I've read. Single-user and private.
+
+
+def nogon_setting(name):
+    """A KANBAN_NOGON_* setting (vaultkit.names.setting): set even empty, it wins. Since 0.30.0 (the rename's stage 3)
+    its old KANBAN_HISTER_* name is no longer read: set on its own, it stops the board, naming the new one."""
+    try:
+        return names.setting(name)
+    except names.OldName as err:
+        raise SystemExit("konbini: %s" % err)
+
+
+NOGON_URL = nogon_setting("KANBAN_NOGON_URL") or ""
+NOGON_PUBLIC = nogon_setting("KANBAN_NOGON_PUBLIC") or ""        # read even without NOGON_URL: an old name alone stops it
+NOGON_TOKEN_FILE = nogon_setting("KANBAN_NOGON_TOKEN_FILE") or ""
+NOGON_SAVE = links_mod.setting_on(nogon_setting("KANBAN_NOGON_SAVE"))
+nogon = Nogon(NOGON_URL, NOGON_PUBLIC, token_file=NOGON_TOKEN_FILE) if NOGON_URL else None
 cold = ColdArchive(os.environ["KANBAN_COLD_MAP"]) if os.environ.get("KANBAN_COLD_MAP") else None
 links = Links(store, garden, backends, enabled=ARCHIVE != "none", cold=cold,
-              hister=HisterBackend(hister) if hister else None,
-              hister_save=links_mod.setting_on(names.setting("KANBAN_NOGON_SAVE")))
-kits = Kits(store, garden, timeline, blog, modern.BOARD_URL, links, hister, garden_url=modern.GARDEN_URL)
+              nogon=NogonBackend(nogon) if nogon else None, nogon_save=NOGON_SAVE)
+kits = Kits(store, garden, timeline, blog, modern.BOARD_URL, links, nogon, garden_url=modern.GARDEN_URL)
 # The built-in sign-in, Shiori's device pairing and per-user preferences (vaultkit.signin), only with an identity file.
 # Their same-origin checks take KANBAN_BOARD_URL's origin, the setting the session cookie's Secure flag already
 # follows (load_for(secure=...) above); without it, only an https page naming the request's own Host counts.
 SIGNIN_ORIGINS = tuple(o for o in [signin.origin_of(modern.BOARD_URL)] if o)
-modern.SIGNIN_META = histerauth.signin_meta("/signout") if HISTERAUTH is not None else ""   # machiya.js: 401 -> sign-in, Sign Out
+modern.SIGNIN_META = nogonauth.signin_meta("/signout") if NOGONAUTH is not None else ""   # machiya.js: 401 -> sign-in, Sign Out
 # Preferences live in their own SQLite file next to KANBAN_DB (the board's index is a cache that `rebuild` may
 # recreate; nobody's preferences go with it): <KANBAN_DB's folder>/prefs.sqlite3, 0600. With an identity file they
 # are the principal's; without one (vaultkit 0.12) the Tailscale login's or open mode's owner's (identity.ambient),
@@ -277,15 +291,15 @@ def prefs_store():
 # the gate (they are how a caller gets past it). /api/prefs is served in every mode, after the gate.
 SIGNIN_POSTS = {"/signin": signin.MAX_FORM, "/signout": signin.MAX_FORM, "/api/pair": signin.MAX_PAIR}
 SHARED_UI = ("/static/machiya.css", "/static/machiya.js", "/static/machiya-sw.js")
-# The vault push into Hister and the note reader are Kura's (machiya-kobo/kura).
+# The vault push into Nogon and the note reader are Kura's (machiya-kobo/kura).
 
 
 def reading_for(card):
-    """Pages I've read about a card, from Hister (private), or ([], "")."""
-    if not hister:
+    """Pages I've read about a card, from Nogon (private), or ([], "")."""
+    if not nogon:
         return [], ""
     own = list(links.own_urls(card["path"])) + [card.get("repo") or ""]  # the note's own links
-    return hister.reading(card["title"], card.get("topics") or [], exclude=own)
+    return nogon.reading(card["title"], card.get("topics") or [], exclude=own)
 
 
 def V(ctx):
@@ -454,7 +468,7 @@ def make_handler(listener):
             """Who is asking, for the log: the principal and how it was proven, or the login as before."""
             if getattr(self, "headers", None) is None:      # a request line too broken to have headers
                 return "-"
-            if HISTERAUTH is not None:
+            if NOGONAUTH is not None:
                 return self.hres().actor or "-"
             if IDENTITY is not None:
                 who = self.who()
@@ -462,10 +476,10 @@ def make_handler(listener):
             return OPEN_ACTOR if AUTH == "open" else self.headers.get("Tailscale-User-Login", "-")
 
         def hres(self):
-            """KANBAN_AUTH=hister: vaultkit.histerauth's decision for this request (a Result), worked out once. A page is
+            """KANBAN_AUTH=nogon: vaultkit.nogonauth's decision for this request (a Result), worked out once. A page is
             a browser's top-level load; everything else (an API call, a fetch, the service worker) is never redirected."""
             if getattr(self, "_hres", None) is None:
-                self._hres = HISTERAUTH.resolve(self.headers, is_page=self.is_page(), path=self.path,
+                self._hres = NOGONAUTH.resolve(self.headers, is_page=self.is_page(), path=self.path,
                                                client=self.client_address[0] if self.client_address else None)   # v0.29: the peer, for KANBAN_TRUSTED_PROXIES
             return self._hres
 
@@ -480,7 +494,7 @@ def make_handler(listener):
 
         def owner(self):
             """The owner: everyone the gate admits without an identity file (as before), else the file's owner."""
-            if HISTERAUTH is not None:
+            if NOGONAUTH is not None:
                 return self.allowed()           # one owner: whoever the gate admits (the probes pass without it)
             if IDENTITY is None:
                 return True
@@ -498,7 +512,7 @@ def make_handler(listener):
         def principal(self):
             """Whose preferences these are: the identity file's principal, or without a file the one the old gate let
             in (identity.ambient: the Tailscale login, or open mode's owner). None: nobody known (no preferences)."""
-            if HISTERAUTH is not None:
+            if NOGONAUTH is not None:
                 res = self.hres()
                 return res.principal if self.host_ok() and res else None
             if IDENTITY is not None:
@@ -519,7 +533,7 @@ def make_handler(listener):
         def allowed(self):
             if not self.host_ok():
                 return False            # DNS rebinding, with or without an identity file
-            if HISTERAUTH is not None:
+            if NOGONAUTH is not None:
                 return bool(self.hres())
             if IDENTITY is not None:
                 return self.can("read")
@@ -529,10 +543,10 @@ def make_handler(listener):
 
         def refuse(self):
             api = urlsplit(self.path).path.startswith("/api/")
-            if HISTERAUTH is not None and self.host_ok():
+            if NOGONAUTH is not None and self.host_ok():
                 # signed out: a page goes to the helper (once, then a page with a link), an API call gets 401 JSON with
-                # the sign-in address; a Hister user this board doesn't admit is 403; no fallback and no helper is 503
-                status, headers, body = HISTERAUTH.respond(self.hres(), is_page=self.is_page(),
+                # the sign-in address; a Nogon user this board doesn't admit is 403; no fallback and no helper is 503
+                status, headers, body = NOGONAUTH.respond(self.hres(), is_page=self.is_page(),
                                                            ctx=shell.prefs(self.headers.get("Cookie")))
                 return self.reply(status, headers, body)
             if not self.host_ok():
@@ -607,9 +621,9 @@ def make_handler(listener):
                 return self.reply(*signin.handle_signout(IDENTITY, self.headers, SIGNIN_ORIGINS))
             return self.reply(*signin.handle_pair(IDENTITY, self.headers, body, client))
 
-        def hister_signout(self):
-            """POST /signout in hister mode, before the gate (a signed-out or expired session may still sign out): the
-            helper ends the Hister session and every id on it, the cookie is cleared, and the browser empties its HTTP
+        def nogon_signout(self):
+            """POST /signout in nogon mode, before the gate (a signed-out or expired session may still sign out): the
+            helper ends the Nogon session and every id on it, the cookie is cleared, and the browser empties its HTTP
             cache and goes to / (which sends it to the helper's sign-in). Same-origin only: vaultkit's rule."""
             if self.host_refused():
                 return
@@ -621,7 +635,7 @@ def make_handler(listener):
             if not signin.same_origin(self.headers, SECURE, SIGNIN_ORIGINS):
                 return self.reply(403, [("Content-Type", "text/plain; charset=utf-8"), ("Cache-Control", "no-store")],
                                   b"cross-site sign-out refused\n")
-            _, cookies = HISTERAUTH.signout(self.headers)
+            _, cookies = NOGONAUTH.signout(self.headers)
             self.reply(303, [("Location", "/"), ("Cache-Control", "no-store"), ("Clear-Site-Data", '"cache"')]
                        + [("Set-Cookie", c) for c in cookies], b"")
 
@@ -639,8 +653,8 @@ def make_handler(listener):
                     return self.reply(413, list(signin.JSON_HEADERS) + [("Connection", "close")],
                                       b'{"error": "request body too large"}')
             method = "GET" if self.command == "HEAD" else self.command
-            if HISTERAUTH is not None:      # the account's, from the helper (vaultkit 0.21, docs/contracts/prefs.md)
-                fwd = HISTERAUTH.forward_prefs(self.hres(), method, self.headers, body, self.prefs_origins())
+            if NOGONAUTH is not None:      # the account's, from the helper (vaultkit 0.21, docs/contracts/prefs.md)
+                fwd = NOGONAUTH.forward_prefs(self.hres(), method, self.headers, body, self.prefs_origins())
                 if fwd is not None:
                     return self.reply(*fwd)
             secure = IDENTITY.secure if IDENTITY is not None else PREFS_SECURE
@@ -679,7 +693,7 @@ def make_handler(listener):
 
         def ctx(self):
             # first render: the cookies, else the account's shared settings (a fresh browser has no cookies yet)
-            p = shell.prefs(self.headers.get("Cookie"), account=self.hres().prefs if HISTERAUTH is not None else None)
+            p = shell.prefs(self.headers.get("Cookie"), account=self.hres().prefs if NOGONAUTH is not None else None)
             c = common.Ctx(p.theme, p.text, p.extra)
             c.palette = p.palette                                        # the chosen theme (vaultkit 0.15)
             c.status = footer_status()
@@ -703,7 +717,7 @@ def make_handler(listener):
                 data = body
             if ctype.startswith("text/html") and getattr(self, "_hres", None) is not None and self._hres.banner:
                 # signed in through the tailnet because sign-in is unavailable: say so at the top of the page
-                data = re.sub(rb"(<main\b[^>]*>)", lambda m: m.group(1) + histerauth.banner_html().encode("utf-8"), data,
+                data = re.sub(rb"(<main\b[^>]*>)", lambda m: m.group(1) + nogonauth.banner_html().encode("utf-8"), data,
                               count=1)
             headers, data = self.compressed(ctype, headers, data)
             self.send_response(status)
@@ -777,11 +791,11 @@ def make_handler(listener):
         def actor(self):
             # With an identity file: the principal's name ("local" in open mode). Without: open mode is always
             # "local" (nothing vouches for the header there), else the Tailscale login.
-            if HISTERAUTH is not None:
-                # continuity: the owner signed in through Hister is the same person in the history and the roundups as the
+            if NOGONAUTH is not None:
+                # continuity: the owner signed in through Nogon is the same person in the history and the roundups as the
                 # owner on the tailnet, so with exactly one tailnet login in KANBAN_TAILNET_USERS events keep that actor
                 p = self.hres().principal
-                one = sorted(HISTERAUTH.fallback_users)
+                one = sorted(NOGONAUTH.fallback_users)
                 return p.name if p.via == "fallback" or len(one) != 1 else one[0]
             if IDENTITY is not None:
                 return self.who().principal.name
@@ -835,8 +849,8 @@ def make_handler(listener):
             path = unquote(url.path)
             if IDENTITY is not None and path in SIGNIN_POSTS:
                 return self.signin_post(path)
-            if HISTERAUTH is not None and path == "/signout":
-                return self.hister_signout()
+            if NOGONAUTH is not None and path == "/signout":
+                return self.nogon_signout()
             if not self.allowed():
                 self.refuse()
                 return
@@ -1006,7 +1020,7 @@ def make_handler(listener):
                 if not self.host_refused():
                     self.reply(405, [("Content-Type", "text/plain"), ("Allow", "POST")], b"POST only\n")
                 return
-            probe = HISTERAUTH is not None and path in PROBES and self.host_ok()
+            probe = NOGONAUTH is not None and path in PROBES and self.host_ok()
             if not (self.public_asset(path) and self.host_ok()) and not probe and not self.allowed():
                 self.refuse()
                 return
@@ -1135,9 +1149,9 @@ def make_handler(listener):
                     card = next((c for c in cards if c["slug"] == card["slug"]), card)
                     # The note itself is read in Kura (the card page links there).
                     reading = ""
-                    if hister:  # private
+                    if nogon:  # private
                         docs, q = reading_for(card)
-                        reading = modern.reading_section(docs, q, hister.search_url(q) if q else "")
+                        reading = modern.reading_section(docs, q, nogon.search_url(q) if q else "")
                     self.send(200, V(ctx).detail(ctx, card, cards, store.events(card=card["slug"], limit=60),
                                                 store.claims().get(card["slug"]),
                                                 (query.get("tagmsg") or [""])[0], (query.get("pending") or [""])[0],
@@ -1177,11 +1191,11 @@ def make_handler(listener):
                     self.send(200, f.read(), "text/css" if name.endswith(".css") else "text/javascript",
                               headers=[("Cache-Control", cache)])
             elif path == "/settings":
-                p = self.principal() if IDENTITY is not None or HISTERAUTH is not None else None
-                if HISTERAUTH is not None:      # where the Shared settings are kept now: the account, or (fallback) not reachable
-                    state = HISTERAUTH.prefs_state(self.hres())
-                    # a Hister sign-in (cookie or app id) can sign out here; a token or the tailnet fallback can't
-                    session = bool(p) and p.via in ("hister", "app")
+                p = self.principal() if IDENTITY is not None or NOGONAUTH is not None else None
+                if NOGONAUTH is not None:      # where the Shared settings are kept now: the account, or (fallback) not reachable
+                    state = NOGONAUTH.prefs_state(self.hres())
+                    # a Nogon sign-in (cookie or app id) can sign out here; a token or the tailnet fallback can't
+                    session = bool(p) and p.via in ("nogon", "app")       # vaultkit 0.41: a cookie is via "nogon"
                 else:
                     state = "room" if IDENTITY is not None else "standalone"
                     session = bool(p) and p.via == "session"
@@ -1252,8 +1266,8 @@ def make_handler(listener):
                 ctype = next((v for k, v in hdrs if k == "Content-Type"), "text/plain")
                 self.send(status, body, ctype, [(k, v) for k, v in hdrs if k != "Content-Type"])
             elif path in ("/api/health", "/api/status") and not self.owner():
-                # with an identity file, only the owner sees the details below: Hister's internal address and raw git
-                # and Hister error texts (they can name hosts and paths). Others get what a probe needs.
+                # with an identity file, only the owner sees the details below: Nogon's internal address and raw git
+                # and Nogon error texts (they can name hosts and paths). Others get what a probe needs.
                 self.send_json(200, {"ok": True, "version": VERSION, "head": store.meta("head"),
                                      "cards": store.count(), "auth": AUTH,
                                      "vaultkit": "v" + vaultkit.__version__,
@@ -1261,8 +1275,7 @@ def make_handler(listener):
             elif path in ("/api/health", "/api/status"):      # /api/status: the probe path every room answers
                 self.send_json(200, {"ok": True, "version": VERSION, "imported": store.meta("imported"), "head": store.meta("head"),
                                      "vaultkit": "v" + vaultkit.__version__, "cards": store.count(), "sync": writer.status(),
-                                     "nogon": hister.status() if hister else "off",       # 0.28.0
-                                     "hister": hister.status() if hister else "off",      # until the rename's stage 3
+                                     "nogon": nogon.status() if nogon else "off",       # 0.30.0: no "hister" twin
                                      "livesync": {"status": livesync_status(), "problems": livesync_problems(),
                                                   "phone_conflicts": store.phone_conflicts},
                                      "auth": AUTH, "legacy_names": store.legacy})
@@ -1396,8 +1409,8 @@ def auth_banner():
                          "localhost or a trusted LAN; it answers to IP addresses and %s"
                          % ", ".join(sorted(ALLOWED_HOSTS)))
         return lines
-    if HISTERAUTH is not None:
-        h = HISTERAUTH
+    if NOGONAUTH is not None:
+        h = NOGONAUTH
         lines.append("startup: KANBAN_AUTH=nogon on %s: Nogon users %s sign in through %s; when sign-in is unavailable: %s"
                      % (where, ", ".join(sorted(h.users)), h.signin,
                         "the tailnet login in KANBAN_TAILNET_USERS (%d)" % len(h.fallback_users) if h.fallback == "tailscale"

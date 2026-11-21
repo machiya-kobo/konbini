@@ -85,7 +85,7 @@ You should see ten cards across the columns. Ctrl-C stops it; `rm -rf demo-vault
 
 - **Script it:** [`pm`, the command line](docs/pm.md), and [a quick check](docs/install.md#check-it-and-drive-it-with-pm).
 - **Use your own vault:** point `KANBAN_REPO` at a clone of it ([what Konbini reads and writes](docs/vault-layout.md)).
-- **Let more people in:** Tailscale, sign-in or Hister accounts ([access](docs/access.md)).
+- **Let more people in:** Tailscale, sign-in or Nogon accounts ([access](docs/access.md)).
 - **Run it in a container or on the BSDs:** [install guide](docs/install.md).
 - **Run the whole stack:** [Machiya's Quickstart](https://github.com/machiya-kobo/machiya#quickstart).
 
@@ -94,7 +94,7 @@ You should see ten cards across the columns. Ctrl-C stops it; `rm -rf demo-vault
 Copyright (C) 2026 Micheal Waltz and Machiya contributors.
 
 Konbini is free software under the GNU Affero General Public License, version 3 or (at your option) any later version:
-see [LICENSE](LICENSE). What it ships from other projects (SortableJS, Mermaid, the Hister CLI in the image) is listed
+see [LICENSE](LICENSE). What it ships from other projects (SortableJS, Mermaid, the Nogon CLI in the image) is listed
 with their licenses in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). `app/urlnorm.py`, the URL normalization rule shared
 with Niwa, is Konbini's own code under the same license. Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md);
 report a vulnerability privately: [SECURITY.md](SECURITY.md). [Changelog](app/CHANGELOG.md).

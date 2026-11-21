@@ -1,16 +1,16 @@
-"""Hister (optional): a private search engine and page archive, reached at KANBAN_HISTER_URL
-(for example http://hister.example:4433). Unset = these features are off.
+"""Nogon (formerly Hister; optional): a private search engine and page archive, reached at KANBAN_NOGON_URL
+(for example http://nogon.example:4433). Unset = these features are off.
 
-Konbini uses it two ways: link rot shows a private copy of external links (links.HisterBackend), and card
-pages and writing kits list "pages I've read". (The vault push into Hister is Kura's.)
+Konbini uses it two ways: link rot shows a private copy of external links (links.NogonBackend), and card
+pages and writing kits list "pages I've read". (The vault push into Nogon is Kura's.)
 
-Every call sends `Origin: hister://` (without it Hister answers 500/403).
-With KANBAN_HISTER_TOKEN_FILE (the owner's Hister token, a file holding one line) every call also sends it as
-`X-Access-Token`, and the hister CLI gets it as HISTER__APP__ACCESS_TOKEN in its own environment (never on its
+Every call sends `Origin: nogon://` (without it Nogon answers 500/403; v0.22 and later accept it).
+With KANBAN_NOGON_TOKEN_FILE (the owner's Nogon token, a file holding one line) every call also sends it as
+`X-Access-Token`, and the `nogon` CLI gets it as NOGON__APP__ACCESS_TOKEN in its own environment (never on its
 command line). The file is read at each call, so a rotated token needs no restart; the value is never logged, shown
-on a page or returned by the API. Unset: no token is sent, and the network path to Hister (private) is the gate.
-API calls go to KANBAN_HISTER_URL (http://hister.example:4433); links shown in the browser use
-KANBAN_HISTER_PUBLIC (Hister's own address, as your browser reaches it).
+on a page or returned by the API. Unset: no token is sent, and the network path to Nogon (private) is the gate.
+API calls go to KANBAN_NOGON_URL (http://nogon.example:4433); links shown in the browser use
+KANBAN_NOGON_PUBLIC (Nogon's own address, as your browser reaches it).
 
 Privacy: everything from here is single-user. Search results, copies and
 private_url stay on the board's authenticated pages."""
@@ -29,8 +29,8 @@ from vaultkit import websafe
 
 CACHE_SECONDS = 600
 # The code-import service (docs/contracts/hister.md) stores the owner's repositories, READMEs, issues and releases in
-# Hister as documents with metadata.source "code". Only Shiori's Code area shows them: every query from here leaves them out,
-# and a result that is one anyway (an old Hister, a query that wasn't understood) is dropped, so they are never "pages I've
+# Nogon as documents with metadata.source "code". Only Shiori's Code area shows them: every query from here leaves them out,
+# and a result that is one anyway (an old Nogon, a query that wasn't understood) is dropped, so they are never "pages I've
 # read" or a saved copy.
 NOT_CODE = " -metadata.source:code"
 STOP = {"a", "an", "and", "the", "of", "for", "to", "in", "on", "with", "from", "into", "my", "our", "via",
@@ -54,8 +54,8 @@ def domain_of(url):
     return host[4:] if host.startswith("www.") else host
 
 
-class Hister:
-    def __init__(self, api, public, cli="hister", token_file=""):
+class Nogon:
+    def __init__(self, api, public, cli="nogon", token_file=""):
         self.api = api.rstrip("/")
         self.public = (public or api).rstrip("/")
         self.cli = cli
@@ -69,7 +69,7 @@ class Hister:
     # -- transport ---------------------------------------------------------------
 
     def token(self):
-        """The owner's Hister token from KANBAN_HISTER_TOKEN_FILE (read each time, so a rotation is picked up); "" when
+        """The owner's Nogon token from KANBAN_NOGON_TOKEN_FILE (read each time, so a rotation is picked up); "" when
         no file is set, or it is missing or empty (then nothing is sent, and the error names the file, not a value)."""
         if not self.token_file:
             return ""
@@ -80,17 +80,17 @@ class Hister:
         except (OSError, UnicodeDecodeError):
             value = ""
         if not value:
-            self.token_problem = self.error = "hister token file %s is missing or empty" % self.token_file
+            self.token_problem = self.error = "nogon token file %s is missing or empty" % self.token_file
         return value
 
     def scrub(self, text, token):
-        """`text` (an error from Hister or the CLI) without the token, in case something echoed it."""
+        """`text` (an error from Nogon or the CLI) without the token, in case something echoed it."""
         return text.replace(token, "***") if token else text
 
     def call(self, method, path, body=None, timeout=10):
-        """(status, parsed JSON or text); status 0 when Hister can't be reached."""
+        """(status, parsed JSON or text); status 0 when Nogon can't be reached."""
         data = json.dumps(body).encode() if body is not None else None
-        headers = {"Origin": "hister://", "Accept": "application/json", "Content-Type": "application/json"}
+        headers = {"Origin": "nogon://", "Accept": "application/json", "Content-Type": "application/json"}
         token = self.token()
         if token:
             headers["X-Access-Token"] = token
@@ -101,7 +101,7 @@ class Hister:
         except urllib.error.HTTPError as e:
             raw, status = e.read(), e.code
         except (urllib.error.URLError, OSError, ValueError) as e:
-            self.error = "hister unreachable: %s" % self.scrub(str(e), token)
+            self.error = "nogon unreachable: %s" % self.scrub(str(e), token)
             return 0, None
         self.last_ok = datetime.datetime.now().isoformat(timespec="seconds")
         if status < 500:
@@ -114,7 +114,7 @@ class Hister:
     # -- search ------------------------------------------------------------------
 
     def search(self, q, timeout=4):
-        """Documents matching a Hister query (first page, up to 100), cached briefly."""
+        """Documents matching a Nogon query (first page, up to 100), cached briefly."""
         now = time.time()
         with self.lock:
             hit = self.cache.get(q)
@@ -133,7 +133,7 @@ class Hister:
         return docs, total
 
     def find(self, url):
-        """The document Hister holds for a URL (or its normalised form), or None."""
+        """The document Nogon holds for a URL (or its normalised form), or None."""
         from urlnorm import norm
         for u in dict.fromkeys((url, norm(url))):
             status, data = self.call("GET", "/search?q=" + urllib.parse.quote('url:"%s"' % u.replace('"', "%22") + NOT_CODE))
@@ -152,7 +152,7 @@ class Hister:
     # -- writes ------------------------------------------------------------------
 
     def add(self, doc):
-        """POST a whole document. True when Hister stored it."""
+        """POST a whole document. True when Nogon stored it."""
         status, data = self.call("POST", "/api/add", doc, timeout=30)
         if status not in (200, 201):
             self.error = "add %s: HTTP %s %s" % (doc.get("url", "")[:80], status, str(data or "")[:80])
@@ -164,7 +164,7 @@ class Hister:
         return (data or {}).get("deleted", 0) if status == 200 and isinstance(data, dict) else 0
 
     def index(self, url, label="konbini"):
-        """Fetch and store a page with the hister CLI (/api/add alone doesn't fetch).
+        """Fetch and store a page with the nogon CLI (/api/add alone doesn't fetch).
         Callers check find() first: --force on an existing document would
         replace its metadata (the imported tags and archive link)."""
         env = dict(os.environ)
@@ -172,29 +172,28 @@ class Hister:
             env.pop(name, None)                          # no token file, no token: nothing inherited either
         token = self.token()
         if token:
-            # the CLI's own setting, in its environment only (not argv). Nogon v0.22 reads NOGON__ first, and a set
-            # NOGON__ wins even when empty, so both are set; a v0.20 CLI reads only HISTER__ (0.28.0).
+            # the CLI's own setting, in its environment only (not argv). Nogon v0.22 reads NOGON__ first (and still
+            # HISTER__); 0.30.0 sends only the new name. An inherited HISTER__ is dropped above, so it can't be read.
             env["NOGON__APP__ACCESS_TOKEN"] = token
-            env["HISTER__APP__ACCESS_TOKEN"] = token
         try:
             r = subprocess.run([self.cli, "-u", self.api, "index", "--label", label, url],
                                capture_output=True, text=True, timeout=120, env=env)
         except (subprocess.SubprocessError, OSError) as e:
-            self.error = "hister index failed: %s" % self.scrub(str(e), token)
+            self.error = "nogon index failed: %s" % self.scrub(str(e), token)
             return False
         if r.returncode != 0:
-            self.error = "hister index %s: %s" % (url[:80], self.scrub((r.stderr or r.stdout).strip()[:120], token))
+            self.error = "nogon index %s: %s" % (url[:80], self.scrub((r.stderr or r.stdout).strip()[:120], token))
             return False
         return True
 
     # -- pages I've read -----------------------------------------------------------
 
     def reading(self, title, topics=(), limit=8, exclude=()):
-        """Pages from Hister about a card. Title words must all be in a page's
+        """Pages from Nogon about a card. Title words must all be in a page's
         title (precise); then each topic, as a phrase if it has several words
         or as a title word if it has one (at most 2 pages per topic). Vault
         notes, tailnet pages and the card's own links are left out. Returns
-        (pages, query): each page has the original URL (public), Hister's copy
+        (pages, query): each page has the original URL (public), Nogon's copy
         (private) and why it matched."""
         words = [w.lower() for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9.+-]*", title) if w.lower() not in STOP and len(w) > 2]
         queries = []
@@ -228,7 +227,7 @@ class Hister:
         return out[:limit], (" ".join(words) or " ".join(topics or ()))
 
     def saved_between(self, start, end):
-        """Pages added to Hister in [start, end): count plus the biggest groups
+        """Pages added to Nogon in [start, end): count plus the biggest groups
         (an imported folder label, else domain). Vault notes and Konbini's own
         link-rot saves (label konbini) don't count."""
         q = "added:>=%s added:<%s -label:vault -label:konbini" % (start.isoformat(), end.isoformat())

@@ -1,6 +1,6 @@
 """KANBAN_TRUSTED_PROXIES: an identity header (Tailscale-User-Login and the others, KANBAN_AUTH_HEADER) counts only on a
 connection from one of the listed peers; from anyone else it is dropped before the gate reads it, so the request is
-anonymous. A mode that believes the header (tailscale, header, or hister with its tailscale fallback) on a bind that
+anonymous. A mode that believes the header (tailscale, header, or nogon with its tailscale fallback) on a bind that
 isn't loopback refuses to start without the setting."""
 import os, socket, subprocess, sys, tempfile, textwrap, time, urllib.error, urllib.request
 
@@ -30,8 +30,8 @@ assert not app.peer_trusted("", nets) and not app.peer_trusted("not an address",
 
 # -- start-up: the header-trusting modes on a public bind -----------------------------------------------------------
 START = "import sys; sys.path.insert(0, sys.argv[1]); import app; print('started')"
-HISTER = dict(KANBAN_AUTH="hister", KANBAN_AUTH_SIGNIN_URL="https://login.example.ts.net/signin",
-              KANBAN_AUTH_URL="http://hister-login:8081", KANBAN_HISTER_USERS="owner",
+NOGON = dict(KANBAN_AUTH="nogon", KANBAN_AUTH_SIGNIN_URL="https://login.example.ts.net/signin",
+              KANBAN_AUTH_URL="http://nogon-login:8081", KANBAN_NOGON_USERS="owner",
               KANBAN_BOARD_URL="https://konbini.example.ts.net", KANBAN_TAILNET_USERS="owner@example.com")
 
 
@@ -51,9 +51,9 @@ assert refused(boot(KANBAN_BIND="0.0.0.0")), "tailscale mode (the default) on a 
 assert boot(KANBAN_BIND="0.0.0.0", KANBAN_TRUSTED_PROXIES="10.210.4.2/32").returncode == 0
 assert boot(KANBAN_BIND="127.0.0.1").returncode == 0 and boot(KANBAN_BIND="::1").returncode == 0     # behind `tailscale serve`
 assert boot(KANBAN_BIND="0.0.0.0", KANBAN_AUTH="open").returncode == 0                # open reads no header
-assert refused(boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", **HISTER)), "hister with its tailscale fallback"
-assert boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", KANBAN_TRUSTED_PROXIES="10.210.4.2/32", **HISTER).returncode == 0
-assert boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", KANBAN_AUTH_FALLBACK="none", **HISTER).returncode == 0   # no header read
+assert refused(boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", **NOGON)), "nogon with its tailscale fallback"
+assert boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", KANBAN_TRUSTED_PROXIES="10.210.4.2/32", **NOGON).returncode == 0
+assert boot(KANBAN_BIND="0.0.0.0", KANBAN_BIND_BEHIND_PROXY="1", KANBAN_AUTH_FALLBACK="none", **NOGON).returncode == 0   # no header read
 r = boot(KANBAN_BIND="127.0.0.1", KANBAN_TRUSTED_PROXIES="not-an-address")
 assert r.returncode != 0 and "not an address or network" in r.stderr, r.stderr[-300:]
 

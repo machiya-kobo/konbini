@@ -1,7 +1,7 @@
-# The hister CLI fetches and stores pages for link rot (Nogon's /api/add alone
+# The nogon CLI fetches and stores pages for link rot (Nogon's /api/add alone
 # doesn't fetch). Keep this pinned to the Nogon server's version. Nogon (Hister until v0.21) is AGPL-3.0
 # (https://github.com/asciimoo/nogon, tag below); Konbini runs it as a separate program.
-# v0.22's /hister/hister is only a link to /usr/local/bin/nogon, so the binary itself is copied, still named hister.
+# Since 0.30.0 the CLI is installed as `nogon` and takes the owner's token as NOGON__APP__ACCESS_TOKEN (v0.22 and later).
 ARG NOGON_VERSION=v0.22.0
 FROM ghcr.io/asciimoo/nogon:${NOGON_VERSION}@sha256:d1b427c7f876e64e6212e000df60d33c2e418b60372582b56cfee719eafd4107 AS nogon
 
@@ -15,7 +15,7 @@ RUN apt-get update \
 # ssh refuses to run for a uid without a passwd entry (git pull/push).
 RUN useradd --uid 1000 --home-dir /data --no-create-home --shell /usr/sbin/nologin kanban
 
-COPY --from=nogon /usr/local/bin/nogon /usr/local/bin/hister
+COPY --from=nogon /usr/local/bin/nogon /usr/local/bin/nogon
 
 WORKDIR /app
 COPY . /app

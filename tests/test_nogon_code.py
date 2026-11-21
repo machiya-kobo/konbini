@@ -1,12 +1,12 @@
-"""The code-import service stores repositories, READMEs, issues and releases in Hister with metadata.source "code"; only
-Shiori's Code area shows them. Every query Konbini sends to Hister leaves them out (" -metadata.source:code"), and a code
-document that comes back anyway (a fake Hister that ignores the exclusion) is never a page "I've read", a saved copy, a count
-or something to delete. A fake Hister records the queries."""
+"""The code-import service stores repositories, READMEs, issues and releases in Nogon with metadata.source "code"; only
+Shiori's Code area shows them. Every query Konbini sends to Nogon leaves them out (" -metadata.source:code"), and a code
+document that comes back anyway (a fake Nogon that ignores the exclusion) is never a page "I've read", a saved copy, a count
+or something to delete. A fake Nogon records the queries."""
 import datetime, http.server, json, os, sys, threading, urllib.parse
 
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
 sys.path.insert(0, APP)
-import hister  # noqa: E402
+import nogon  # noqa: E402
 
 PAGE = {"url": "https://example.org/konbini-board", "title": "Konbini board notes", "label": "reading", "added": 1790000000,
         "metadata": {"source": "feed"}}
@@ -44,7 +44,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
 
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Fake)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-h = hister.Hister("http://127.0.0.1:%d" % srv.server_address[1], "https://hister.example")
+h = nogon.Nogon("http://127.0.0.1:%d" % srv.server_address[1], "https://nogon.example")
 NO = " -metadata.source:code"
 
 # pages I've read: the code document is dropped even though the fake returned it, and the query excludes it
@@ -56,7 +56,7 @@ assert any("-label:vault" in q for q in queries)                                
 del queries[:]
 assert h.find(CODE["url"]) is None and h.find(PAGE["url"])["title"] == PAGE["title"]
 assert queries and all(q.endswith(NO) for q in queries), queries
-# saved pages in a window: the count doesn't include the code document, and the link into Hister carries the exclusion
+# saved pages in a window: the count doesn't include the code document, and the link into Nogon carries the exclusion
 del queries[:]
 saved = h.saved_between(datetime.date(2026, 9, 1), datetime.date(2026, 10, 1))
 assert saved["total"] == 1 and [k for k, _ in saved["top"]] == ["reading"], saved
@@ -64,4 +64,4 @@ assert queries[0].endswith(NO) and urllib.parse.quote(NO.strip()) in saved["sear
 # deleting a page by URL can't reach a code document
 h.delete(PAGE["url"])
 assert deletes and all(d.endswith(NO) for d in deletes), deletes
-print("hister code tests: all passed")
+print("nogon code tests: all passed")

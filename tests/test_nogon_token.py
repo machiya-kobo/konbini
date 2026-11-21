@@ -1,12 +1,12 @@
-"""KANBAN_HISTER_TOKEN_FILE: the owner's Hister token goes to Hister as X-Access-Token on every call, and to the hister
-CLI as HISTER__APP__ACCESS_TOKEN in its environment (never its arguments); unset, nothing is sent (and a token the
+"""KANBAN_NOGON_TOKEN_FILE: the owner's Nogon token goes to Nogon as X-Access-Token on every call, and to the nogon
+CLI as NOGON__APP__ACCESS_TOKEN in its environment (never its arguments); unset, nothing is sent (and a token the
 process inherited is not passed on); a rotated file is read at the next call; a missing file sends nothing and the error
-names the file; nothing puts the value in an error, the status or the board's logs. A fake Hister records the requests."""
+names the file; nothing puts the value in an error, the status or the board's logs. A fake Nogon records the requests."""
 import http.server, json, os, socket, stat, subprocess, sys, tempfile, textwrap, threading, time, urllib.request
 
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
 sys.path.insert(0, APP)
-import hister  # noqa: E402
+import nogon  # noqa: E402
 
 TOKEN = "tok-3f9a1c0d-never-log-me"
 seen = []
@@ -66,23 +66,23 @@ def tokens_since(n):
     return [t for _, _, t, _ in seen[n:]]
 
 
-# every request carries the token (and the Origin Hister needs), whatever the call
-h = hister.Hister(API, "", token_file=tokfile)
+# every request carries the token (and the Origin Nogon needs: nogon://, v0.22 and later), whatever the call
+h = nogon.Nogon(API, "", token_file=tokfile)
 n = len(seen)
 h.call("GET", "/search?q=x")
 h.search("konbini")
 h.call("POST", "/api/add", {"url": "https://example.com/"})
 h.delete("https://example.com/")
 assert len(seen) - n >= 4 and set(tokens_since(n)) == {TOKEN}, seen[n:]
-assert all(o == "hister://" for _, _, _, o in seen[n:])
+assert all(o == "nogon://" for _, _, _, o in seen[n:])
 
-# a redirect is not followed: the token goes to Hister and nowhere else
+# a redirect is not followed: the token goes to Nogon and nowhere else
 status, _ = h.call("GET", "/redir")
 assert status == 302 and stolen == [], (status, stolen)
 
 # unset: nothing is sent
 n = len(seen)
-hister.Hister(API, "").call("GET", "/search?q=x")
+nogon.Nogon(API, "").call("GET", "/search?q=x")
 assert tokens_since(n) == [None], seen[n:]
 
 # the file is read at each call: a rotation is picked up without a restart
@@ -96,28 +96,28 @@ open(tokfile, "w").write(TOKEN + "\n")
 for path in (os.path.join(tmp, "missing"), os.path.join(tmp, "empty")):
     open(os.path.join(tmp, "empty"), "w").write("\n")
     n = len(seen)
-    g = hister.Hister(API, "", token_file=path)
+    g = nogon.Nogon(API, "", token_file=path)
     g.call("GET", "/search?q=z")
     assert tokens_since(n) == [None] and path in g.error and TOKEN not in g.error, g.error
 
 # the CLI: the token is in its environment only; unset, an inherited one is dropped
-cli = os.path.join(tmp, "hister")
+cli = os.path.join(tmp, "nogon")
 out = os.path.join(tmp, "cli.json")
-open(cli, "w").write("#!/bin/sh\nprintf '%%s\\n%%s\\n' \"$*\" \"$HISTER__APP__ACCESS_TOKEN\" > '%s'\nexit 0\n" % out)
+open(cli, "w").write("#!/bin/sh\nprintf '%%s\\n%%s\\n' \"$*\" \"$NOGON__APP__ACCESS_TOKEN\" > '%s'\nexit 0\n" % out)
 os.chmod(cli, os.stat(cli).st_mode | stat.S_IXUSR)
-assert hister.Hister(API, "", cli=cli, token_file=tokfile).index("https://example.com/x")
+assert nogon.Nogon(API, "", cli=cli, token_file=tokfile).index("https://example.com/x")
 argv, env_token = open(out).read().split("\n")[:2]
 assert env_token == TOKEN and TOKEN not in argv and "example.com/x" in argv, (argv, env_token)
-os.environ["HISTER__APP__ACCESS_TOKEN"] = "inherited-token"
-assert hister.Hister(API, "", cli=cli).index("https://example.com/y")
+os.environ["NOGON__APP__ACCESS_TOKEN"] = "inherited-token"
+assert nogon.Nogon(API, "", cli=cli).index("https://example.com/y")
 assert open(out).read().split("\n")[1] == "", "an inherited token must not reach the CLI when no token file is set"
-del os.environ["HISTER__APP__ACCESS_TOKEN"]
+del os.environ["NOGON__APP__ACCESS_TOKEN"]
 # a failing CLI that echoes the token: the error doesn't
-open(cli, "w").write("#!/bin/sh\necho \"denied for $HISTER__APP__ACCESS_TOKEN\" >&2\nexit 1\n")
-bad = hister.Hister(API, "", cli=cli, token_file=tokfile)
+open(cli, "w").write("#!/bin/sh\necho \"denied for $NOGON__APP__ACCESS_TOKEN\" >&2\nexit 1\n")
+bad = nogon.Nogon(API, "", cli=cli, token_file=tokfile)
 assert not bad.index("https://example.com/z") and TOKEN not in bad.error and "***" in bad.error, bad.error
 
-# a running board: the header reaches Hister, and the value is in no log, page or status
+# a running board: the header reaches Nogon, and the value is in no log, page or status
 SERVER = textwrap.dedent('''
     import sys
     sys.path.insert(0, sys.argv[1])
@@ -132,7 +132,7 @@ open(d + "/Projects/Kura.md", "w").write("---\ntitle: Kura\ncreated: 2026-09-01\
 subprocess.run(["git", "-C", d, "init", "-q"], check=True)
 s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
 env = dict(os.environ, KANBAN_REPO=d, KANBAN_DB=d + "/db/k.db", KANBAN_AUTH="open", KANBAN_TAILNET_PORT=str(port),
-           KANBAN_BIND="127.0.0.1", PYTHONDONTWRITEBYTECODE="1", KANBAN_HISTER_URL=API, KANBAN_HISTER_TOKEN_FILE=tokfile)
+           KANBAN_BIND="127.0.0.1", PYTHONDONTWRITEBYTECODE="1", KANBAN_NOGON_URL=API, KANBAN_NOGON_TOKEN_FILE=tokfile)
 open(d + "/server.py", "w").write(SERVER)
 proc = subprocess.Popen([sys.executable, d + "/server.py", APP, str(port)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 try:
@@ -145,7 +145,7 @@ try:
     n = len(seen)
     pages = [urllib.request.urlopen("http://127.0.0.1:%d%s" % (port, path), timeout=20).read().decode()
              for path in ("/p/kura", "/api/status", "/api/health", "/settings")]
-    assert len(seen) > n and set(tokens_since(n)) == {TOKEN}, seen[n:]      # the board's own Hister calls carry it
+    assert len(seen) > n and set(tokens_since(n)) == {TOKEN}, seen[n:]      # the board's own Nogon calls carry it
     assert all(TOKEN not in page for page in pages), "the token appeared on a page or in the API"
 finally:
     proc.terminate()
@@ -155,4 +155,4 @@ finally:
         proc.kill()
         out_b, err_b = proc.communicate()
 assert TOKEN.encode() not in out_b + err_b, "the token appeared in the board's logs"
-print("hister token tests: all passed")
+print("nogon token tests: all passed")

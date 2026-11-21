@@ -56,7 +56,7 @@ OpenBSD has `doas` but no `/etc/doas.conf`; a fresh FreeBSD or NetBSD has no `su
 `pkg_add sudo`).
 
 OpenBSD's Python uses LibreSSL, which lacks `hashlib.scrypt`. Konbini runs there, but refuses Machiya's identity-file
-passwords (`KANBAN_SIGNIN`, pairing codes) with a message saying why. Tokens, Tailscale, header, `open` and `hister` modes work.
+passwords (`KANBAN_SIGNIN`, pairing codes) with a message saying why. Tokens, Tailscale, header, `open` and `nogon` modes work.
 
 *OpenBSD:*
 
@@ -150,7 +150,7 @@ A native run stops with Ctrl-C.
 ## As part of the Machiya stack
 
 [Machiya](https://github.com/machiya-kobo/machiya) runs Konbini, [Kura](https://github.com/machiya-kobo/kura) (the notes app) and [Niwa](https://github.com/machiya-kobo/niwa) (the garden) around one
-vault, with Hister and SearXNG as optional search engines. Compared with the Quickstart:
+vault, with Nogon and SearXNG as optional search engines. Compared with the Quickstart:
 
 - **Start from Machiya's compose:** `compose/compose.yml`, profile `konbini` (plus `compose/mirror.yml` for a shared
   vault copy). For the sample vault, `compose/demo-init` writes a `.env` and clones a bare copy. For your own, copy

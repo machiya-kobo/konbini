@@ -3,6 +3,18 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.32.0
+
+Stage 3 of the Now page: who is working right now, live from the workshop bus (the owner, 2026-11-21).
+
+- **Agents Now** at the top of the Now page: each agent that is working or waiting on you, its state, its card (or "no card" when it names none, or one this board doesn't have), its note and for how long. Waiting on you comes first.
+- **`GET /api/now` fills `live`**: `{agent, state, since, note, card, card_known}` per live agent. A working card's `live` lists the agents on it, and a live agent makes its card working like a claim ("Working now (agent)").
+- **A live card wears the claim badge** ("agent now") on the board, the Now page, the review, search, streams and the card page. `/api/cards` keeps the stored claims.
+- **Settings:** `KANBAN_BUS_URL` turns it on (unset: no strip, `live: []`, nothing else changes). `KANBAN_BUS_IDENTITY` (default `konbini`) and `KANBAN_BUS_NKEY_FILE` name the read-only identity and its seed; `KANBAN_BUS_AGENTS_FILE` (default `/repos/workshop/agents.yaml`) names the agents to ask for: agents.yaml's agent and lead identities.
+- **Read-only and never in the way:** every 5 seconds, in a background thread with short timeouts, one DIRECT.GET (`last_by_subj`) on `KV_presence` per agent, replies on `_INBOX.<identity>`. Konbini publishes nothing and needs no consumer. Pages and the API read the last good snapshot; after 20 seconds without one, the strip says it can't reach the bus.
+- **No session links:** a presence value's `session_url` is dropped as it is read, never kept, logged, shown or returned.
+- The image adds nats-py 2.17.0 and nkeys 0.2.1 (with PyNaCl, cffi and pycparser; about 7 MB).
+
 ## 0.31.0
 
 Stage 2 of the Now page: set a card's repos (the owner, 2026-11-21).

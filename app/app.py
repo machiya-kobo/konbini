@@ -939,6 +939,19 @@ def make_handler(listener):
                             return
                         raise
                     self.send(302, "", "text/plain", headers=[("Location", "/p/" + slug)])
+                elif self.command == "POST" and re.match(r"^/p/[^/]+/repos$", path):
+                    # The card page's repo chips: add names, remove one, or keep the list as shown (Confirm, for the
+                    # mapping a legacy repo: line gave). Applied to the card as it is now, like the tag chips, so a page
+                    # left open doesn't undo a change made meanwhile.
+                    slug = path.split("/")[2]
+                    card = store.card(slug)
+                    if not card:
+                        raise WriteError(404, "not found")
+                    remove = str(data.get("remove") or "").strip().lower()
+                    repos = [r for r in card.get("repos") or [] if r.lower() != remove]
+                    add = [r for r in str(data.get("add") or "").replace(" ", ",").split(",") if r.strip()]
+                    writer.update(slug, {"repos": repos + add}, actor, agent, areas=areas)
+                    self.send(302, "", "text/plain", headers=[("Location", "/p/" + slug)])
                 elif self.command == "POST" and path.startswith("/p/"):
                     slug = path[3:]
                     card = store.card(slug)

@@ -465,6 +465,10 @@ ul.readlist .hint { color: var(--muted); }
 .tagadd input[type=text] { width: 150px; }
 .tagadd label.check { font-size: 12px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
 .tagmsg { color: var(--orange); font-size: 13px; margin: 6px 0 0; }
+.tagsec.repos { margin-top: 12px; }
+.chip.repo { --chip: var(--cyan); }
+.repoconfirm { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.repohelp { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .notesec .nbody { max-width: 860px; font-size: 14.5px; }
 .notesec .nbody h1 { display: none; }
 .notesec .nbody h2 { font-size: 17px; margin: 22px 0 6px; color: var(--magenta); }

@@ -8,7 +8,7 @@ import os
 import re
 from urllib.parse import quote
 
-from store import COLUMN_TITLES, WIKILINK_RE, slugify, sort_key
+from store import COLUMN_TITLES, WIKILINK_RE, repo_name, slugify, sort_key
 import goals as goalsmod
 import markdown
 from vaultkit import sanitize, shell
@@ -949,7 +949,7 @@ def detail(ctx, card, cards, events=(), claim=None, tagmsg="", pending="", readi
            edit_form(ctx, card, description, areas)
            + '<datalist id="goals">%s</datalist>' % "".join(
                '<option value="%s">' % e(v) for v in sorted({c["goal"] for c in cards if c.get("goal")}, key=str.lower)),
-           tags_form(card, tagmsg, pending), reading,
+           tags_form(card, tagmsg, pending) + repos_form(card), reading,
            history(ctx, events), quote(card["slug"])))
     return page(ctx, card["title"], board_header(ctx, counts_of(cards), card["title"], "") + body,
                 KANBAN_TABS, "board")
@@ -1023,6 +1023,25 @@ def tags_form(card, tagmsg="", pending=""):
             '<button type="submit" class="quiet">Add</button></form></div>%s</section>'
             % (chips, quote(card["slug"]), e(pending), " checked" if pending else "",
                ('<p class="tagmsg">%s</p>' % e(tagmsg)) if tagmsg else ""))
+
+
+def repos_form(card):
+    """The card's repos (the frontmatter's `repos:`, else its legacy `repo:`): chips to remove one, a box to add more, and
+    Confirm when the list is the one `repo:` gave (it saves it as `repos:` and drops `repo:`). Posts to /p/<slug>/repos."""
+    slug, repos = quote(card["slug"]), card.get("repos") or []
+    chips = "".join(
+        '<form class="tagchip" method="post" action="/p/%s/repos"><input type="hidden" name="remove" value="%s">'
+        '<span class="chip repo">%s</span><button type="submit" class="x" aria-label="remove %s">&times;</button></form>'
+        % (slug, e(r), e(r), e(r)) for r in repos)
+    guessed = ('<form class="repoconfirm" method="post" action="/p/%s/repos"><span>From <code>repo:</code>.</span>'
+               '<button type="submit" class="quiet">Confirm</button></form>' % slug) \
+        if card.get("repo") and repos == [repo_name(card["repo"])] else ""
+    return ('<section class="tagsec repos"><h3 class="sechead">Repos</h3><div class="tagrow">%s'
+            '<form class="tagadd" method="post" action="/p/%s/repos">'
+            '<input type="text" name="add" placeholder="name or URL" aria-label="Add a repo">'
+            '<button type="submit" class="quiet">Add</button></form></div>%s'
+            '<p class="repohelp">Commits in these repos show on Now.</p></section>'
+            % (chips, slug, guessed))
 
 
 def history(ctx, events):

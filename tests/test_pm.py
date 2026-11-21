@@ -64,6 +64,10 @@ r = pm("dep", "one", "+Three"); assert seen[-1][2] == {"dependsOn": ["Two", "Thr
 r = pm("stream", "one", "Release 1.0"); assert seen[-1][2] == {"stream": "Release 1.0"}, seen
 r = pm("goal", "one", "-"); assert seen[-1][2] == {"goal": ""}, seen
 r = pm("due", "one", "2026-12-01"); assert seen[-1][2] == {"due": "2026-12-01"}, seen
+r = pm("repos", "one", "techo,workshop"); assert r.returncode == 0 and seen[-1][:3] == ("PATCH", "/api/cards/one", {"repos": "techo,workshop"}), (r, seen)
+r = pm("repos", "one", "techo", "dotfiles"); assert seen[-1][2] == {"repos": "techo,dotfiles"}, seen
+r = pm("repos", "one", "-"); assert seen[-1][2] == {"repos": ""}, seen
+r = pm("repos", "one"); assert r.returncode == 0 and seen[-1][:2] == ("GET", "/api/cards/one"), (r, seen)
 r = pm("new", "A card", "--area", "tools", "--summary", "s"); assert seen[-1][:3] == ("POST", "/api/cards", {"title": "A card", "area": "tools", "board": "backlog", "summary": "s"}), seen
 r = pm("new", "B card", "--area", "tools", "--description", "Why.", "--stream", "Lanterns")
 assert seen[-1][2] == {"title": "B card", "area": "tools", "board": "backlog", "summary": "", "description": "Why.", "stream": "Lanterns"}, seen

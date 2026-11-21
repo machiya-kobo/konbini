@@ -27,7 +27,10 @@ vault works as it is.
   when the kit can't fetch them.
 - **Now.** The Now page lists the cards with something in the last 7 days: commits on the card's repos, board events
   and claims, change-log rows that link the card's note (`[[Projects/<Title>]]`), and its own dated rows. A card's
-  repos are its `repos:` list, else its `repo:`. A repo's commits come from its checkout under `KANBAN_REPOS`, else
+  repos are its `repos:` list, else its `repo:`. Set them on the card page (Repos: add, remove, or Confirm the one
+  `repo:` gave), with `pm repos`, or with `repos` in a PATCH. The board writes the `repos:` list and drops a `repo:`
+  line in the same edit. A name is 1-100 letters, digits, `.`, `_` or `-`; a URL counts as its last part, `.git`
+  dropped. A repo's commits come from its checkout under `KANBAN_REPOS`, else
   from its note `<name>.git.md` (anywhere in the vault): the note's `- YYYY-MM-DD: subject` bullets and
   `last_commit:`, matched by the note's name or the last segment of its `forgejo:` or `github:` URL. Change-log rows
   under `Systems/Change Logs/` that link no card are listed by host, except rows whose change text starts with the

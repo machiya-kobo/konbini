@@ -23,6 +23,7 @@ pm log <slug> "a note for the card's history"
 pm tag <slug> +topic/a -topic/b          # existing tags only
 pm dep <slug> +other-card -old-card      # dependsOn; with no changes it lists them
 pm stream <slug> "Release 1.0"           # also: pm goal, pm due; "-" clears
+pm repos <slug> techo,workshop           # the repos whose commits count for the card; "-" clears, none lists them
 pm claim <slug>                          # "an agent is working on this" badge, 15 minutes
 pm review                                # the weekly review (--json for the raw data)
 pm roundup week                          # what got done: day | week | month | year

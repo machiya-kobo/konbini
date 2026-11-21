@@ -37,6 +37,12 @@ with open(os.path.join(work, "vault", "personal", "Systems", "Change Logs", "wor
     f.write("---\ntitle: workbench\nhost: workbench\n---\n# workbench\n\n| Date | Category | Change | Details |\n|---|---|---|---|\n"
             "| {0} | config | Paste mixed | for [[Projects/Lantern]] |\n| {0} | config | Glue gun swapped | |\n"
             .format(datetime.datetime.now(datetime.timezone.utc).date().isoformat()))
+# a legacy repo: on Lantern: the card page's Repos chip and its Confirm line are measured too
+lantern = os.path.join(work, "vault", "personal", "Projects", "Lantern.md")
+with open(lantern) as f:
+    text = f.read()
+with open(lantern, "w") as f:
+    f.write(text.replace("\nproject: lantern\n", "\nproject: lantern\nrepo: https://example.com/user/lantern-patterns.git\n", 1))
 s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
 env = dict(os.environ, KANBAN_REPO=work + "/vault", KANBAN_REPO_SUBDIR="personal", KANBAN_DB=work + "/k.db",
            KANBAN_AUTH="open", KANBAN_BIND="127.0.0.1", KANBAN_TAILNET_PORT=str(port), TZ="UTC", PYTHONDONTWRITEBYTECODE="1")

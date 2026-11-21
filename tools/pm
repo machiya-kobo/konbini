@@ -13,6 +13,7 @@
   pm stream <slug> <name|->        set a card's workstream (stream:), or - to clear it
   pm goal <slug> <name|->          set the goal the card counts toward (goal:), or - to clear it
   pm due <slug> <YYYY-MM-DD|->     set the card's due date (due:), or - to clear it
+  pm repos <slug> [a,b|-]          set the repos whose commits count toward the card (repos:), - clears; none lists them
   pm review [--json]               the weekly review: WIP over the limit, blocked, stale, no next action, done, Backlog
   pm suggest <note> [reason]       suggest a note (card slug or vault path) for the garden
   pm move <slug> <column>          backlog | ready | wip | blocked | done | archived
@@ -189,6 +190,9 @@ def main():
     du = sub.add_parser("due", help="set a card's due date (due: YYYY-MM-DD); - clears it")
     du.add_argument("slug")
     du.add_argument("date")
+    rp = sub.add_parser("repos", help="set the repos whose commits count toward a card (repos: a,b); - clears; none lists")
+    rp.add_argument("slug")
+    rp.add_argument("names", nargs="*")
     rv = sub.add_parser("review", help="the weekly review (the board's /review page)")
     rv.add_argument("--json", action="store_true", help="print the raw JSON")
     ru = sub.add_parser("roundup")
@@ -296,6 +300,12 @@ def main():
     elif a.cmd == "stream":
         card = write("PATCH", "/api/cards/" + q(a.slug), {"stream": "" if a.name == "-" else a.name})
         print(card.get("stream") or "(no stream)")
+    elif a.cmd == "repos":
+        if not a.names:
+            card = get("/api/cards/" + q(a.slug))
+        else:
+            card = write("PATCH", "/api/cards/" + q(a.slug), {"repos": "" if a.names == ["-"] else ",".join(a.names)})
+        print("\n".join(card.get("repos") or []) or "(no repos)")
     elif a.cmd == "goal":
         card = write("PATCH", "/api/cards/" + q(a.slug), {"goal": "" if a.name == "-" else a.name})
         print(card.get("goal") or "(no goal)")

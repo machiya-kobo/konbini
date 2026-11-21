@@ -3,6 +3,15 @@
 Konbini follows [SemVer](https://semver.org). Before 1.0, a new feature, a changed default or setting, or a changed
 API field is a minor bump; a fix, wording or internal change is a patch.
 
+## 0.31.0
+
+Stage 2 of the Now page: set a card's repos (the owner, 2026-11-21).
+
+- **`PATCH /api/cards/<slug>` takes `repos`**: a list of names, or one string of names separated by commas. Each is 1-100 letters, digits, `.`, `_` or `-`; a URL counts as its last part with `.git` dropped. Names are deduplicated without regard to case, keeping the first spelling. A bad name refuses the write (422, the names in `repos`). The board writes the `repos:` block list as a frontmatter line edit and removes a legacy `repo:` line in the same write; `[]` or `""` removes both. Logged as an edit with `changes.repos: [old, new]`. Saving the list the note already has is no write; saving the list a `repo:` line gave moves it to `repos:`.
+- **The card page has Repos**: a chip per repo with a remove button, a box to add names or URLs, and Confirm when the list only comes from `repo:`. They post to `/p/<slug>/repos` (same-origin, like the tag chips) and apply to the card as it is now.
+- **`pm repos <slug> a,b`** sets them, `pm repos <slug> -` clears them, and `pm repos <slug>` lists them.
+- The merge after a pull treats `repos:` as a list the board writes, like `dependsOn`.
+
 ## 0.30.0
 
 Hister is now Nogon: the rename's stage 3 (the owner, 2026-11-19: rename everything Machiya calls Hister). Konbini reads only the new names now.

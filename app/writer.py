@@ -29,7 +29,7 @@ import yaml
 
 from vaultkit.notes import safe_path
 from store import (note_front, tags_of, COLUMNS, CONFLICT_RE, FRONT_RE, GIT_SCOPE, PRIORITY_NAMES, PRIORITY_WORDS,
-                   VAULT, parse_note, slugify)
+                   VAULT, parse_note, repo_name, slugify)
 
 EXPORT_IDLE = int(os.environ.get("KANBAN_EXPORT_IDLE", "120"))
 EXPORT_MAX = int(os.environ.get("KANBAN_EXPORT_MAX", "900"))
@@ -57,7 +57,37 @@ def new_topic_tags(fields):
     if bad:
         raise WriteError(422, "malformed topic name(s): lower-case letters, digits, . _ -, up to 40", tags=bad)
     return {"topic/" + n for n in names}
-LISTS = ("dependsOn",)          # list fields the board writes (a block list of quoted links)
+LISTS = ("dependsOn", "repos")  # list fields the board writes (block lists: quoted links, repo names)
+MAX_REPOS = 50
+
+
+def repo_list(value):
+    """`repos` from the API or the card page (a list, or one string of names separated by commas) -> the names to write:
+    each a repo name or URL as store.repo_name reads it (1-100 of [A-Za-z0-9._-], a URL's last segment, .git dropped),
+    deduplicated case-insensitively with the first spelling kept. 422 for anything else."""
+    if value is None:
+        value = []
+    if isinstance(value, str):
+        items = value.split(",")
+    elif isinstance(value, list) and all(isinstance(x, str) for x in value):
+        items = value
+    else:
+        raise WriteError(422, "repos must be a list of repo names, or names separated by commas")
+    out, seen, bad = [], set(), []
+    for item in items:
+        if not item.strip():
+            continue
+        name = repo_name(item)
+        if name in ("", ".", ".."):
+            bad.append(item.strip()[:120])
+        elif name.lower() not in seen:
+            seen.add(name.lower())
+            out.append(name)
+    if bad:
+        raise WriteError(422, "a repo name is 1-100 letters, digits, . _ or - (or a URL ending in one)", repos=bad[:20])
+    if len(out) > MAX_REPOS:
+        raise WriteError(422, "at most %d repos" % MAX_REPOS)
+    return out
 
 
 CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
@@ -172,6 +202,19 @@ def yaml_scalar(value):
     return json.dumps(text, ensure_ascii=False)  # JSON strings are valid YAML
 
 
+def list_item(value):
+    """One block-list entry: a plain name (a repo) as it is when YAML reads it back as that same text, else quoted
+    (dependsOn's links, and names YAML would read as a number, a date or a boolean)."""
+    text = str(value)
+    if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]*", text):
+        try:
+            if yaml.safe_load("- " + text) == [text]:
+                return text
+        except yaml.YAMLError:
+            pass
+    return json.dumps(text, ensure_ascii=False)
+
+
 def key_extent(lines, key):
     """(start, end) of a top-level key and its indented continuation lines."""
     for i, line in enumerate(lines):
@@ -191,7 +234,7 @@ def edit_front(text, scalars=None, tags=None):
     for key, value in (scalars or {}).items():
         ext = key_extent(lines, key)
         if isinstance(value, list):
-            new = ["%s:" % key] + ["  - %s" % json.dumps(str(v), ensure_ascii=False) for v in value] if value else []
+            new = ["%s:" % key] + ["  - %s" % list_item(v) for v in value] if value else []
         else:
             new = [] if value in (None, "") else ["%s: %s" % (key, yaml_scalar(value))]
         if ext:
@@ -439,6 +482,20 @@ class Writer:
                 if [self.dep_key(n) for n in new] != [self.dep_key(n) for n in old]:
                     changes["dependsOn"] = [old, new]
                     scalars["dependsOn"] = links
+            if "repos" in fields:
+                # The note's repos, written as the `repos:` block list (the frontmatter schema), replacing a legacy
+                # `repo:` in the same write; [] removes both. Written when the note would change, so confirming the
+                # mapping a `repo:` line gave is a write (it moves to `repos:`), and saving the same list again isn't.
+                repos = repo_list(fields["repos"])
+                fm = note_front(text) or {}
+                written = fm.get("repos")
+                same = (isinstance(written, list) and [str(x) for x in written] == repos) if repos \
+                    else written in (None, "", [])
+                if not same or fm.get("repo") not in (None, ""):
+                    changes["repos"] = [card.get("repos") or [], repos]
+                    scalars["repos"] = repos or None
+                    if "repo" in fm:
+                        scalars["repo"] = None
             if "post" in fields:
                 state = str(fields["post"] or "").strip().lower()
                 if state not in POST_STATES:

@@ -1,9 +1,11 @@
 """Agents working right now: the Agent Workshop bus's presence, read for the Now page (stage 3) and GET /api/now.
 
 Off unless KANBAN_BUS_URL is set (nats://host:4222). Konbini then reads the bus as a read-only observer identity
-(KANBAN_BUS_IDENTITY, default `konbini`, its NKey seed in KANBAN_BUS_NKEY_FILE): one DIRECT.GET on the KV_presence
-stream for the latest value of every `$KV.presence.<agent>` key, its replies on `_INBOX.<identity>.>`. It publishes
-nothing else and makes no stream or consumer.
+(KANBAN_BUS_IDENTITY, default `konbini`, its NKey seed in KANBAN_BUS_NKEY_FILE). The identity's one permission is
+DIRECT.GET on the KV_presence stream, with replies only on `_INBOX.<identity>.>` (so the client's inbox prefix must be
+that: inbox_prefix()). There is no consumer, so no KV watch or key listing: the agent names come from the workshop's
+agents.yaml (KANBAN_BUS_AGENTS_FILE, re-read when it changes), and each round asks for the last `$KV.presence.<agent>`
+of each (`last_by_subj`). A missing key is an agent with no presence. Konbini publishes nothing else.
 
 A background thread reads every POLL seconds with bounded timeouts and keeps the last good snapshot. Pages and the API
 only ever read that snapshot, so a bus that is slow, down or refusing never holds up a request: after STALE seconds
@@ -15,9 +17,8 @@ A presence value is untrusted JSON. Only these fields are read, each checked: `s
 `session_url`: the owner's rule keeps live session links in Techo only, so it is never stored, logged, rendered or
 returned here.
 
-KANBAN_BUS_AGENTS_FILE (optional) names the workshop's agents.yaml: then only its identities with a session (role
-`agent` or `lead`) are listed, re-read when the file changes. Without it, or while it can't be read, any valid name is
-(the bus already lets only `<agent>` write `$KV.presence.<agent>`).
+The names are agents.yaml's identities that run sessions (role `agent` or `lead`). While the file can't be read the
+last names read are kept; before any, the strip says it can't reach the bus.
 """
 import asyncio
 import datetime
@@ -35,12 +36,20 @@ CARD_FROM = ("focus", "default")
 NOTE_MAX = 80
 NOTE_DROP = re.compile(r"[^\w .,:;()'&+#-]")                  # no slash, quote or markup: never a path or a link
 PREFIX = "$KV.presence."
-STREAM = "KV_presence"
+API = "$JS.API.DIRECT.GET.KV_presence"                       # the identity's one permission
+INBOX = "_INBOX"                                             # replies come on <INBOX>.<identity>.> only
+DEFAULT_AGENTS_FILE = "/repos/workshop/agents.yaml"
 MAX_AGENTS = 256
 SESSION_ROLES = ("agent", "lead")                            # agents.yaml roles that run sessions
 POLL = 5            # seconds between reads
 STALE = 20          # a snapshot older than this is no longer shown
 TIMEOUT = 3         # seconds for the connection and for each reply
+
+
+def inbox_prefix(identity):
+    """The client's reply-inbox prefix: the bus lets an identity's replies through on `_INBOX.<identity>.>` only, so
+    with nats-py's default `_INBOX` every request would time out."""
+    return INBOX + "." + identity
 
 
 def note_line(text):
@@ -122,7 +131,7 @@ class Presence:
             raise ValueError("KANBAN_BUS_IDENTITY must be a workshop name (a-z, 0-9 and -), not %r" % self.identity)
         self.nkey_file = (nkey_file or "").strip()
         self.agents_file = (agents_file or "").strip()
-        self.agents = (None, None)  # (the file's mtime, its session names)
+        self.agents_mtime, self.agent_names, self.agents_bad = None, None, False
         self.fetch = fetch
         self.poll, self.stale, self.timeout = poll, stale, timeout
         self.lock = threading.Lock()
@@ -133,23 +142,27 @@ class Presence:
     @classmethod
     def from_env(cls, env=os.environ):
         return cls(env.get("KANBAN_BUS_URL", ""), env.get("KANBAN_BUS_IDENTITY", "") or "konbini",
-                   env.get("KANBAN_BUS_NKEY_FILE", ""), agents_file=env.get("KANBAN_BUS_AGENTS_FILE", ""))
+                   env.get("KANBAN_BUS_NKEY_FILE", ""),
+                   agents_file=env.get("KANBAN_BUS_AGENTS_FILE", "").strip() or DEFAULT_AGENTS_FILE)
 
-    def allowed(self):
-        """The agent names to list (KANBAN_BUS_AGENTS_FILE), or None for any: also while the file can't be read."""
+    def names(self):
+        """The agents to read (KANBAN_BUS_AGENTS_FILE's session identities), re-read when the file changes; the last
+        names read while it can't be read; None before any (or without a file)."""
         if not self.agents_file:
             return None
         try:
             mtime = os.stat(self.agents_file).st_mtime_ns
-            if mtime != self.agents[0]:
+            if mtime != self.agents_mtime:
                 with open(self.agents_file, encoding="utf-8") as f:
-                    self.agents = (mtime, session_names(f.read()))
-        except Exception as err:                     # noqa: BLE001 - a missing or bad file: no filter, said once
-            if self.agents != ("bad", None):
-                print("bus: can't read KANBAN_BUS_AGENTS_FILE (%s); listing every agent" % type(err).__name__,
-                      file=sys.stderr, flush=True)
-            self.agents = ("bad", None)
-        return self.agents[1]
+                    self.agent_names = session_names(f.read())
+                self.agents_mtime, self.agents_bad = mtime, False
+        except Exception as err:                     # noqa: BLE001 - a missing or bad file: said once
+            if not self.agents_bad:
+                print("bus: can't read KANBAN_BUS_AGENTS_FILE (%s)%s" % (
+                    type(err).__name__, "; keeping the names read before" if self.agent_names else ""),
+                    file=sys.stderr, flush=True)
+            self.agents_bad = True
+        return self.agent_names
 
     @property
     def enabled(self):
@@ -182,7 +195,7 @@ class Presence:
         self.store(rows)
 
     def store(self, rows):
-        items = entries(list(rows or []), self.allowed())
+        items = entries(list(rows or []), self.names())
         with self.lock:
             self.good = (time.monotonic(), items)
             back = bool(self.problem)
@@ -222,7 +235,7 @@ class Presence:
                 if nc is None or not nc.is_connected:
                     if nc is not None:
                         await self.close(nc)
-                    opts = dict(servers=[self.url], name="konbini-" + self.identity, inbox_prefix="_INBOX." + self.identity,
+                    opts = dict(servers=[self.url], name="konbini-" + self.identity, inbox_prefix=inbox_prefix(self.identity),
                                 connect_timeout=self.timeout, allow_reconnect=False, error_cb=quiet,
                                 disconnected_cb=quiet, closed_cb=quiet,
                                 # nats-py's first connect retries for ever unless this is above 0: two tries, then
@@ -232,7 +245,10 @@ class Presence:
                         opts["nkeys_seed"] = self.nkey_file
                     nc = None
                     nc = await asyncio.wait_for(nats.connect(**opts), self.timeout * 2)
-                rows = await asyncio.wait_for(self.direct_get(nc), self.timeout * 2)
+                names = self.names()
+                if names is None:
+                    raise LookupError("no agent names (KANBAN_BUS_AGENTS_FILE)")
+                rows = await asyncio.wait_for(self.direct_get(nc, names), self.timeout * 2)
                 self.store(rows)
             except Exception as err:                 # noqa: BLE001 - down, refused, timed out: try again next round
                 self.failed(err)
@@ -247,31 +263,21 @@ class Presence:
         except Exception:                            # noqa: BLE001
             pass
 
-    async def direct_get(self, nc):
-        """The latest value of every presence key: one batched DIRECT.GET (multi_last), read until the end marker."""
-        inbox = nc.new_inbox()
-        sub = await nc.subscribe(inbox)
-        rows = []
-        try:
-            req = {"multi_last": [PREFIX + ">"], "batch": MAX_AGENTS}
-            await nc.publish("$JS.API.DIRECT.GET." + STREAM, json.dumps(req).encode(), reply=inbox)
-            while len(rows) < MAX_AGENTS:
-                msg = await sub.next_msg(timeout=self.timeout)
-                h = dict(msg.headers or {})
-                status = h.get("Status")
-                if status in ("204", "404"):         # the end of the batch, or no keys at all
-                    break
-                if status:
-                    raise RuntimeError("direct get answered %s" % status)
-                rows.append((h.get("Nats-Subject", ""), msg.data, h))
-                if h.get("Nats-Num-Pending") == "0":
-                    break
-        finally:
-            try:
-                await sub.unsubscribe()
-            except Exception:                        # noqa: BLE001
-                pass
-        return rows
+    async def direct_get(self, nc, names):
+        """The last presence value of each agent: one DIRECT.GET (`last_by_subj`) per name, side by side. A 404 is an
+        agent with no presence; any other status or a timeout fails the round."""
+        async def one(agent):
+            msg = await nc.request(API, json.dumps({"last_by_subj": PREFIX + agent}).encode(), timeout=self.timeout)
+            h = dict(msg.headers or {})
+            status = h.get("Status")
+            if status == "404":
+                return None
+            if status:
+                raise RuntimeError("direct get answered %s" % status)
+            subject = h.get("Nats-Subject") or PREFIX + agent
+            return (subject, msg.data, h) if subject == PREFIX + agent else None
+        rows = await asyncio.gather(*(one(a) for a in sorted(names)[:MAX_AGENTS]))
+        return [r for r in rows if r]
 
 
 def mark_known(items, slugs):

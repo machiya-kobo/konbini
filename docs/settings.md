@@ -105,10 +105,10 @@ Workshop). Off while `KANBAN_BUS_URL` is unset: no strip, and `/api/now` answers
 
 | Setting | Default | |
 |---|---|---|
-| `KANBAN_BUS_URL` | — | the bus, `nats://bus.example.ts.net:4222`. Konbini reads the latest value of every `$KV.presence.<agent>` key with one DIRECT.GET on the `KV_presence` stream every 5 seconds, and publishes nothing else: no message, stream or consumer. A bus that is down, slow or refusing never holds up a page: after 20 seconds without a good read the strip says it can't reach the bus |
-| `KANBAN_BUS_IDENTITY` | `konbini` | the read-only identity Konbini connects as; its replies come on `_INBOX.<identity>.>` |
+| `KANBAN_BUS_URL` | — | the bus, `nats://bus.example.ts.net:4222`. Every 5 seconds Konbini asks the `KV_presence` stream for each agent's last `$KV.presence.<agent>` value (one DIRECT.GET `last_by_subj` per name; a missing key is an agent with no presence). That is all it does there: it publishes nothing and needs no consumer. A bus that is down, slow or refusing never holds up a page: after 20 seconds without a good read the strip says it can't reach the bus |
+| `KANBAN_BUS_IDENTITY` | `konbini` | the read-only identity Konbini connects as. Its replies come on `_INBOX.<identity>.>`, which is the client's inbox prefix |
 | `KANBAN_BUS_NKEY_FILE` | — | that identity's NKey seed file (readable by the board's user, uid 1000 in the image). The seed is never logged |
-| `KANBAN_BUS_AGENTS_FILE` | — | optional: the bus's `agents.yaml` (its `identities:`). Then only identities with a session (role `agent` or `lead`) are listed; re-read when it changes. Unset, or while it can't be read: any agent name |
+| `KANBAN_BUS_AGENTS_FILE` | `/repos/workshop/agents.yaml` | the bus's `agents.yaml`: the agent names to ask for, its `identities:` with a session (role `agent` or `lead`). Re-read when it changes; while it can't be read, the names read before stay. With none read yet, the strip says it can't reach the bus |
 
 A presence value shows as live only in the states `working` and `waiting_owner`; its `card`, when there is one, gets the
 same badge as a claim. An agent whose card isn't on the board shows as "no card". A value's `session_url` is dropped as

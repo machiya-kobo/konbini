@@ -2,7 +2,7 @@
 old client's entry, an unknown slug), the snapshot (off, ok, down), session_url never reaching HTML, JSON or the log, the
 live agents in now.build and on the page. Then boards on throwaway vaults: a fake bus, the feature off when
 KANBAN_BUS_URL is unset, a bus that is down, and one that takes the connection and never answers."""
-import datetime, json, os, socket, subprocess, sys, tempfile, textwrap, threading, time, urllib.request
+import datetime, json, os, socket, subprocess, sys, tempfile, textwrap, threading, time, types, urllib.request
 from zoneinfo import ZoneInfo
 
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app")
@@ -92,7 +92,7 @@ except ValueError:
 env = bus.Presence.from_env({"KANBAN_BUS_URL": " nats://bus.example.ts.net:4222 ", "KANBAN_BUS_NKEY_FILE": "/run/k.nk"})
 assert (env.url, env.identity, env.nkey_file, env.enabled) == ("nats://bus.example.ts.net:4222", "konbini", "/run/k.nk", True)
 
-# -- KANBAN_BUS_AGENTS_FILE: only identities with a session (agent, lead); none set, or a bad file: any valid name ----
+# -- KANBAN_BUS_AGENTS_FILE: the names, agents.yaml's identities with a session (agent, lead); re-read on change ------
 agents = tempfile.mkdtemp() + "/agents.yaml"
 open(agents, "w").write("identities:\n  helper: {role: agent, host: claude}\n  foreman: {role: lead, host: h}\n"
                         "  room: {role: room, host: h}\n  watcher: {role: observer, host: h}\n")
@@ -106,9 +106,73 @@ p.read_once()
 assert [i["agent"] for i in p.snapshot()[1]] == ["stray"], "re-read when the file changes"
 os.unlink(agents)
 p.read_once()
-assert len(p.snapshot()[1]) == 5, "a missing file: no filter"
+assert [i["agent"] for i in p.snapshot()[1]] == ["stray"], "a missing file: the names read before stay"
+assert bus.Presence(agents_file=agents).names() is None, "a missing file and nothing read before: no names"
 assert len(bus.entries(three)) == 5
-assert bus.Presence.from_env({"KANBAN_BUS_AGENTS_FILE": " /repos/workshop/agents.yaml "}).agents_file == "/repos/workshop/agents.yaml"
+assert bus.Presence.from_env({}).agents_file == bus.DEFAULT_AGENTS_FILE == "/repos/workshop/agents.yaml"
+assert bus.Presence.from_env({"KANBAN_BUS_AGENTS_FILE": " /x/agents.yaml "}).agents_file == "/x/agents.yaml"
+
+# -- the NATS side, against a fake nats module: the inbox prefix, the seed, one last_by_subj DIRECT.GET per agent ----
+assert bus.inbox_prefix("konbini") == "_INBOX.konbini" and bus.INBOX == "_INBOX"
+assert bus.API == "$JS.API.DIRECT.GET.KV_presence"
+
+
+class Msg:
+    def __init__(self, data=b"", headers=None):
+        self.data, self.headers = data, headers
+
+
+class FakeNC:
+    is_connected = True
+
+    def __init__(self, store, asked):
+        self.store, self.asked = store, asked
+
+    async def request(self, subject, payload, timeout=None):
+        self.asked.append((subject, json.loads(payload), timeout))
+        key = json.loads(payload)["last_by_subj"]
+        if key not in self.store:
+            return Msg(b"", {"Status": "404", "Description": "Message Not Found"})
+        return Msg(self.store[key], {"Nats-Subject": key, "Nats-Sequence": "7"})
+
+    async def close(self):
+        pass
+
+
+class FakeNats(types.ModuleType):
+    def __init__(self):
+        super().__init__("nats")
+        self.opts, self.asked = [], []
+        self.store = {"$KV.presence.helper": val(state="working", card="lantern", card_from="focus", session_url=LINK),
+                      "$KV.presence.stray": val(state="working")}             # not in agents.yaml: never asked for
+
+    async def connect(self, **opts):
+        self.opts.append(opts)
+        return FakeNC(self.store, self.asked)
+
+
+fake = FakeNats()
+sys.modules["nats"] = fake
+open(agents, "w").write("identities:\n  helper: {role: agent}\n  foreman: {role: lead}\n  watcher: {role: observer}\n")
+seedfile = tempfile.mkdtemp() + "/k.nk"
+p = bus.Presence("nats://127.0.0.1:4222", "konbini", seedfile, poll=0.05, agents_file=agents)
+p.start()
+for _ in range(100):
+    if p.snapshot()[0] == "ok":
+        break
+    time.sleep(0.02)
+assert p.snapshot() == ("ok", [{"agent": "helper", "state": "working", "since": None, "note": "", "card": "lantern"}]), p.snapshot()
+o = fake.opts[0]
+assert o["inbox_prefix"] == "_INBOX.konbini" and o["nkeys_seed"] == seedfile and o["servers"] == ["nats://127.0.0.1:4222"], o
+assert o["max_reconnect_attempts"] > 0, "else nats-py's first connect retries for ever"
+assert {a[0] for a in fake.asked} == {bus.API}, fake.asked
+assert {a[1]["last_by_subj"] for a in fake.asked} == {"$KV.presence.helper", "$KV.presence.foreman"}, fake.asked
+assert all(set(a[1]) == {"last_by_subj"} and a[2] for a in fake.asked), "nothing but a bounded last_by_subj"
+nonames = bus.Presence("nats://127.0.0.1:4222", "konbini", "", poll=0.05, agents_file=agents + ".missing")
+nonames.start()
+time.sleep(0.3)
+assert nonames.snapshot() == ("down", []) and nonames.problem == "LookupError", (nonames.snapshot(), nonames.problem)
+del sys.modules["nats"]
 
 # -- card_known, now.build and the page ------------------------------------------------------------------------------
 lantern = parse_note("---\ntitle: Lantern\nstatus: wip\ntags:\n  - type/project\n---\n# Lantern\n", "Projects/Lantern.md")

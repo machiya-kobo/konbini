@@ -35,6 +35,8 @@ vault works as it is.
   `last_commit:`, matched by the note's name or the last segment of its `forgejo:` or `github:` URL. Change-log rows
   under `Systems/Change Logs/` that link no card are listed by host, except rows whose change text starts with the
   robot emoji (🤖, the triage agent's: incidents track those). Such a row that links a card still counts for it.
+  With `KANBAN_BUS_URL` set ([settings](settings.md#agents-now)), Agents Now at the top lists the agents working
+  right now and their cards; an agent on a card counts for it like a claim.
 - **Blog tags.** An optional `.board/kit.json` maps a card's topics and area onto your blog's tags and categories
   (`tag_synonyms`, `area_category`, `default_category`, `ignore_tags`, `ignore_categories`). Without it, the blog's own
   tags and categories drive the kit.

@@ -14,6 +14,9 @@ in that order (agents add Log rows in batches, so they count least). WIP cards w
 Change-log rows in the window that link no card are listed by host, read-only: nothing here proposes a card. Rows the
 triage agent wrote (the change text starts with the robot emoji) are left out of that list, since incidents track them;
 one that links a card still counts as that card's activity.
+
+Agents live on the workshop bus right now (bus.py, `live`) count like a claim: a live agent on a card makes it working,
+and the card lists the agent in its `live`. An agent whose card isn't on this board is listed in `live` only.
 """
 import datetime
 import os
@@ -122,10 +125,11 @@ def repo_index(notes):
     return out
 
 
-def build(cards, notes, events, last_events, claims, resolve, today, tz, now=None, checkouts=None):
+def build(cards, notes, events, last_events, claims, resolve, today, tz, now=None, checkouts=None, live=()):
     """The /api/now answer. cards: the board's cards; notes: (rel, frontmatter, text) for the vault; events: the board
     events since the window's start (newest first); last_events: slug -> its latest event's ts, all time; claims: the
-    live claims; resolve: a [[link]] target -> a note's rel or None (vaultkit's rule); checkouts: a Checkouts."""
+    live claims; resolve: a [[link]] target -> a note's rel or None (vaultkit's rule); checkouts: a Checkouts; live: the
+    bus's live agents (bus.snapshot, marked with bus.mark_known)."""
     now = now or datetime.datetime.now(datetime.timezone.utc)
     since = now_since(today, tz)
     start = since.date()
@@ -180,6 +184,12 @@ def build(cards, notes, events, last_events, claims, resolve, today, tz, now=Non
     for slug, claim in (claims or {}).items():
         who = claim.get("agent") if claim.get("agent") not in (None, "", "web", "api") else ""
         seen(slug, now.astimezone(tz).date(), stamp, "claim", "Claimed by " + who if who else "Claimed")
+    agents = {}                                     # slug -> the live agents on it
+    for item in live:
+        if item.get("card_known") and item["card"] in acts:
+            agents.setdefault(item["card"], []).append(item["agent"])
+            seen(item["card"], now.astimezone(tz).date(), stamp, "claim",
+                 "%s now (%s)" % ("Waiting on you" if item["state"] == "waiting_owner" else "Working", item["agent"]))
 
     # change-log rows: a row with a [[link]] to a card counts for that card; the others are listed by host, except the triage
     # agent's (incidents track those)
@@ -212,7 +222,8 @@ def build(cards, notes, events, last_events, claims, resolve, today, tz, now=Non
             day, weight, ts, seq, source, line = max(items, key=lambda a: a[:4])
             c = by_slug[slug]
             working.append(((day, weight, ts), {"slug": slug, "title": c["title"], "path": c["path"], "board": c["board"],
-                                                "at": ts, "line": line, "source": source, "live": []}))
+                                                "at": ts, "line": line, "source": source,
+                                                "live": agents.get(slug, [])}))
     working.sort(key=lambda t: t[1]["title"].lower())
     working.sort(key=lambda t: t[0], reverse=True)
     quiet = sorted(({"slug": c["slug"], "title": c["title"], "path": c["path"],
@@ -223,4 +234,4 @@ def build(cards, notes, events, last_events, claims, resolve, today, tz, now=Non
                                             h.lower()))
     return {"days": NOW_DAYS, "since": since.isoformat(), "working": [w for _, w in working], "quiet": quiet,
             "uncarded": [{"host": h, "rows": sorted(uncarded[h], key=lambda r: r["date"], reverse=True)} for h in hosts],
-            "live": []}
+            "live": [dict(i) for i in live]}

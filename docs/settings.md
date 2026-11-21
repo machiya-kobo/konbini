@@ -98,6 +98,22 @@ Links to Machiya's other apps and to Obsidian. Each is off while unset.
 | `MACHIYA_SOURCE_URL` | — | where this room's source code is published; when set, the footer and About link to it (AGPL section 13: people who use a service over a network are offered its source). A plain http(s) address |
 | `MACHIYA_COOKIE_DOMAIN` | — | share the theme and text-size cookies across rooms on one domain, e.g. `example.net` |
 
+## Agents Now
+
+The Now page's strip of agents working right now, read from the presence of an agent bus (NATS, Machiya's Agent
+Workshop). Off while `KANBAN_BUS_URL` is unset: no strip, and `/api/now` answers `live: []`.
+
+| Setting | Default | |
+|---|---|---|
+| `KANBAN_BUS_URL` | — | the bus, `nats://bus.example.ts.net:4222`. Konbini reads the latest value of every `$KV.presence.<agent>` key with one DIRECT.GET on the `KV_presence` stream every 5 seconds, and publishes nothing else: no message, stream or consumer. A bus that is down, slow or refusing never holds up a page: after 20 seconds without a good read the strip says it can't reach the bus |
+| `KANBAN_BUS_IDENTITY` | `konbini` | the read-only identity Konbini connects as; its replies come on `_INBOX.<identity>.>` |
+| `KANBAN_BUS_NKEY_FILE` | — | that identity's NKey seed file (readable by the board's user, uid 1000 in the image). The seed is never logged |
+| `KANBAN_BUS_AGENTS_FILE` | — | optional: the bus's `agents.yaml` (its `identities:`). Then only identities with a session (role `agent` or `lead`) are listed; re-read when it changes. Unset, or while it can't be read: any agent name |
+
+A presence value shows as live only in the states `working` and `waiting_owner`; its `card`, when there is one, gets the
+same badge as a claim. An agent whose card isn't on the board shows as "no card". A value's `session_url` is dropped as
+it is read: never kept, logged, shown or returned.
+
 ## Running it
 
 | Setting | Default | |

@@ -50,7 +50,19 @@ for k in [k for k in env if k.startswith(("KANBAN_NIWA", "KANBAN_KURA", "KANBAN_
     del env[k]
 env.update(KANBAN_KURA_URL="https://kura.example.ts.net", KANBAN_NIWA_URL="https://niwa.example.ts.net",
            KANBAN_OBSIDIAN_VAULT="vault")        # the card page's link chips (Kura, Niwa, Obsidian) are measured too
-server = subprocess.Popen([sys.executable, os.path.join(ROOT, "app", "app.py")], env=env, start_new_session=True,
+# the Now page's Agents Now strip and the live badge are measured too: the board runs with a fake workshop bus (bus.py)
+FAKE_BUS = """
+import json, runpy, sys, time
+sys.path.insert(0, sys.argv[1])
+import bus
+now = time.time() - 600
+ROWS = [("$KV.presence." + a, json.dumps(v).encode(), {}) for a, v in (
+    ("helper", {"state": "working", "since": now, "note": "Edit", "card": "lantern", "card_from": "focus"}),
+    ("planner", {"state": "waiting_owner", "since": now, "note": "question: Paper", "card": "gone", "card_from": "default"}))]
+bus.Presence.from_env = classmethod(lambda cls, env=None: cls(fetch=lambda: ROWS, poll=1))
+runpy.run_path(sys.argv[1] + "/app.py", run_name="__main__")
+"""
+server = subprocess.Popen([sys.executable, "-c", FAKE_BUS, os.path.join(ROOT, "app")], env=env, start_new_session=True,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 BASE = "http://127.0.0.1:%d" % port
 try:
@@ -60,6 +72,12 @@ try:
             break
         except OSError:
             time.sleep(0.5)
+    for _ in range(40):
+        page = urllib.request.urlopen(BASE + "/now", timeout=5).read().decode()
+        if "helper now" in page:
+            break
+        time.sleep(0.25)
+    assert 'id="n-live"' in page and "helper now" in page and "Waiting on You" in page, "the strip is measured"
     failures = []
     with sync_playwright() as p:
         try:

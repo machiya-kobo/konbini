@@ -78,6 +78,16 @@ v3.0; Konbini runs it as a separate program. Its source is at the upstream tag
 named by NOGON_VERSION.
 
 --------------------------------------------------------------------------------
+Python packages in the container image
+--------------------------------------------------------------------------------
+
+app/Dockerfile installs these from PyPI, each under its own license (pinned
+versions there): Python-Markdown (BSD-3-Clause), PyYAML (MIT), and, for the
+Now page's read of the workshop bus (app/bus.py), nats-py (Apache-2.0), nkeys
+(Apache-2.0), PyNaCl (Apache-2.0; it bundles libsodium, ISC), cffi (MIT) and
+pycparser (BSD-3-Clause).
+
+--------------------------------------------------------------------------------
 vaultkit (app/vaultkit/)
 --------------------------------------------------------------------------------
 

@@ -209,6 +209,15 @@ dialog.newdlg::backdrop { background: rgba(0, 0, 0, .45); }
 ul.nowrows { list-style: none; margin: 4px 0 6px; padding: 0 0 0 4px; display: grid; gap: 4px; font-size: 13px; overflow-wrap: anywhere;
              color: var(--fg); }
 ul.nowrows .when { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+/* Agents Now: who is working right now (the workshop bus), one row each: agent, state, card, note, for how long */
+ul.livelist { list-style: none; margin: 2px 0 2px; padding: 0 0 0 2px; display: grid; gap: 6px; font-size: 14px; color: var(--fg); }
+.liverow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; overflow-wrap: anywhere; }
+.liverow .chip.agent { --chip: var(--fg2); font-weight: 600; }
+.liverow .chip.state { --chip: var(--green); }
+.liverow.live-waiting_owner .chip.state { --chip: var(--orange); }
+.liverow .title { font-weight: 600; }
+.liverow .nocard, .liverow .livenote { color: var(--muted); font-size: 13px; }
+.liverow .when { font-size: 12px; }
 
 /* ---- weekly review ------------------------------------------------------ */
 .revjump { margin: 0 0 12px; }

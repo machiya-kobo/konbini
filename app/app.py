@@ -72,6 +72,7 @@ from links import ColdArchive, Links, NogonBackend, WaybackBackend
 import modern
 import common
 import now as now_mod
+import bus
 from garden import Garden
 from store import Store
 from timeline import TZ, Timeline, today
@@ -319,15 +320,40 @@ def cards_with_deps():
 
 
 checkouts = now_mod.Checkouts(kit_mod.LOCAL_REPOS)     # the writing kit's read-only checkouts: commits for the Now page
+# The workshop bus's presence (bus.py): off without KANBAN_BUS_URL. Read in its own thread; pages read its snapshot.
+try:
+    presence = bus.Presence.from_env()
+except ValueError as err:
+    raise SystemExit("konbini: %s" % err)
 
 
-def now_data(cards):
+def live_now(cards):
+    """("off" | "ok" | "down", the live agents with card_known against these cards). Never waits on the bus."""
+    state, items = presence.snapshot()
+    return state, bus.mark_known(items, {c["slug"] for c in cards if c.get("board")})
+
+
+def claims_now(cards=None):
+    """The claims as the pages show them: a card a live agent is on gets the same badge (claim["live"]), so agents
+    needn't write claims. Pages only: /api/cards keeps the stored claims."""
+    claims = store.claims()
+    if presence.snapshot()[1] and cards is None:
+        cards = store.cards()
+    for item in (live_now(cards)[1] if cards is not None else ()):
+        if item["card_known"]:
+            claim = claims.setdefault(item["card"], {"actor": item["agent"], "agent": item["agent"], "expires": None})
+            claim.setdefault("live", []).append(item)
+    return claims
+
+
+def now_data(cards, live=None):
     """GET /api/now and /now (now.py): what's being worked on, in the board's days."""
     day = today()
     since = common.now_since(day, TZ).astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     garden.index()
     return now_mod.build(cards, timeline.notes(), store.events(since=since, limit=100000), store.last_activity(),
-                         store.claims(), garden.resolve, day, TZ, checkouts=checkouts)
+                         store.claims(), garden.resolve, day, TZ, checkouts=checkouts,
+                         live=(live if live is not None else live_now(cards))[1])
 
 
 def cards_by_path():
@@ -1074,14 +1100,15 @@ def make_handler(listener):
                 return
             if path == "/now":
                 cards = cards_with_deps()[0]
-                self.send(200, V(ctx).now(ctx, cards, store.claims(), store.meta("rev"), now_data(cards)))
+                live = live_now(cards)
+                self.send(200, V(ctx).now(ctx, cards, claims_now(cards), store.meta("rev"), now_data(cards, live), live[0]))
                 return
             if path == "/api/now":
                 self.send_json(200, now_data(store.cards()))
                 return
             if path == "/search":
                 ctx.q = (query.get("q") or [""])[0][:200]
-                self.send(200, V(ctx).search_page(ctx, cards_with_deps()[0], ctx.q, store.claims()))
+                self.send(200, V(ctx).search_page(ctx, cards_with_deps()[0], ctx.q, claims_now()))
                 return
             if path == "/goals":
                 cards = cards_with_deps()[0]
@@ -1110,7 +1137,7 @@ def make_handler(listener):
                 self.send(200, V(ctx).streams_page(ctx, cards_with_deps()[0], "Plan" if path == "/plan" else "Streams"))
                 return
             if path.startswith("/streams/"):
-                html = V(ctx).stream_page(ctx, unquote(path[len("/streams/"):]), cards_with_deps()[0], store.claims(),
+                html = V(ctx).stream_page(ctx, unquote(path[len("/streams/"):]), cards_with_deps()[0], claims_now(),
                                           store.meta("rev"))
                 self.send(200 if html else 404, html or V(ctx).not_found(ctx, path))
                 return
@@ -1126,11 +1153,11 @@ def make_handler(listener):
             if path == "/review":
                 cards = cards_with_deps()[0]
                 data = review.build(cards, lambda slug: store.events(card=slug, limit=200), store.last_activity())
-                self.send(200, V(ctx).review(ctx, cards, data, store.claims(), store.meta("rev")))
+                self.send(200, V(ctx).review(ctx, cards, data, claims_now(cards), store.meta("rev")))
                 return
             if path == "/":
                 html = V(ctx).board(ctx, cards_with_deps()[0], (query.get("lane") or [None])[0],
-                                    store.meta("imported"), store.claims(), store.meta("rev"),
+                                    store.meta("imported"), claims_now(), store.meta("rev"),
                                     query=query, activity=store.last_activity(), areas=known_areas())
                 self.send(200, html)
             elif path == "/archived":
@@ -1166,7 +1193,7 @@ def make_handler(listener):
                         docs, q = reading_for(card)
                         reading = modern.reading_section(docs, q, nogon.search_url(q) if q else "")
                     self.send(200, V(ctx).detail(ctx, card, cards, store.events(card=card["slug"], limit=60),
-                                                store.claims().get(card["slug"]),
+                                                claims_now(cards).get(card["slug"]),
                                                 (query.get("tagmsg") or [""])[0], (query.get("pending") or [""])[0],
                                                 reading, graph.get(card["slug"]), writer.description(card),
                                                 store.closeout(card["slug"]) if card["board"] == "archived" else None,
@@ -1442,6 +1469,7 @@ def auth_banner():
 
 
 def serve(port, listener):
+    presence.start()                                # the workshop bus's presence, when KANBAN_BUS_URL is set
     ThreadingHTTPServer((BIND, port), make_handler(listener)).serve_forever()
 
 

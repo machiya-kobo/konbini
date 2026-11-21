@@ -249,13 +249,63 @@ def chips(card, show_area=False):
     return out
 
 
+LIVE_WORDS = {"working": "Working", "waiting_owner": "Waiting on You"}
+
+
+def live_chip(item):
+    """A live agent's "working on this" badge: the claim chip, saying now instead of the minutes left."""
+    return ('<span class="chip claim live" title="%s now, on the workshop bus">%s now</span>'
+            % (e(LIVE_WORDS.get(item["state"], "Working")), e(item["agent"])))
+
+
 def claim_badge(claim):
+    """A claim's badge (the agent and the minutes left), and one per agent live on the card (claim["live"])."""
     if not claim:
         return ""
     import time
-    mins = max(1, int((claim["expires"] - time.time()) / 60))
+    out = ""
     who = claim["agent"] if claim["agent"] not in ("web", "api") else claim["actor"]
-    return '<span class="chip claim">%s %dm</span>' % (e(who), mins)
+    if claim.get("expires"):
+        mins = max(1, int((claim["expires"] - time.time()) / 60))
+        out = '<span class="chip claim">%s %dm</span>' % (e(who), mins)
+    return out + "".join(live_chip(i) for i in claim.get("live") or () if not (out and i["agent"] == who))
+
+
+def for_how_long(since):
+    """How long an agent has been in its state: "for 5 min", "for 2 h", "" when unknown."""
+    try:
+        start = datetime.datetime.fromisoformat((since or "").replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    mins = int((datetime.datetime.now(datetime.timezone.utc) - start).total_seconds() // 60)
+    if mins < 1:
+        return "just now"
+    if mins < 120:
+        return "for %d min" % mins
+    return "for %d h" % (mins // 60) if mins < 48 * 60 else "for %d days" % (mins // 1440)
+
+
+def live_strip(cards, items, state):
+    """The top of the Now page: the agents working right now (the workshop bus), each with its card. Nothing when the bus
+    isn't set up (state "off")."""
+    if state == "off":
+        return ""
+    by_slug = {c["slug"]: c for c in cards}
+    rows = []
+    for i in items:
+        c = by_slug.get(i["card"]) if i["card_known"] else None
+        card = ('<a class="title" href="/p/%s">%s</a>' % (quote(c["slug"]), e(c["title"])) if c
+                else '<span class="nocard">no card</span>')
+        rows.append('<li class="liverow live-%s"><span class="chip agent">%s</span> <span class="chip state">%s</span> %s%s%s</li>'
+                    % (e(i["state"]), e(i["agent"]), e(LIVE_WORDS.get(i["state"], "Working")), card,
+                       (' <span class="livenote">%s</span>' % e(i["note"])) if i["note"] else "",
+                       (' <span class="when">%s</span>' % e(for_how_long(i["since"]))) if i["since"] else ""))
+    if state == "down":
+        body = '<p class="none">Can\'t reach the workshop bus right now.</p>'
+    else:
+        body = ('<ul class="livelist">%s</ul>' % "".join(rows)) if rows else '<p class="none">No agents working right now.</p>'
+    return ('<section class="nowsec nowlane nowlive" id="n-live"><h2 class="nowhead">Agents Now%s</h2>%s</section>'
+            % ((' <span class="colcount">%d</span>' % len(rows)) if state == "ok" else "", body))
 
 
 def move_form(card):
@@ -540,14 +590,17 @@ def now_lists(ctx, cards, claims, data):
     return parts
 
 
-def now(ctx, cards, claims, rev, data):
-    """/now: what's being worked on (data: now.build), then Blocked and the top of Ready."""
+def now(ctx, cards, claims, rev, data, bus_state="off"):
+    """/now: the agents working right now (the workshop bus: bus_state "off", "ok" or "down"), what's being worked on
+    (data: now.build), then Blocked and the top of Ready."""
     counts = counts_of(cards)
     claims = claims or {}
     sections = [("Blocked", "blocked", sorted((c for c in cards if c["board"] == "blocked"), key=sort_key))]
     ready = sorted((c for c in cards if c["board"] == "ready"), key=lambda c: (c.get("priority") or 9, sort_key(c)))[:5]
     sections.append(("Up next", "ready", ready))
-    parts = ['<p class="nowtop"><a class="btn quiet nowreview" href="/review">Weekly Review</a></p>'] + now_lists(ctx, cards, claims, data)
+    parts = [live_strip(cards, data["live"], bus_state),
+             '<p class="nowtop"><a class="btn quiet nowreview" href="/review">Weekly Review</a></p>'] + now_lists(ctx, cards, claims, data)
+    parts = [p for p in parts if p]
     for name, col, items in sections:
         body = "\n".join(card_html(ctx, c, claims.get(c["slug"]), show_area=True, show_updated=True) for c in items) \
             or '<p class="none"><b>Nothing Here</b></p>'

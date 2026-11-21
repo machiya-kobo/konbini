@@ -7,10 +7,13 @@ FROM ghcr.io/asciimoo/nogon:${NOGON_VERSION}@sha256:d1b427c7f876e64e6212e000df60
 
 FROM public.ecr.aws/docker/library/python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
+# nats-py and nkeys: the workshop bus's presence for the Now page (bus.py, used only with KANBAN_BUS_URL), with nkeys'
+# own dependencies pinned (PyNaCl bundles libsodium; about 7 MB in all)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client sqlite3 openssl \
  && rm -rf /var/lib/apt/lists/* \
- && pip install --no-cache-dir markdown==3.11 pyyaml==6.0.3
+ && pip install --no-cache-dir markdown==3.11 pyyaml==6.0.3 \
+    nats-py==2.17.0 nkeys==0.2.1 pynacl==1.6.2 cffi==2.1.1 pycparser==3.12
 
 # ssh refuses to run for a uid without a passwd entry (git pull/push).
 RUN useradd --uid 1000 --home-dir /data --no-create-home --shell /usr/sbin/nologin kanban
